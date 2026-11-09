@@ -1,0 +1,9 @@
+{
+  "schema": "oozeclient.bridge.resources/1",
+  "bridgeAbi": 1,
+  "owner": "Sol G0",
+  "nativeManifest": "META-INF/ooze/native.properties",
+  "nativeResources": ["natives/windows-x86_64/ooze_jni.dll"],
+  "productAssets": [],
+  "notes": "G0 has diagnostic geometry only. Java owns Minecraft resources, translation, font access and GPU operations; later protocol additions require an explicit version/capability contract."
+}

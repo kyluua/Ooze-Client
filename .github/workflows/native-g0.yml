@@ -1,0 +1,45 @@
+name: Native G0
+
+on:
+  push:
+    paths:
+      - '.cargo/**'
+      - 'rust-toolchain.toml'
+      - 'native/**'
+      - 'bridge-java/**'
+      - 'docs/bridge/**'
+      - '.github/workflows/native-g0.yml'
+  pull_request:
+    paths:
+      - '.cargo/**'
+      - 'rust-toolchain.toml'
+      - 'native/**'
+      - 'bridge-java/**'
+      - 'docs/bridge/**'
+      - '.github/workflows/native-g0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64-java21:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build native artifacts and execute Java 21 contract harness
+        shell: pwsh
+        run: ./native/tools/build-g0.ps1 -JavaHome $env:JAVA_HOME_21_X64 -IncludeFaultInjection
+      - name: Archive production bridge artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ooze-g0-windows-x86_64-release
+          path: native/dist/g0/release/
+          if-no-files-found: error
+      - name: Archive test-only fault artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ooze-g0-windows-x86_64-FAULT-INJECTION-DO-NOT-SHIP
+          path: native/dist/g0/fault-injection/
+          if-no-files-found: error
