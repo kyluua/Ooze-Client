@@ -1,6 +1,6 @@
 # Ooze native bridge ABI v1 — G0
 
-Status: implemented G0 subset. Owner: Sol. Target: Minecraft Fabric **1.21.11**, Java **21**, Windows x64 native library. This contract records the owner's Rust architecture decision; older Java-core/multi-target instructions remain for Claude to reconcile in C0.
+Status: implemented G0 subset. Owner: Sol. Target: Minecraft Fabric **1.21.11**, Java **21**, Windows x64 native library. This contract records the bridge subset within the Rust architecture; Claude's concurrently delivered C0 has reconciled the former Java-core/multi-target instructions.
 
 ## Compatibility and discovery
 
