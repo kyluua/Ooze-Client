@@ -16,18 +16,16 @@ public record EngineStatus(State state, @Nullable String bridgeVersion, String r
     public enum State {
         /** Bridge and native library loaded with a compatible version. */
         LOADED,
-        /** This JAR contains no bridge or native library (C0 builds before Sol's G0 handoff). */
-        NOT_BUNDLED,
-        /** Bridge present but no native library for this OS/architecture, or the file is missing. */
+        /** No native library (or its manifest) is bundled for this build. */
         MISSING_LIBRARY,
         /** OS/architecture is not a supported native platform yet. */
         UNSUPPORTED_PLATFORM,
-        /** Library loaded but its bridge or protocol version does not match. */
+        /** Manifest, version, ABI, capabilities or checksum do not match this mod. */
         INCOMPATIBLE,
-        /** Loading threw (corrupt file, missing runtime, blocked by security software, ...). */
+        /** Loading threw, or the engine was disabled after a runtime bridge failure. */
         LOAD_FAILED;
 
-        /** Translation-key suffix, e.g. {@code not_bundled}. */
+        /** Translation-key suffix, e.g. {@code missing_library}. */
         public String keySuffix() {
             return name().toLowerCase(java.util.Locale.ROOT);
         }
@@ -45,5 +43,15 @@ public record EngineStatus(State state, @Nullable String bridgeVersion, String r
 
     public static EngineStatus of(State state, String reason, String detail) {
         return new EngineStatus(state, null, reason, detail);
+    }
+
+    /**
+     * Status after a controlled bridge failure at runtime: the engine is disabled for the rest of
+     * the session (no further native calls), keeping the bridge version for the log.
+     */
+    public static EngineStatus runtimeFailure(EngineStatus previous, String where, Throwable cause) {
+        return new EngineStatus(State.LOAD_FAILED, previous.bridgeVersion(),
+                "The Ooze native engine was disabled after a failure in " + where + ".",
+                cause.getClass().getName() + ": " + cause.getMessage());
     }
 }

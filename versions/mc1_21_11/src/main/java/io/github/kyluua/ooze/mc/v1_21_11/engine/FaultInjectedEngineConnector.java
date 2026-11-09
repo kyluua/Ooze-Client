@@ -22,7 +22,6 @@ final class FaultInjectedEngineConnector implements EngineConnector {
     public EngineStatus connect() {
         String injected = " [developer fault injection: oozeclient.dev.engineFault]";
         return switch (state) {
-            case NOT_BUNDLED -> EngineStatus.of(state, "This build of Ooze Client does not include the native engine.", "simulated" + injected);
             case MISSING_LIBRARY -> EngineStatus.of(state, "No Ooze native library was found for " + platform.id() + ".", "simulated missing file" + injected);
             case UNSUPPORTED_PLATFORM -> EngineStatus.of(state, platform.id() + " is not a supported Ooze native platform yet.", "simulated" + injected);
             case INCOMPATIBLE -> new EngineStatus(state, "0.0.0-simulated", "The Ooze native library version does not match this mod.", "expected bridge <G0 version>, found 0.0.0-simulated" + injected);

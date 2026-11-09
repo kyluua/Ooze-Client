@@ -20,8 +20,9 @@ tasks.register("buildAll") {
 // -PoozeNativeResources=<absolute dir>, defaulting to native/dist/g0/release/resources.
 // Without them (e.g. Linux/Java-only contributors) the mod still builds; the bridge then reports
 // a missing/unsupported native library at runtime and Ooze stays in vanilla-only mode.
-// Requested from Sol (docs/handoffs/CLAUDE-C0.md §7): an official switch inside bridge-java so
-// this glue can be removed.
+// Sol's bridge-java skips its DLL harness on non-Windows hosts itself (onlyIf). Still requested
+// (docs/handoffs/CLAUDE-C0.md §5, S-2): a module switch for building without resources, so this
+// remaining glue can be removed.
 // ---------------------------------------------------------------------------------------------
 val nativeResourcesDir: File = providers.gradleProperty("oozeNativeResources")
     .map { file(it) }
@@ -39,9 +40,10 @@ findProject(":bridge-java")?.let { bridge ->
                     "Windows native library (runtime: vanilla-only mode). Pass -PoozeNativeResources=<dir>.")
             tasks.named("verifyNativeArtifact") { enabled = false }
         }
-        if (!nativeResourcesPresent || !windowsX64Host) {
+        if (!nativeResourcesPresent && windowsX64Host) {
+            // Sol's harness runs on Windows x64 (its own onlyIf) but needs the DLL resources.
             tasks.named("bridgeContractTest") { enabled = false }
-            logger.lifecycle("Ooze: skipping :bridge-java:bridgeContractTest (needs the Windows x64 DLL on a Windows x64 host).")
+            logger.lifecycle("Ooze: skipping :bridge-java:bridgeContractTest (no native resources supplied).")
         }
     }
 }

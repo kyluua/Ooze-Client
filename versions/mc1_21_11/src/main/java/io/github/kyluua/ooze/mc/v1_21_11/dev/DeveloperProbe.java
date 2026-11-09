@@ -1,6 +1,7 @@
 package io.github.kyluua.ooze.mc.v1_21_11.dev;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import io.github.kyluua.ooze.mc.v1_21_11.OozeClient;
 import io.github.kyluua.ooze.mc.v1_21_11.engine.EngineConnector;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -29,6 +30,9 @@ public final class DeveloperProbe {
                 new KeyMapping(KEY_NAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F9, category));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (key.consumeClick()) {
+                if (!OozeClient.gate().developerProbeEnabled()) {
+                    continue; // engine disabled at runtime: the key does nothing further
+                }
                 EngineConnector.DevProbeResult result = runProbe(connector);
                 log.info("[dev] bridge probe ok={} in {} µs: {}", result.ok(), result.elapsedNanos() / 1_000, result.summary());
                 SystemToast.addOrUpdate(
@@ -43,12 +47,21 @@ public final class DeveloperProbe {
         });
     }
 
-    /** Runs the probe without letting a bridge failure escape into the game loop. */
+    /**
+     * Runs the probe without letting a bridge failure escape into the game loop. Any failure, or
+     * a fixture that violates the expected output, disables the engine for the session.
+     */
     public static EngineConnector.DevProbeResult runProbe(EngineConnector connector) {
+        EngineConnector.DevProbeResult result;
         try {
-            return connector.developerProbe();
-        } catch (RuntimeException e) {
+            result = connector.developerProbe();
+        } catch (RuntimeException | LinkageError e) {
+            OozeClient.disableEngine("the developer probe", e);
             return new EngineConnector.DevProbeResult(false, e.toString(), 0L);
         }
+        if (!result.ok()) {
+            OozeClient.disableEngine("the developer probe", new IllegalStateException(result.summary()));
+        }
+        return result;
     }
 }

@@ -1,85 +1,64 @@
 package io.github.kyluua.ooze.mc.v1_21_11.engine;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.github.kyluua.ooze.mc.v1_21_11.engine.EngineStatus.State;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
+import io.github.kyluua.ooze.bridge.NativeLoader.LoadResult;
+import io.github.kyluua.ooze.bridge.NativeLoader.LoadState;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
-/** Classification of Sol's G0 {@code NativeLoader} diagnostics (bridge-java @ 0.1.0-g0). */
+/** One-to-one mapping of Sol's typed {@code NativeLoader.LoadState} (no text matching). */
 class BridgeStatusMapperTest {
 
     private static final PlatformInfo WIN = PlatformInfo.of("Windows 11", "amd64");
-    private static final PlatformInfo LINUX = PlatformInfo.of("Linux", "amd64");
-    private static final String V = BridgeEngineConnector.BRIDGE_VERSION;
-
-    private static State map(String diagnostic, PlatformInfo p) {
-        return BridgeStatusMapper.map(false, diagnostic, 0, V, p).state();
-    }
 
     @Test
-    void loaded() {
-        EngineStatus s = BridgeStatusMapper.map(true, "Ooze native 0.1.0-g0 / ABI 1 / windows-x86_64", 3, V, WIN);
-        assertEquals(State.LOADED, s.state());
-        assertEquals(V, s.bridgeVersion());
-    }
-
-    @Test
-    void exactG0Diagnostics() {
-        assertEquals(State.UNSUPPORTED_PLATFORM, map("G0 native support is limited to Windows x64", LINUX));
-        assertEquals(State.NOT_BUNDLED, map(
-                "Ooze native unavailable: IOException: Missing bundled native resource: META-INF/ooze/native.properties", WIN));
-        assertEquals(State.MISSING_LIBRARY, map(
-                "Ooze native unavailable: IOException: Missing bundled native resource: natives/windows-x86_64/ooze_jni.dll", WIN));
-        assertEquals(State.INCOMPATIBLE, map("Native artifact manifest is incompatible with this Java bridge", WIN));
-        assertEquals(State.INCOMPATIBLE, map("Native ABI version mismatch; use matching Java and native artifacts", WIN));
-        assertEquals(State.INCOMPATIBLE, map("Native manifest has unsupported capabilities", WIN));
-        assertEquals(State.INCOMPATIBLE, map("Test-only native artifact requires explicit fault-injection opt-in", WIN));
-        assertEquals(State.INCOMPATIBLE, map("A different Ooze native artifact is already loaded; restart Minecraft", WIN));
-        assertEquals(State.INCOMPATIBLE, map("Loaded native library failed the ABI/capability handshake", WIN));
-        assertEquals(State.LOAD_FAILED, map(
-                "Ooze native unavailable: IOException: Native SHA-256 mismatch; restore the matching Ooze artifact", WIN));
-        assertEquals(State.LOAD_FAILED, map("Native manifest has no valid SHA-256", WIN));
-        assertEquals(State.LOAD_FAILED, map(
-                "Ooze native unavailable: UnsatisfiedLinkError: Can't load IA 32-bit .dll on a AMD 64-bit platform", WIN));
-        assertEquals(State.LOAD_FAILED, map("something new and unknown", WIN));
-    }
-
-    @Test
-    void unsupportedPlatformWinsEvenWithOtherText() {
-        assertEquals(State.UNSUPPORTED_PLATFORM, map("Missing bundled native resource: x", PlatformInfo.of("Mac OS X", "aarch64")));
-    }
-
-    @Test
-    void detailKeepsTheBridgeTextForTheLog() {
-        EngineStatus s = BridgeStatusMapper.map(false, "Native ABI version mismatch; use matching Java and native artifacts", 0, V, WIN);
-        assertTrue(s.detail().contains("ABI version mismatch"));
-        assertTrue(s.detail().contains(V));
-    }
-
-    /** Drift guard: fails if Sol's loader stops using a phrase this mapper relies on. */
-    @Test
-    void phrasesStillExistInSolsLoader() throws IOException {
-        Path loader = Path.of("../../bridge-java/src/main/java/io/github/kyluua/ooze/bridge/NativeLoader.java");
-        assertTrue(Files.isRegularFile(loader), "expected Sol's loader at " + loader.toAbsolutePath());
-        String src = Files.readString(loader, StandardCharsets.UTF_8);
-        for (String phrase : List.of(
-                "limited to Windows x64",
-                "Missing bundled native resource: ",
-                "META-INF/ooze/native.properties",
-                "is incompatible with this Java bridge",
-                "Native ABI version mismatch",
-                "unsupported capabilities",
-                "Test-only native artifact",
-                "already loaded",
-                "handshake",
-                "Native SHA-256 mismatch")) {
-            assertTrue(src.contains(phrase), "NativeLoader no longer contains: " + phrase);
+    void everyLoaderStateMapsToTheSameNamedAdapterState() {
+        for (LoadState s : LoadState.values()) {
+            EngineStatus status = BridgeStatusMapper.map(new LoadResult(s, "diag " + s, s == LoadState.LOADED ? 3 : 0), WIN);
+            assertEquals(s.name(), status.state().name(), "mapping for " + s);
+            assertTrue(status.detail().contains("diag " + s) || s == LoadState.LOADED, "loader text kept for the log");
         }
+    }
+
+    @Test
+    void adapterStatesAreExactlyTheLoaderStates() {
+        Set<String> loader = Arrays.stream(LoadState.values()).map(Enum::name).collect(Collectors.toSet());
+        Set<String> adapter = EnumSet.allOf(EngineStatus.State.class).stream().map(Enum::name).collect(Collectors.toSet());
+        assertEquals(loader, adapter, "adapter states must track Sol's LoadState exactly");
+    }
+
+    @Test
+    void loadedCarriesBridgeAndProtocolVersion() {
+        EngineStatus s = BridgeStatusMapper.map(new LoadResult(LoadState.LOADED, "Ooze native 0.1.0-g0 / ABI 1 / windows-x86_64", 3), WIN);
+        assertTrue(s.isLoaded());
+        assertEquals("0.1.0-g0 / ABI 1", s.bridgeVersion());
+        assertEquals("capabilities=3", s.detail());
+    }
+
+    @Test
+    void failuresCarryNoBridgeVersionButKeepItInTheDetail() {
+        EngineStatus s = BridgeStatusMapper.map(new LoadResult(LoadState.INCOMPATIBLE, "Native SHA-256 mismatch", 0), WIN);
+        assertFalse(s.isLoaded());
+        assertNull(s.bridgeVersion());
+        assertTrue(s.detail().startsWith("bridge 0.1.0-g0 / ABI 1: "));
+    }
+
+    @Test
+    void runtimeFailureDisablesAndClosesTheGate() {
+        EngineStatus loaded = BridgeStatusMapper.map(new LoadResult(LoadState.LOADED, "ok", 3), WIN);
+        EngineStatus failed = EngineStatus.runtimeFailure(loaded, "the developer probe", new IllegalStateException("status -6"));
+        assertEquals(EngineStatus.State.LOAD_FAILED, failed.state());
+        assertEquals(loaded.bridgeVersion(), failed.bridgeVersion());
+        EngineGate gate = new EngineGate(failed, true);
+        assertFalse(gate.oozeFeaturesEnabled());
+        assertFalse(gate.developerProbeEnabled());
+        assertTrue(failed.detail().contains("status -6"));
     }
 }

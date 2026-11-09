@@ -81,4 +81,23 @@ class EngineConnectorsTest {
         assertEquals(EngineStatus.State.LOAD_FAILED, s.state());
         assertTrue(s.detail().contains("UnsatisfiedLinkError"));
     }
+
+    @Test
+    void vmFatalErrorsAreNotSwallowed() {
+        EngineConnector oom = new EngineConnector() {
+            @Override
+            public EngineStatus connect() {
+                throw new OutOfMemoryError("simulated");
+            }
+
+            @Override
+            public DevProbeResult developerProbe() {
+                throw new IllegalStateException();
+            }
+
+            @Override
+            public void close() {}
+        };
+        assertThrows(OutOfMemoryError.class, () -> EngineConnectors.connectSafely(oom));
+    }
 }

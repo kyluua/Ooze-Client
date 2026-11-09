@@ -55,8 +55,7 @@ public final class EngineDiagnostics {
     static String remedy(EngineStatus.State state, PlatformInfo platform) {
         return switch (state) {
             case LOADED -> "none";
-            case NOT_BUNDLED -> "Install a release build of Ooze Client that bundles the native engine.";
-            case MISSING_LIBRARY -> "Reinstall Ooze Client; the native library for " + platform.id() + " is missing.";
+            case MISSING_LIBRARY -> "Install a release build of Ooze Client; this one has no native library for " + platform.id() + ".";
             case UNSUPPORTED_PLATFORM -> "Use Windows x64, the first supported platform, or keep playing vanilla.";
             case INCOMPATIBLE -> "Reinstall Ooze Client so the mod and native library come from the same release.";
             case LOAD_FAILED -> "Check the detail above; reinstall Ooze Client and make sure security software is not blocking it.";

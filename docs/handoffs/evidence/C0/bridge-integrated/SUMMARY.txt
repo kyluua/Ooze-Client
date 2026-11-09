@@ -1,9 +1,8 @@
 host: Linux x86_64
-native resources: Sol G0 CI release artifact 13642870041 (workflow run 42543242736, digest sha256:eaa90dc9…fdbe), resources/ (DLL sha256 5d8ae250…df5e)
+native resources: Sol G0 CI release artifact 13642870041 (run 42543242736, zip sha256:eaa90dc9…fdbe; DLL sha256 5d8ae250…df5e); bridge-java @ Sol 4b27cc3 (typed LoadState)
 dev-default                  PASS             state=UNSUPPORTED_PLATFORM
 dev-missing_library          PASS             state=MISSING_LIBRARY
 dev-incompatible             PASS             state=INCOMPATIBLE
 dev-load_failed              PASS             state=LOAD_FAILED
-dev-not_bundled              PASS             state=NOT_BUNDLED
 prod-default                 PASS             state=UNSUPPORTED_PLATFORM
 prod-fault-ignored           PASS             state=UNSUPPORTED_PLATFORM

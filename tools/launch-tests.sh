@@ -37,7 +37,6 @@ CASES=(
   "dev-missing_library|runClientGameTest|-PoozeEngineFault=missing_library $(res_arg "$RES")|clientGameTest"
   "dev-incompatible|runClientGameTest|-PoozeEngineFault=incompatible $(res_arg "$RES")|clientGameTest"
   "dev-load_failed|runClientGameTest|-PoozeEngineFault=load_failed $(res_arg "$RES")|clientGameTest"
-  "dev-not_bundled|runClientGameTest|-PoozeEngineFault=not_bundled $(res_arg "$RES")|clientGameTest"
   "prod-default|runProductionClientGameTest|$(res_arg "$RES")|productionClientGameTest"
   "prod-fault-ignored|runProductionClientGameTest|-PoozeEngineFault=incompatible $(res_arg "$RES")|productionClientGameTest"
 )
@@ -53,7 +52,7 @@ if [[ $WINDOWS -eq 1 && "$ARCH" =~ ^(x86_64|amd64)$ && -n "$RES" ]]; then
   sed -i 's/^bridge.abi=.*/bridge.abi=2/' "$VAR/abi/META-INF/ooze/native.properties"
   CASES+=(
     "win-real-missing_library|runClientGameTest|-PoozeNativeResources=$VAR/missing -PoozeExpectEngineState=MISSING_LIBRARY|clientGameTest"
-    "win-real-corrupt|runClientGameTest|-PoozeNativeResources=$VAR/corrupt -PoozeExpectEngineState=LOAD_FAILED|clientGameTest"
+    "win-real-corrupt|runClientGameTest|-PoozeNativeResources=$VAR/corrupt -PoozeExpectEngineState=INCOMPATIBLE|clientGameTest"
     "win-real-abi-mismatch|runClientGameTest|-PoozeNativeResources=$VAR/abi -PoozeExpectEngineState=INCOMPATIBLE|clientGameTest"
   )
 fi

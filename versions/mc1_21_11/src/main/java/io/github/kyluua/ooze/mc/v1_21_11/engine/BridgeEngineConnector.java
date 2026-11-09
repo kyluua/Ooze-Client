@@ -31,9 +31,7 @@ public final class BridgeEngineConnector implements EngineConnector {
 
     @Override
     public EngineStatus connect() {
-        NativeLoader.LoadResult result = NativeLoader.tryLoad(cacheRoot);
-        EngineStatus status = BridgeStatusMapper.map(
-                result.available(), result.diagnostic(), result.capabilities(), BRIDGE_VERSION, platform);
+        EngineStatus status = BridgeStatusMapper.map(NativeLoader.tryLoad(cacheRoot), platform);
         loaded = status.isLoaded();
         return status;
     }
@@ -74,6 +72,11 @@ public final class BridgeEngineConnector implements EngineConnector {
 
     public boolean isLoaded() {
         return loaded;
+    }
+
+    /** Stops all further native use after a runtime bridge failure (Sol review, finding 5). */
+    public void disable() {
+        loaded = false;
     }
 
     @Override

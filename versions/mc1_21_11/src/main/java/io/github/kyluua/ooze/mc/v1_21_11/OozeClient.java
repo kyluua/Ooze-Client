@@ -28,7 +28,8 @@ public final class OozeClient implements ClientModInitializer {
     private static final Logger LOG = LoggerFactory.getLogger("OozeClient");
 
     private static volatile EngineStatus engineStatus =
-            EngineStatus.of(EngineStatus.State.NOT_BUNDLED, "Not initialised yet.", "");
+            EngineStatus.of(EngineStatus.State.LOAD_FAILED, "Not initialised yet.", "");
+    private static volatile boolean dev;
     private static volatile EngineGate gate = new EngineGate(engineStatus, false);
     private static volatile EngineConnector connector;
 
@@ -37,6 +38,7 @@ public final class OozeClient implements ClientModInitializer {
         long start = System.nanoTime();
         FabricLoader loader = FabricLoader.getInstance();
         boolean dev = loader.isDevelopmentEnvironment() || Boolean.getBoolean("oozeclient.dev");
+        OozeClient.dev = dev;
         String version = loader.getModContainer(MOD_ID)
                 .map(c -> c.getMetadata().getVersion().getFriendlyString())
                 .orElse("unknown");
@@ -82,6 +84,23 @@ public final class OozeClient implements ClientModInitializer {
 
     public static EngineGate gate() {
         return gate;
+    }
+
+    /**
+     * Disables the native engine for the rest of the session after a controlled runtime bridge
+     * failure (Sol review, finding 5): the gate closes, so nothing submits further native work.
+     * Callers must already have closed their own sessions and leases. Render thread only.
+     */
+    public static void disableEngine(String where, Throwable cause) {
+        if (!engineStatus.isLoaded()) {
+            return;
+        }
+        engineStatus = EngineStatus.runtimeFailure(engineStatus, where, cause);
+        gate = new EngineGate(engineStatus, dev);
+        if (connector instanceof io.github.kyluua.ooze.mc.v1_21_11.engine.BridgeEngineConnector bridge) {
+            bridge.disable();
+        }
+        LOG.error("Ooze native engine disabled after a failure in {}; Minecraft continues as vanilla.", where, cause);
     }
 
     /** The connector chosen at start-up (read by developer tools and launch tests). */

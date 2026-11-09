@@ -66,18 +66,22 @@ Official Minecraft Launcher ──(Microsoft sign-in, entitlement, session)─�
 
 ## 5. Native availability states (Fabric side)
 
-The Fabric adapter consumes Sol's `NativeLoader.LoadResult` (G0: an `available` flag plus diagnostic text). `BridgeStatusMapper` classifies it. A drift-guard test pins the G0 phrases, and a structured reason code has been requested from Sol.
+The Fabric adapter maps Sol's typed `NativeLoader.LoadState` **one-to-one** (`BridgeStatusMapper`; no text matching). A unit test fails if the two state sets ever diverge.
 
-Sol's loader checks the platform **first**, so on every non-Windows-x64 host the real state is `UNSUPPORTED_PLATFORM`, whatever the JAR contains. `NOT_BUNDLED` means the JAR has no `META-INF/ooze/native.properties` (built without `-PoozeNativeResources`). `MISSING_LIBRARY` means the manifest is present but the DLL is missing. A SHA-256 mismatch (a corrupt file) is reported as `LOAD_FAILED`.
+Sol's loader checks the platform **first**, so on every non-Windows-x64 host the real state is `UNSUPPORTED_PLATFORM`, whatever the JAR contains. On Windows x64:
+- a JAR built without `-PoozeNativeResources`, or one missing the DLL, is `MISSING_LIBRARY`;
+- a manifest, version, ABI, capability or SHA-256 mismatch is `INCOMPATIBLE`;
+- a `System.load` or I/O failure is `LOAD_FAILED`.
+
+A controlled bridge failure at runtime (in the developer probe or the diagnostic screen) switches the session to `LOAD_FAILED` and closes the gate.
 
 | State | Meaning | Behaviour |
 |---|---|---|
 | `LOADED` | Bridge and native library loaded, versions compatible | Ooze features may register (milestone permitting) |
-| `NOT_BUNDLED` | This JAR contains no bridge or native library | Vanilla-only mode, diagnostic |
-| `MISSING_LIBRARY` | Bridge present, no native library for this OS and architecture, or the file is missing | Vanilla-only mode, diagnostic naming the platform |
+| `MISSING_LIBRARY` | No native manifest or library bundled in this build | Vanilla-only mode, diagnostic naming the platform |
 | `UNSUPPORTED_PLATFORM` | OS or architecture not in §2's supported list | Vanilla-only mode, diagnostic |
-| `INCOMPATIBLE` | Library loaded but its bridge or protocol version doesn't match | Vanilla-only mode, diagnostic with both versions |
-| `LOAD_FAILED` | Loading threw (for example a missing VC++ runtime, corrupt file, or security software) | Vanilla-only mode, diagnostic with the error class and message |
+| `INCOMPATIBLE` | Manifest, version, ABI, capabilities or SHA-256 don't match this mod | Vanilla-only mode, diagnostic with the loader's reason |
+| `LOAD_FAILED` | Loading threw (I/O, security software, linkage), **or** the engine was disabled after a runtime bridge failure | Vanilla-only mode, diagnostic with the error class and message |
 
 **Vanilla-only mode**
 - Registers no Ooze key mappings, screens, HUD elements or mixin-driven replacements.

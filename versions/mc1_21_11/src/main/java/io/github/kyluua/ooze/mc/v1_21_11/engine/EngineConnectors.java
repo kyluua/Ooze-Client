@@ -31,7 +31,7 @@ public final class EngineConnectors {
                 EngineStatus.State fault = parseFault(faultValue);
                 if (fault == null) {
                     warn.accept("Unknown -D" + FAULT_PROPERTY + "=" + faultValue
-                            + " (use not_bundled, missing_library, unsupported_platform, incompatible or load_failed).");
+                            + " (use missing_library, unsupported_platform, incompatible or load_failed).");
                 } else {
                     return new FaultInjectedEngineConnector(fault, platform);
                 }
@@ -42,14 +42,18 @@ public final class EngineConnectors {
         return new BridgeEngineConnector(nativeCacheRoot, platform);
     }
 
-    /** Connects, converting any unexpected throwable into {@link EngineStatus.State#LOAD_FAILED}. */
+    /**
+     * Connects, converting anticipated failures (runtime exceptions, linkage errors) into
+     * {@link EngineStatus.State#LOAD_FAILED}. VM-fatal errors ({@link VirtualMachineError},
+     * {@link ThreadDeath}) are not swallowed (Sol review, finding 4).
+     */
     public static EngineStatus connectSafely(EngineConnector connector) {
         try {
             EngineStatus status = connector.connect();
             return status != null
                     ? status
                     : EngineStatus.of(EngineStatus.State.LOAD_FAILED, "The Ooze engine connector returned no status.", connector.getClass().getName());
-        } catch (Throwable t) {
+        } catch (RuntimeException | LinkageError t) {
             return EngineStatus.of(
                     EngineStatus.State.LOAD_FAILED,
                     "The Ooze native library failed to load.",

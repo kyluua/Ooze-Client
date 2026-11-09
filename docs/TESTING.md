@@ -57,10 +57,10 @@ Every case also asserts that the `GuiGraphicsAccessor` mixin applied (dev and pr
 | Case | Task | Asserts |
 |---|---|---|
 | `dev-default` | `runClientGameTest` | Title screen reached; **real** state from Sol's loader; when not loaded: no `key.oozeclient.*` mappings and the notice was queued; vanilla Options round trip |
-| `dev-<state>` for `missing_library`, `incompatible`, `load_failed`, `not_bundled` | `runClientGameTest -PoozeEngineFault=<state>` | The same, for each fault-injected state |
+| `dev-<state>` for `missing_library`, `incompatible`, `load_failed` | `runClientGameTest -PoozeEngineFault=<state>` | The same, for each fault-injected state |
 | `prod-default` | `runProductionClientGameTest` | The **shipped remapped JAR** (bridge classes and DLL merged) in a production Fabric environment (`dev=false`); real loader state |
 | `prod-fault-ignored` | `runProductionClientGameTest -PoozeEngineFault=incompatible` | A release build ignores developer fault injection (real state, with a warning) |
-| `win-real-missing_library`, `win-real-corrupt`, `win-real-abi-mismatch` (**Windows x64 only**) | Generated from the provided resources: DLL removed, one DLL byte flipped, manifest `bridge.abi=2` | Real `MISSING_LIBRARY` / `LOAD_FAILED` / `INCOMPATIBLE` from Sol's loader; vanilla usable |
+| `win-real-missing_library`, `win-real-corrupt`, `win-real-abi-mismatch` (**Windows x64 only**) | Generated from the provided resources: DLL removed, one DLL byte flipped, manifest `bridge.abi=2` | Real `MISSING_LIBRARY` / `INCOMPATIBLE` (corrupt DLL: SHA-256 mismatch) / `INCOMPATIBLE` (ABI) from Sol's loader; vanilla usable |
 | `LOADED` branch (**Windows x64 only**) | `dev-default` with resources | The F9 developer key exists; the probe round trip passes; `BridgeDiagnosticScreen` renders fixture frames; the colour switches `F8F9FF` → `171923` → `F8F9FF` with simulated left-button hold and release; two screenshots |
 
 **Pending (Gate B, Windows x64):** the `win-real-*` cases and the `LOADED` branch are implemented, but they have not been run, because no Windows host has been available to Claude.

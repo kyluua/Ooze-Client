@@ -6,6 +6,7 @@ import io.github.kyluua.ooze.bridge.BridgeProtocol;
 import io.github.kyluua.ooze.bridge.EngineSession;
 import io.github.kyluua.ooze.bridge.FrameBuffer;
 import io.github.kyluua.ooze.bridge.InputBatch;
+import io.github.kyluua.ooze.mc.v1_21_11.OozeClient;
 import io.github.kyluua.ooze.mc.v1_21_11.mixin.GuiGraphicsAccessor;
 import java.nio.ByteBuffer;
 import net.minecraft.client.gui.GuiGraphics;
@@ -43,6 +44,9 @@ public final class BridgeDiagnosticScreen extends Screen {
 
     @Override
     protected void init() {
+        if (session == null && failure == null && !OozeClient.gate().oozeFeaturesEnabled()) {
+            failure = "engine not loaded";
+        }
         if (session == null && failure == null) {
             try {
                 // Created on the render thread, which owns it until removed().
@@ -157,8 +161,10 @@ public final class BridgeDiagnosticScreen extends Screen {
     private void fail(String where, Throwable e) {
         String status = e instanceof BridgeException be ? "status " + be.status() : e.getClass().getSimpleName();
         failure = where + ": " + status;
-        LOG.error("Native bridge diagnostic disabled after {} failure", where, e);
+        LOG.error("Native bridge diagnostic stopped after {} failure", where, e);
         closeSession();
+        // Session and leases are already released; now stop all further native work.
+        OozeClient.disableEngine("the bridge diagnostic (" + where + ")", e);
     }
 
     private void closeSession() {
