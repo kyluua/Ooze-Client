@@ -2,6 +2,7 @@ package io.github.kyluua.ooze.bridge;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.FileNotFoundException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
@@ -26,7 +27,23 @@ public final class NativeLoader {
 
     private NativeLoader() {}
 
-    public record LoadResult(boolean available, String diagnostic, long capabilities) {}
+    public enum LoadState {
+        LOADED, MISSING_LIBRARY, UNSUPPORTED_PLATFORM, INCOMPATIBLE, LOAD_FAILED
+    }
+
+    public record LoadResult(LoadState state, String diagnostic, long capabilities) {
+        public boolean available() {
+            return state == LoadState.LOADED;
+        }
+
+        public String bridgeVersion() {
+            return BridgeProtocol.LIBRARY_VERSION;
+        }
+
+        public int protocolVersion() {
+            return BridgeProtocol.ABI_VERSION;
+        }
+    }
 
     public static LoadResult tryLoad(Path cacheDirectory) {
         return tryLoad(cacheDirectory, BridgeProtocol.ABI_VERSION, NativeLoader.class.getClassLoader());
@@ -38,8 +55,11 @@ public final class NativeLoader {
 
     static synchronized LoadResult tryLoad(Path cacheDirectory, int expectedAbi, ClassLoader resources) {
         try {
+            if (cacheDirectory == null || resources == null) {
+                return disabled(LoadState.LOAD_FAILED, "Native cache and resource loader are required");
+            }
             if (!supportedPlatform(System.getProperty("os.name", ""), System.getProperty("os.arch", ""))) {
-                return disabled("G0 native support is limited to Windows x64");
+                return disabled(LoadState.UNSUPPORTED_PLATFORM, "G0 native support is limited to Windows x64");
             }
             Properties manifest = new Properties();
             try (InputStream stream = resource(resources, MANIFEST)) {
@@ -49,25 +69,25 @@ public final class NativeLoader {
                     || !BridgeProtocol.LIBRARY_VERSION.equals(manifest.getProperty("library.version"))
                     || !PLATFORM.equals(manifest.getProperty("platform"))
                     || !RESOURCE.equals(manifest.getProperty("resource"))) {
-                return disabled("Native artifact manifest is incompatible with this Java bridge");
+                return disabled(LoadState.INCOMPATIBLE, "Native artifact manifest is incompatible with this Java bridge");
             }
             if (expectedAbi != BridgeProtocol.ABI_VERSION
                     || !Integer.toString(expectedAbi).equals(manifest.getProperty("bridge.abi"))) {
-                return disabled("Native ABI version mismatch; use matching Java and native artifacts");
+                return disabled(LoadState.INCOMPATIBLE, "Native ABI version mismatch; use matching Java and native artifacts");
             }
             String hash = manifest.getProperty("sha256", "");
             if (!hash.matches("[0-9a-f]{64}")) {
-                return disabled("Native manifest has no valid SHA-256");
+                return disabled(LoadState.INCOMPATIBLE, "Native manifest has no valid SHA-256");
             }
             long expectedCapabilities = Long.parseLong(manifest.getProperty("capabilities", "-1"));
             if (expectedCapabilities != 3 && expectedCapabilities != 7) {
-                return disabled("Native manifest has unsupported capabilities");
+                return disabled(LoadState.INCOMPATIBLE, "Native manifest has unsupported capabilities");
             }
             if (expectedCapabilities == 7 && !Boolean.getBoolean("ooze.bridge.allowFaultInjection")) {
-                return disabled("Test-only native artifact requires explicit fault-injection opt-in");
+                return disabled(LoadState.INCOMPATIBLE, "Test-only native artifact requires explicit fault-injection opt-in");
             }
             if (loadedHash != null && !loadedHash.equals(hash)) {
-                return disabled("A different Ooze native artifact is already loaded; restart Minecraft");
+                return disabled(LoadState.INCOMPATIBLE, "A different Ooze native artifact is already loaded; restart Minecraft");
             }
             if (loadedHash == null) {
                 Path root = cacheDirectory.toAbsolutePath().normalize();
@@ -81,14 +101,17 @@ public final class NativeLoader {
             }
             if (NativeBindings.abiVersion() != expectedAbi
                     || NativeBindings.capabilities() != expectedCapabilities) {
-                return disabled("Loaded native library failed the ABI/capability handshake");
+                return disabled(LoadState.INCOMPATIBLE, "Loaded native library failed the ABI/capability handshake");
             }
             ready = true;
-            return new LoadResult(true, "Ooze native " + BridgeProtocol.LIBRARY_VERSION
+            return new LoadResult(LoadState.LOADED, "Ooze native " + BridgeProtocol.LIBRARY_VERSION
                     + " / ABI " + expectedAbi + " / " + PLATFORM, expectedCapabilities);
-        } catch (IOException | SecurityException | IllegalArgumentException | LinkageError failure) {
-            return disabled("Ooze native unavailable: " + failure.getClass().getSimpleName()
-                    + ": " + failure.getMessage());
+        } catch (FileNotFoundException failure) {
+            return failure(LoadState.MISSING_LIBRARY, failure);
+        } catch (ArtifactMismatchException | IllegalArgumentException failure) {
+            return failure(LoadState.INCOMPATIBLE, failure);
+        } catch (IOException | SecurityException | LinkageError failure) {
+            return failure(LoadState.LOAD_FAILED, failure);
         }
     }
 
@@ -98,8 +121,21 @@ public final class NativeLoader {
                 && (normalized.equals("amd64") || normalized.equals("x86_64"));
     }
 
-    private static LoadResult disabled(String reason) {
-        return new LoadResult(false, reason, 0);
+    private static LoadResult disabled(LoadState state, String reason) {
+        return new LoadResult(state, reason, 0);
+    }
+
+    private static LoadResult failure(LoadState state, Throwable failure) {
+        return disabled(state, "Ooze native unavailable: " + failure.getClass().getSimpleName()
+                + ": " + failure.getMessage());
+    }
+
+    private static final class ArtifactMismatchException extends IOException {
+        private static final long serialVersionUID = 1L;
+
+        ArtifactMismatchException(String message) {
+            super(message);
+        }
     }
 
     private static Path directory(Path directory) throws IOException {
@@ -113,7 +149,7 @@ public final class NativeLoader {
     private static InputStream resource(ClassLoader resources, String name) throws IOException {
         InputStream stream = resources.getResourceAsStream(name);
         if (stream == null) {
-            throw new IOException("Missing bundled native resource: " + name);
+            throw new FileNotFoundException("Missing bundled native resource: " + name);
         }
         return stream;
     }
@@ -167,7 +203,7 @@ public final class NativeLoader {
                 input.transferTo(java.io.OutputStream.nullOutputStream());
             }
             if (!HexFormat.of().formatHex(digest.digest()).equals(expectedHash)) {
-                throw new IOException("Native SHA-256 mismatch; restore the matching Ooze artifact");
+                throw new ArtifactMismatchException("Native SHA-256 mismatch; restore the matching Ooze artifact");
             }
         } catch (NoSuchAlgorithmException impossible) {
             throw new AssertionError("Java must provide SHA-256", impossible);

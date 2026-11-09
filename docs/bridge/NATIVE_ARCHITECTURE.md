@@ -1,6 +1,6 @@
 # Native architecture decision: G0
 
-The latest owner instruction selects Fabric 1.21.11 with Java 21 and a Rust engine/UI. It supersedes the old requirement to implement three versions with a pure-Java core. Claude owns the comprehensive edits to AGENTS.md and the original product specification; this document records Sol's native decisions without rewriting Claude's files.
+The latest owner instruction selects Fabric 1.21.11 with Java 21 and a Rust engine/UI. It supersedes the old requirement to implement three versions with a pure-Java core. Claude's C0 has reconciled AGENTS.md and the original product specification; this document records Sol's native decisions without rewriting Claude's files.
 
 | Area | Owner | G0 state |
 |---|---|---|
@@ -8,8 +8,8 @@ The latest owner instruction selects Fabric 1.21.11 with Java 21 and a Rust engi
 | `native/crates/ooze-jni` | Sol | Small JNI boundary, bounded registry, status translation |
 | `bridge-java` | Sol | JVM-independent loader, public session/encoder/frame leases, harness, standalone Gradle module |
 | `native/crates/ooze-ui` | Claude | Not created; Cargo's `crates/*` member glob will discover it when added |
-| `versions/mc1_21_11` and root Gradle | Claude | Not created by G0 |
-| Product docs/assets | Claude | Existing design preserved; target/language reconciliation pending C0 |
+| `versions/mc1_21_11` and root Gradle | Claude | C0 integrated unchanged after review; connector integration remains C0b |
+| Product docs/assets | Claude | Design preserved; C0 target/language reconciliation integrated |
 
 Rust 1.99.1 is pinned in the root rust-toolchain.toml. The edition is 2024. Cargo.lock pins dependencies; the intentional JNI library dependency is 0.21.1. Rust release uses `panic=unwind`, thin LTO and one codegen unit; the Windows target statically links its CRT to avoid an additional Visual C++ redistributable dependency. Builds must start from the repository root so `.cargo/config.toml` applies.
 

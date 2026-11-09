@@ -31,6 +31,11 @@ jobs:
       - name: Build native artifacts and execute Java 21 contract harness
         shell: pwsh
         run: ./native/tools/build-g0.ps1 -JavaHome $env:JAVA_HOME_21_X64 -IncludeFaultInjection
+      - name: Build the Fabric and bridge projects with the prebuilt native resources
+        shell: pwsh
+        run: |
+          $env:JAVA_HOME = $env:JAVA_HOME_21_X64
+          ./gradlew.bat build buildAll --no-daemon --console=plain
       - name: Archive production bridge artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

@@ -28,6 +28,8 @@ public final class BridgeHarness {
         loaderFailures(cache);
         NativeLoader.LoadResult result = NativeLoader.tryLoad(cache.resolve("valid"));
         check(result.available(), result.diagnostic());
+        check(result.state() == NativeLoader.LoadState.LOADED, "Typed loaded state");
+        check(result.bridgeVersion().equals("0.1.0-g0") && result.protocolVersion() == 1, "Bridge and protocol versions exposed");
         check(result.capabilities() == (faults ? 7 : 3), "Expected release/test capabilities");
         check(NativeBindings.abiVersion() == 1, "Live native ABI probe");
         check(NativeLoader.tryLoad(cache.resolve("valid")).available(), "Repeated bootstrap is supported");
@@ -54,7 +56,8 @@ public final class BridgeHarness {
                 return null;
             }
         };
-        check(!NativeLoader.tryLoad(cache.resolve("missing"), 1, missing).available(), "Missing artifact fails soft");
+        check(NativeLoader.tryLoad(cache.resolve("missing"), 1, missing).state() == NativeLoader.LoadState.MISSING_LIBRARY, "Typed missing artifact state");
+        check(NativeLoader.tryLoad(null).state() == NativeLoader.LoadState.LOAD_FAILED, "Typed invalid-cache failure");
         Properties original = new Properties();
         try (InputStream input = RESOURCES.getResourceAsStream(MANIFEST)) {
             if (input == null) {
@@ -64,7 +67,7 @@ public final class BridgeHarness {
         }
         Properties wrongAbi = copy(original);
         wrongAbi.setProperty("bridge.abi", "2");
-        check(!NativeLoader.tryLoad(cache.resolve("abi"), 1, overrideManifest(wrongAbi, false)).available(), "Manifest ABI mismatch fails soft");
+        check(NativeLoader.tryLoad(cache.resolve("abi"), 1, overrideManifest(wrongAbi, false)).state() == NativeLoader.LoadState.INCOMPATIBLE, "Typed manifest ABI mismatch");
         check(!NativeLoader.tryLoad(cache.resolve("expected-abi"), 2, RESOURCES).available(), "Java expected ABI mismatch fails soft");
         Properties wrongPlatform = copy(original);
         wrongPlatform.setProperty("platform", "linux-x86_64");
@@ -72,7 +75,7 @@ public final class BridgeHarness {
         Properties badHash = copy(original);
         badHash.setProperty("sha256", "0".repeat(64));
         NativeLoader.LoadResult corrupted = NativeLoader.tryLoad(cache.resolve("hash"), 1, overrideManifest(badHash, false));
-        check(!corrupted.available() && corrupted.diagnostic().contains("SHA-256"), "Wrong packaged hash fails soft");
+        check(corrupted.state() == NativeLoader.LoadState.INCOMPATIBLE && corrupted.diagnostic().contains("SHA-256"), "Typed packaged hash mismatch");
         check(!NativeLoader.tryLoad(cache.resolve("dll-missing"), 1, overrideManifest(original, true)).available(), "Missing DLL fails soft");
         Properties faultManifest = copy(original);
         faultManifest.setProperty("capabilities", "7");

@@ -1,6 +1,6 @@
 # Ooze native bridge ABI v1 — G0
 
-Status: implemented G0 subset. Owner: Sol. Target: Minecraft Fabric **1.21.11**, Java **21**, Windows x64 native library. This contract records the owner's Rust architecture decision; older Java-core/multi-target instructions remain for Claude to reconcile in C0.
+Status: implemented G0 subset. Owner: Sol. Target: Minecraft Fabric **1.21.11**, Java **21**, Windows x64 native library. This contract records the bridge subset within the Rust architecture; Claude's concurrently delivered C0 has reconciled the former Java-core/multi-target instructions.
 
 ## Compatibility and discovery
 
@@ -108,6 +108,8 @@ The artifact contains `META-INF/ooze/native.properties`, `META-INF/ooze/resource
 `NativeLoader.tryLoad(cacheRoot)` accepts only this platform/version/path, verifies SHA-256, and extracts to `<cacheRoot>/0.1.0-g0/<sha256>/windows-x86_64/ooze_jni.dll`. Hashes are trusted metadata from the supplied JAR; they detect corruption/mismatching files, not a signature from an independent trust authority. Existing corrupt cache entries are refused. No native code is downloaded at runtime. A changed DLL requires a fresh JVM; Java cannot safely hot-reload the same JNI class with another library.
 
 Missing/incompatible libraries return `LoadResult.available=false` with a log diagnostic. C0 must retain vanilla screens/HUD and suppress unavailable Ooze controls. The loader itself has no Fabric dependency, so only C0 can demonstrate the actual in-game fallback.
+
+The Java facade also exposes `LoadResult.state()` as `LOADED`, `MISSING_LIBRARY`, `UNSUPPORTED_PLATFORM`, `INCOMPATIBLE` or `LOAD_FAILED`; `bridgeVersion()` and `protocolVersion()` identify this Java bridge's expected semantic/protocol versions, including on failure. Missing bundled metadata/DLL is MISSING_LIBRARY; version/hash mismatches are INCOMPATIBLE; platform selection happens before loading; I/O, permission and linkage failures are LOAD_FAILED. Anticipated loader failures return a result. This does not promise recovery from VM-fatal errors or make every invalid Java caller safe. The Fabric connector must map these typed states rather than parsing English diagnostic strings.
 
 Minecraft is launched and signed in through the official launcher. Ooze neither implements OAuth nor exports session credentials; no separate Azure registration is part of this architecture.
 

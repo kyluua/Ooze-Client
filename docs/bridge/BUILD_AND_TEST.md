@@ -41,7 +41,7 @@ Claude can include `:bridge-java` in the root build. A module-local settings fil
 gradle -p bridge-java build
 ```
 
-`check` runs `bridgeContractTest`, a dependency-free main harness under the Java 21 toolchain. The ordinary empty JUnit `test` task is disabled explicitly; it is not being reported as a passing test suite. By default module resources come from `native/dist/g0/release/resources`; override with `-PoozeNativeResources=<absolute-prebuilt-resources-directory>`. No developer-local path is embedded into the module.
+`check` runs `bridgeContractTest`, a dependency-free main harness under the Java 21 toolchain, on Windows x64. It is explicitly SKIPPED on other hosts, not reported as native-platform support. The ordinary empty JUnit `test` task is disabled explicitly; it is not being reported as a passing test suite. By default module resources come from `native/dist/g0/release/resources`; override with `-PoozeNativeResources=<absolute-prebuilt-resources-directory>`. Java-only contributors on any host can supply the prebuilt resources without Cargo; other hosts can compile/package the Java module but cannot execute this Windows DLL. No developer-local path is embedded into the module.
 
 The native production artifact is assembled by the PowerShell script. The Gradle module consumes prebuilt resources and does not compile native code on an end user's first launch. Root Fabric build integration remains Claude's C0 work.
 

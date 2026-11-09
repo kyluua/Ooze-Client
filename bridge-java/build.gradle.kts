@@ -44,6 +44,10 @@ tasks.test {
 }
 
 val bridgeContractTest = tasks.register<JavaExec>("bridgeContractTest") {
+    onlyIf("The G0 native DLL harness runs only on Windows x64") {
+        System.getProperty("os.name").startsWith("Windows") &&
+            System.getProperty("os.arch") in listOf("amd64", "x86_64")
+    }
     dependsOn(tasks.testClasses)
     classpath = sourceSets.test.get().runtimeClasspath
     mainClass.set("io.github.kyluua.ooze.bridge.BridgeHarness")
