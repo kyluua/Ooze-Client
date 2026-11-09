@@ -67,7 +67,8 @@ Loud     ○○○○○○○●●●  Quiet        (quiet surfaces, expressiv
 - All 12 screens in [SCREENS.md](SCREENS.md), fully interactive.
 - The full component library in [COMPONENTS.md](COMPONENTS.md).
 - Sample modules and HUD widgets, clearly labelled **Sample**, that exercise every framework capability.
-- Three distribution builds: Minecraft 1.21.11, 26.1.x and 26.2.x (OpenGL and Vulkan).
+- One Fabric distribution for **Minecraft Java Edition 1.21.11**, loaded by the **official Minecraft Launcher**.
+- The native engine runs on **Windows x64** first. Other platforms run vanilla with a clear diagnostic until their artifacts and launch tests exist (TARGET_PLATFORM §2).
 
 **Out of scope for v0.1.** These are deliberate non-goals:
 
@@ -75,7 +76,8 @@ Loud     ○○○○○○○●●●  Quiet        (quiet surfaces, expressiv
 - Online services: accounts, cosmetics servers, friends, telemetry, analytics, auto-updates, remote news feeds.
 - Custom UI sound assets. v0.1 uses the vanilla UI click with Ooze pitch and volume tuning.
 - Features that give an unfair advantage on servers. When modules arrive, the module metadata includes fair-play classification ([ARCHITECTURE.md §8](ARCHITECTURE.md)).
-- A single JAR spanning incompatible Minecraft versions.
+- Builds for 26.x or any Minecraft version other than 1.21.11 (owner decision, 2026-11-09).
+- Any account system, Microsoft login, Azure app registration or separate launcher. Sign-in, entitlement and account switching belong to the official Minecraft Launcher (TARGET_PLATFORM §4).
 
 ## 7. Success criteria
 
@@ -112,7 +114,10 @@ Loud     ○○○○○○○●●●  Quiet        (quiet surfaces, expressiv
 | 9 | Interaction flows | [INTERACTION_FLOWS.md](INTERACTION_FLOWS.md) |
 | 10 | Java/Fabric architecture | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | 11 | Repository structure | [REPOSITORY_STRUCTURE.md](REPOSITORY_STRUCTURE.md) |
-| 12 | Multi-version strategy | [MULTI_VERSION.md](MULTI_VERSION.md) |
+| 12 | Target and platform strategy | [TARGET_PLATFORM.md](TARGET_PLATFORM.md) |
 | 13 | Performance (and accessibility) | [PERFORMANCE_AND_ACCESSIBILITY.md](PERFORMANCE_AND_ACCESSIBILITY.md) |
 | 14 | Acceptance criteria and testing | [TESTING.md](TESTING.md) |
 | 15 | Milestone plan | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) |
+| — | Real-module backlog | [FEATURE_BACKLOG.md](FEATURE_BACKLOG.md) |
+| — | Installation | [INSTALL.md](INSTALL.md) |
+| — | Milestone handoffs | [handoffs/](handoffs/) |

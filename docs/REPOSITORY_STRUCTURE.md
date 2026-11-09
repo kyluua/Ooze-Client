@@ -1,103 +1,72 @@
 # Ooze Client — Repository Structure
 
-> Deliverable 11. The target layout of the repository once implementation begins (milestone M0 creates the skeleton).
+> Deliverable 11. Rewritten 2026-11-09 for the 1.21.11 / Rust architecture.
+> - **Owner:** C = Claude, S = Sol.
+> - **State:** ✓ = exists, ○ = planned.
 
 ## 1. Tree
 
 ```
 Ooze-Client/
-├── README.md                         Project overview + docs index
-├── AGENTS.md                         Rules for coding agents (Codex etc.)
-├── LICENSE                           MIT (Ooze code)
-├── CHANGELOG.md                      Human changelog (source for assets/…/changelog.json via build task)
-├── settings.gradle.kts               Includes subprojects; declares plugin versions once (apply false)
-├── build.gradle.kts                  Root: shared config, aggregate tasks (buildAll, testAll, runClient<Target>)
-├── gradle.properties                 mod_version, maven_group, org.gradle.jvmargs …
-├── gradle/
-│   ├── libs.versions.toml            Version catalog: loom, junit, assertj, archunit, gson, slf4j, fastutil, lwjgl (compileOnly)
-│   └── wrapper/                      Gradle wrapper (pinned)
-├── build-logic/                      Included build with convention plugins
-│   └── src/main/kotlin/
-│       ├── ooze.java-library.gradle.kts      Java 21 release, javadoc lint, Spotless, tests
-│       ├── ooze.fabric-target.gradle.kts     Shared Loom config for versions/* (run configs, jar naming, resources)
-│       └── ooze.assets.gradle.kts            iconCompile, changelogJson, blueNoise, license copy tasks
-├── core/                             Pure Java 21 — no Minecraft (ARCHITECTURE §2)
-│   ├── build.gradle.kts
+├── README.md                     C ✓  overview, targets, docs index
+├── AGENTS.md                     C ✓  rules for both agents, ownership, evidence vocabulary
+├── LICENSE                       – ✓  MIT
+├── .gitignore                    C ✓
+├── settings.gradle.kts           C ✓  includes :versions:mc1_21_11 (+ :bridge-java when it exists)
+├── build.gradle.kts              C ✓  pins Loom (remap plugin) once; buildAll → build/dist/
+├── gradle.properties             C ✓  mod_version, maven_group, JVM args
+├── gradlew, gradlew.bat, gradle/wrapper/   C ✓  Gradle 9.8.2, distribution SHA-256 pinned
+├── versions/mc1_21_11/           C ✓  THE Fabric adapter (Java 21, Mojang names, remapped)
+│   ├── build.gradle.kts, gradle.properties (pinned MC/Loader/Fabric API)
 │   └── src/
-│       ├── main/java/io/github/kyluua/ooze/core/…      packages per ARCHITECTURE §2.1
-│       ├── main/resources/assets/oozeclient/
-│       │   ├── themes/        ooze_classic.theme.json, midnight_gel…, mint_melt…, bubblegum_pop…, high_contrast…
-│       │   ├── fonts/         fonts.json + family folders with TTF + OFL.txt (TYPOGRAPHY §2.1)
-│       │   ├── icons/         icons.json (generated)
-│       │   ├── lang/          en_us.json (source of truth)
-│       │   ├── textures/      blue_noise_64.png (generated)
-│       │   ├── changelog.json, credits.json
-│       └── test/java/…        unit + golden tests; test/resources/golden/*.png
-├── platform-lwjgl/                   stb_truetype rasterizer, STBImage decoder, TinyFileDialogs
-│   └── src/main/java/io/github/kyluua/ooze/platform/lwjgl/…
-├── mc-shared/                        Integration source compiled into EVERY target (not a standalone project)
-│   └── src/main/java/io/github/kyluua/ooze/mc/…          OozeScreenHost, shared adapters, HUD hook glue
-├── versions/
-│   ├── mc1_21_11/
-│   │   ├── build.gradle.kts          Loom (remapping plugin id), officialMojangMappings, Java 21
-│   │   ├── gradle.properties         minecraft_version=1.21.11, loader_version, fabric_api_version, java=21
-│   │   └── src/main/
-│   │       ├── java/io/github/kyluua/ooze/mc/v1_21_11/…   entrypoint, render backend, input, mixins, platform impls
-│   │       └── resources/
-│   │           ├── fabric.mod.json   depends: minecraft "~1.21.11", java ">=21", fabricloader, fabric-api
-│   │           └── oozeclient.mixins.json
-│   ├── mc26_1/                       Loom (non-remapping plugin id), Java 25; minecraft "~26.1"
-│   └── mc26_2/                       Loom (non-remapping), Java 25; minecraft "~26.2"; Vulkan + OpenGL verification
-├── assets-src/                       Design sources compiled by build-logic tasks
-│   ├── icons/*.svg                   Lucide subset (ISC) + Ooze brand icons
-│   └── LICENSES.md                   Source/licence of every asset
-├── licenses/                         Third-party licence texts copied into every JAR root
-│   ├── fonts/*-OFL.txt
-│   └── lucide-ISC.txt
-├── docs/                             The specification (this folder)
-│   └── tokens/ooze_classic.theme.json
-├── tools/
-│   └── screenshots/                  Golden-image compare script for client gametests (TESTING §3)
-└── .github/
-    ├── workflows/build.yml           Matrix: build + unit tests for all targets; client gametests (headless) where supported
-    ├── workflows/release.yml         Tag → build all targets → attach JARs to the GitHub release
-    └── pull_request_template.md
+│       ├── main/java/io/github/kyluua/ooze/mc/v1_21_11/   entrypoint, engine/, diag/, dev/ (C0); render/, input/, screen/, … (later)
+│       ├── main/resources/fabric.mod.json, assets/oozeclient/lang/*.json
+│       ├── test/java/…           headless JUnit tests (rules, gating, diagnostics)
+│       └── gametest/…            Fabric client gametests (dev-only mod "oozeclient-gametest"; never shipped)
+├── bridge-java/                  S ○  Java side of the bridge: native loading, status, protocol buffers (only `native` decls)
+├── native/                       S ○  Cargo workspace (toolchain, lints, CI scripts)
+│   ├── crates/<engine crates>    S ○  render primitives, text, animation, theme, config, settings, events, search, images
+│   ├── crates/<bridge crate>     S ○  JNI exports, protocol encode/decode, bounds checks
+│   └── crates/ooze-ui/           C ○  components, screens, navigation, focus, interactions, product UI state
+├── assets-src/                   C ○  brand, theme tokens, fonts + OFL texts, icons (SVG), LICENSES.md
+├── licenses/                     C ○  third-party licence texts copied into the JAR root
+├── docs/                         C ✓  product specification (Sol owns docs/engine/ and the bridge protocol doc)
+│   ├── handoffs/                 C+S ✓  CLAUDE-<milestone>.md, SOL-<milestone>.md, requests
+│   ├── engine/                   S ○  engine and bridge protocol documentation
+│   └── tokens/ooze_classic.theme.json   C ✓  canonical default theme
+└── .github/workflows/            S ○  CI (Sol)
 ```
 
-## 2. How the sources combine
+## 2. How the pieces combine
 
-| Gradle project | Compiles | Packaged as |
-|---|---|---|
-| `:core` | `core/src/main/java` (Java 21 `--release 21`) | Classes included in every target JAR |
-| `:platform-lwjgl` | `platform-lwjgl/src` (Java 21) | Classes included in every target JAR |
-| `:versions:mc1_21_11` | its own `src` + `mc-shared/src/main/java` (as an extra source dir) | `ooze-client-<ver>+mc1.21.11.jar` |
-| `:versions:mc26_1` | its own `src` + `mc-shared` | `ooze-client-<ver>+mc26.1.jar` |
-| `:versions:mc26_2` | its own `src` + `mc-shared` | `ooze-client-<ver>+mc26.2.jar` |
+| Gradle/Cargo unit | Language | Produces | Packaged into the JAR as |
+|---|---|---|---|
+| `:versions:mc1_21_11` | Java 21 | The remapped Fabric mod | The JAR itself: `ooze-client-<ver>+mc1.21.11.jar` |
+| `:bridge-java` (Sol) | Java 21 | Bridge classes | Jar-in-jar (`include`) or merged classes, as agreed in G0 |
+| `native/` (Sol) | Rust | `ooze_native` per platform | A resource inside the JAR (path agreed in G0); extracted and loaded by bridge-java |
+| `native/crates/ooze-ui` (Claude) | Rust | Linked into the native library | Part of `ooze_native` |
 
-- `core` and `platform-lwjgl` classes are bundled into each target JAR **directly**: `jar { from(project(":core").sourceSets.main.output) }` plus resources. Jar-in-jar is not used. There is exactly one Ooze mod id per JAR and no nested-mod metadata.
-- `mc-shared` is a **source directory, not a compiled project**. Each target compiles it against its own Minecraft version. If shared code does not compile on one target, move the differing call behind an adapter interface in `versions/*`. Never add version branches inside `mc-shared`.
+**Native artifacts:**
+- **Windows x64** is first.
+- Others are added only with a launch test (TARGET_PLATFORM §2).
+- Building the native library is Sol's CI and toolchain. The Gradle build consumes the published artifact through the path defined in Sol's handoff; it does not run Cargo itself unless the G0 handoff says it should.
 
 ## 3. Conventions
 
 | Topic | Convention |
 |---|---|
-| Packages | `io.github.kyluua.ooze.core.*`, `….platform.lwjgl.*`, `….mc.*` (shared), `….mc.v1_21_11.*`, `….mc.v26_1.*`, `….mc.v26_2.*` |
-| Formatting | Spotless with palantir-java-format; `./gradlew spotlessApply` before commit. CI checks it |
-| Nullness | JSpecify annotations (`@Nullable`); everything else is non-null by default |
-| Naming | Components `PascalCase` with no `Ooze` prefix (`Button`, `Toggle`); screens `…View` in core and `…Screen` in versions; tokens via enums (`ThemeToken.SURFACE_BASE`) |
-| Tests | JUnit 5 + AssertJ in `core`; ArchUnit rule `core_must_not_depend_on_minecraft`; golden images under `core/src/test/resources/golden/` |
-| Commits | Conventional commits (`feat(ui): …`, `fix(render): …`); one milestone per PR (IMPLEMENTATION_PLAN) |
-| Generated assets | Produced only by build-logic tasks. Generated files are committed only when listed in `assets-src/LICENSES.md` |
-| Versioning | SemVer for the mod (`0.1.0`). Jar suffix `+mc<target>` |
+| Java packages | `io.github.kyluua.ooze.mc.v1_21_11.*`; bridge-java packages are defined by Sol |
+| Rust | Crate names `ooze-*`; workspace lints are Sol's |
+| Commits | Conventional commits; one milestone per PR or branch; a handoff document per milestone |
+| Generated assets | Produced by build tasks; committed only if listed in `assets-src/LICENSES.md` |
+| Versioning | SemVer for the mod; JAR suffix `+mc1.21.11`; the bridge version is reported in the handoff and logs |
 
 ## 4. Gradle tasks (contract)
 
 | Task | Purpose |
 |---|---|
-| `./gradlew build` | Compiles all projects; runs unit tests; builds all three JARs |
-| `./gradlew :core:test` | Core unit + golden tests (no Minecraft) |
-| `./gradlew :versions:mc26_1:runClient` | Dev client for a target (likewise `mc1_21_11`, `mc26_2`) |
-| `./gradlew :versions:<t>:runClientGametest` | Fabric client gametests incl. screenshot goldens (TESTING §3) |
-| `./gradlew iconCompile` | SVG → `icons.json` |
-| `./gradlew spotlessCheck` / `spotlessApply` | Format |
-| `./gradlew buildAll` | Alias that builds every distribution JAR into `build/dist/` |
+| `./gradlew build` | Compiles, runs Java unit tests, builds the remapped JAR |
+| `./gradlew buildAll` | Copies the distribution JAR to `build/dist/` |
+| `./gradlew :versions:mc1_21_11:runClient` | Development client (offline development account) |
+| `xvfb-run -a ./gradlew :versions:mc1_21_11:runClientGameTest` | Launch tests with screenshots in `versions/mc1_21_11/build/run/clientGameTest/screenshots/` (Linux; on Windows run without `xvfb-run`) |
+| `-PoozeEngineFault=<state>` on either run task | Development-only fault injection of an engine state (TARGET_PLATFORM §5) |

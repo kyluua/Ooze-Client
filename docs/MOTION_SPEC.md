@@ -303,23 +303,22 @@ Settings live in `client.json → motion`:
 
 ## 10. Implementation reference
 
-```java
-// core/anim
-public final class SpringSpec { public final float stiffness, dampingRatio; /* tokens: SNAPPY, GEL, WOBBLE, SOFT, LAZY */ }
-public final class TweenSpec  { public final float durationMs; public final Easing easing; }
-public sealed interface MotionSpec permits SpringSpec, TweenSpec {}
+Animation runs in **Rust**: springs and tweens in Sol's engine (G4), motion tokens and their use in `ooze-ui`. Illustrative shape only; the engine API is Sol's:
 
-public final class AnimatedFloat {
-    public float value();  public float velocity();  public boolean isSettled();
-    public void animateTo(float target, MotionSpec spec);   // retargets, keeps velocity for springs
-    public void snapTo(float target);
-    void step(float dt);                                    // called by Animator only
+```rust
+pub enum MotionSpec { Spring { stiffness: f32, damping_ratio: f32 }, Tween { duration_ms: f32, easing: Easing } }
+
+pub struct Animated<T> { /* value, velocity, target, spec, sleeping */ }
+impl Animated<f32> {
+    pub fn animate_to(&mut self, target: f32, spec: MotionSpec); // retargets, keeps velocity for springs
+    pub fn snap_to(&mut self, target: f32);
+    pub fn is_settled(&self) -> bool;
 }
 
-public final class Motion {          // resolves user settings once per frame
-    public static MotionSpec resolve(MotionToken token);   // applies Off / Reduced / Speed
-    public static float intensity();                       // I, already 0 when reduced or off
-}
+/// Resolves user settings once per frame: Off / Reduced / Speed, and intensity I (0 when reduced or off).
+pub fn resolve(token: MotionToken, settings: &MotionSettings) -> MotionSpec;
 ```
 
-Components never hard-code numbers. They reference `MotionToken`s (for example `MotionToken.TOGGLE_KNOB` → `spring.gel`, `MotionToken.PRESS_SQUASH` → tween 90 ms). `Motion.resolve` applies the user settings, so behaviour stays consistent and centrally tunable.
+Time comes from the frame header that Java sends (monotonic nanoseconds). Rust never reads wall-clock time for animation.
+
+Components never hard-code numbers. They reference `MotionToken`s (for example `MotionToken::ToggleKnob` → `spring.gel`, `MotionToken::PressSquash` → tween 90 ms). `resolve` applies the user settings, so behaviour stays consistent and centrally tunable.

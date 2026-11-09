@@ -85,7 +85,7 @@ A **context** is a place where a background is shown. Each context either has it
 
 | Method | Behaviour |
 |---|---|
-| **Pick a file** button | Opens the native file dialog through LWJGL **TinyFileDialogs** on a worker thread (non-blocking UI; a spinner shows on the button). Filters: `*.png *.jpg *.jpeg *.bmp *.tga *.gif`. If tinyfd is unavailable on a target, the button is hidden (not disabled) |
+| **Pick a file** button | A platform command (ARCHITECTURE §11.1): the Java adapter opens the native dialog through LWJGL **TinyFileDialogs** (not a graphics API) on a short-lived thread, and returns the path in the next snapshot (non-blocking UI; a spinner shows on the button). Filters: `*.png *.jpg *.jpeg *.bmp *.tga *.gif`. If tinyfd is unavailable on a target, the button is hidden (not disabled) |
 | **Drag and drop** | Dropping files anywhere on the Background screen is handled via `Screen#onFilesDrop` through the adapter. A full-window drop zone overlay (dashed gel outline and "Drop to import") appears while files are dragged over the window, where the platform reports it; otherwise only on drop |
 | **Backgrounds folder** | **Open folder** opens `config/oozeclient/backgrounds/inbox/`. Files placed there are imported automatically when the screen opens or **Rescan** is pressed |
 
@@ -94,7 +94,7 @@ A **context** is a place where a background is shown. Each context either has it
 1. **Validate:** extension, size ≤ 40 MB, and the decoded header's dimensions ≤ 8192×8192.
 2. **Hash:** SHA-256 of the bytes. The id is the first 16 hex characters. A duplicate import selects the existing entry.
 3. **Copy:** the original bytes go to `config/oozeclient/backgrounds/library/<id>.<ext>`. Ooze always works from its own copy, so moving or deleting the original never breaks a background.
-4. **Decode:** **STBImage** (`stbi_load_from_memory`, forcing 4 channels). GIF: first frame only.
+4. **Decode:** in the Rust engine (Sol, G5), to RGBA8. GIF: first frame only. The decoder crate is Sol's choice; supported formats must include PNG, JPEG, BMP, TGA and GIF.
 5. **Normalise:** if the long edge > 4608 px, downscale with a high-quality box/Lanczos-2 filter to 4608. That covers 4K plus parallax and zoom headroom.
 6. **Derive:**
    - **Mip chain:** box filter, down to 64 px.
@@ -132,7 +132,10 @@ source origin        O = clamp(focus · I − focus · S, 0, I − S)   // keeps
 ### 4.5 Memory policy
 
 - The **active** background plus at most one **transitioning** background stay resident. Anything else is released after its crossfade.
-- Budget: **≤ 64 MB** of GPU texture memory for backgrounds. Example: a 3840×2160 RGBA image (33 MB) plus its ½-resolution blurred copy (8 MB) plus thumbnails (≈ 2 MB for 9).
+- **Budget: 67,108,864 bytes (64 MiB)** for all background textures: every resident mip level, blurred copies, thumbnails and the noise tile, including an outgoing crossfade.
+  - It is enforced by the Rust image accountant and re-checked by the Java texture executor (PERFORMANCE_AND_ACCESSIBILITY §2.2).
+  - Example: 3840×2160 with a full mip chain is ≈ 44,236,800 bytes; the half-resolution blurred copy with mips is ≈ 11,059,200; 9 thumbnails are 2,073,600; total ≈ 57.4 MiB.
+  - During a crossfade, the outgoing image keeps only levels ≥ 1, so two 4K backgrounds never need 88 MiB.
 - Thumbnails for the library grid load lazily as rows scroll into view.
 
 ## 5. Procedural wallpapers (built-in presets)
@@ -185,7 +188,7 @@ The guard guarantees readable UI on any background. It is **on** by default; tur
 - **Focal point picker:** drag a crosshair on the thumbnail; the main preview updates live with `spring.lazy` smoothing.
 - **Readability badge:** shows the legibility guard's status for the current spec ("Readable", "Readable with plate" or "Low contrast").
 
-## 9. Classes (core/background)
+## 9. Modules (Rust: engine pieces by Sol, product pieces in `ooze-ui`; Java only executes texture work and file dialogs)
 
 | Class | Responsibility |
 |---|---|

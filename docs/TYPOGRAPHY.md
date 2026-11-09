@@ -23,7 +23,7 @@ All four families are licensed under the **SIL Open Font License 1.1**. Download
 | **Caveat** | Impallari Type | 400, 500, 600, 700 | script | No italic; italic requests map to upright (never synthesised) |
 | **Cormorant Garamond** | Christian Thalmann (Catharsis Fonts) | 400, 500, 600, 700, Italic 400, Italic 700 | serif | Elegant display serif; its small sizes need +4% size adjustment (handled by §4.3) |
 
-**Why static instances?** The rasterizer (stb_truetype, §5) does not apply variable-font axes, so a variable TTF would only ever render its default instance.
+**Why static instances?** Static faces make weights deterministic regardless of the Rust rasterizer's variable-font support (§5), and keep the OFL files unmodified.
 
 **Jar budget:** about 3 MB of fonts in total. That is acceptable for v0.1.
 
@@ -110,7 +110,7 @@ For a request (family F, weight w, italic i):
 
 **Synthesis techniques**
 - **Bold:** after rasterization, dilate the coverage bitmap horizontally by `r = max(0.35 px, 0.022 × size_px)` using a max filter blended at fractional radius. Widen the advance by `2r`. Cache it as a separate glyph variant.
-- **Italic:** shear the outline before rasterization, `x' = x + 0.2·y` (≈ 11.3°), using `stbtt_GetGlyphShape` → transform → `stbtt_Rasterize`. Fallback if that binding is unavailable: shear the quad's vertices (slightly softer).
+- **Italic:** shear the glyph outline before rasterization, `x' = x + 0.2·y` (≈ 11.3°). Fallback: shear the quad's vertices (slightly softer).
 
 ### 4.3 Size normalisation ("optical size adjust")
 
@@ -136,10 +136,14 @@ Text is split into runs by the face that covers each code point. The vanilla fal
 
 ### 5.1 Rasterizer
 
-- Uses **stb_truetype through LWJGL** (`org.lwjgl.stb.STBTruetype`). `lwjgl-stb` ships with every Minecraft target, because Minecraft uses STBImage and STBVorbis.
-- Font files are loaded once into direct `ByteBuffer`s, kept for the lifetime of the session, and freed on shutdown.
-- Coverage is grayscale anti-aliased and unhinted (similar to macOS rendering). Sub-pixel (LCD) AA is not used; it breaks under transforms and translucent backgrounds.
-- Kerning comes from `stbtt_GetGlyphKernAdvance`, which reads the `kern` table and GPOS pair adjustments. No ligatures are applied. That is acceptable for UI text.
+- **Text rasterization lives in the Rust engine (Sol, G3).** The crate choice is Sol's. These are the product requirements:
+  - grayscale, unhinted anti-aliased coverage at the exact physical pixel size;
+  - TrueType and CFF outlines;
+  - `kern` and GPOS pair kerning;
+  - outline access for synthetic italic.
+- Font files are loaded once per session (embedded or passed from the JAR per the resource contract) and freed at shutdown.
+- Sub-pixel (LCD) AA is not used; it breaks under transforms and translucent backgrounds. No ligatures are applied, which is acceptable for UI text.
+- **Java never rasterizes Ooze text.** It only uploads atlas regions the engine emits (ARCHITECTURE §5.7).
 
 ### 5.2 Glyph key and quantisation
 
@@ -151,16 +155,16 @@ sizeQ     = size_px ≤ 32 ? round(size_px × 2) / 2 : round(size_px)
 subpixelX = size_px ≤ 24 ? 4 buckets {0, .25, .5, .75} : (size_px ≤ 48 ? 2 buckets {0, .5} : 1 bucket)
 ```
 
-The glyph is rasterized with `stbtt_MakeGlyphBitmapSubpixel` at the bucket's x shift, with 2 px padding on every side.
+The glyph is rasterized at the bucket's x shift, with 2 px padding on every side.
 
 ### 5.3 Atlas
 
 - Pages are **1024×1024** RGBA. They grow to **2048×2048** when uiScale ≥ 1.75. RGB is white and A is coverage; the vertex colour tints the text.
 - Packing uses a skyline bottom-left packer.
-- A page fills up to 90%, then a new page is created. At most 6 pages (≤ 24 MB at 1024²; pages are 2048² only at high scale).
+- A page fills up to 90%, then a new page is created. **Budget: 33,554,432 bytes (32 MiB) across all pages:** 8 pages of 1024², or 2 of 2048² (PERFORMANCE_AND_ACCESSIBILITY §2.2). Enforced by the Rust accountant and re-checked by the Java texture executor.
 - **Eviction:** LRU per glyph, tracked by a frame counter. When the page limit is reached, the least-recently-used page with < 25% live glyphs is cleared and repacked.
 - Filtering is **linear**, clamp to edge. At rest, text is drawn at integer pixel positions (plus the sub-pixel bucket baked into the bitmap), so linear filtering never blurs it. During scale animations the bitmap is resampled, which is imperceptible during motion and exact again when motion settles.
-- **Uploads:** rasterization may run on the worker pool. The atlas texture is updated on the render thread in batched sub-image uploads, at most 2 ms per frame (the rest is deferred to the next frame).
+- **Uploads:** rasterization runs on Rust worker threads. Atlas regions reach Java as texture work in the frame output; Java uploads them on the render thread, at most 2 ms and 8 MiB per frame (the rest waits for the next frame).
 
 ### 5.4 Pre-warming
 

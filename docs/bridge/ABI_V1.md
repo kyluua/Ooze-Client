@@ -109,6 +109,8 @@ The artifact contains `META-INF/ooze/native.properties`, `META-INF/ooze/resource
 
 Missing/incompatible libraries return `LoadResult.available=false` with a log diagnostic. C0 must retain vanilla screens/HUD and suppress unavailable Ooze controls. The loader itself has no Fabric dependency, so only C0 can demonstrate the actual in-game fallback.
 
+The Java facade also exposes `LoadResult.state()` as `LOADED`, `MISSING_LIBRARY`, `UNSUPPORTED_PLATFORM`, `INCOMPATIBLE` or `LOAD_FAILED`; `bridgeVersion()` and `protocolVersion()` identify this Java bridge's expected semantic/protocol versions, including on failure. Missing bundled metadata/DLL is MISSING_LIBRARY; version/hash mismatches are INCOMPATIBLE; platform selection happens before loading; I/O, permission and linkage failures are LOAD_FAILED. Anticipated loader failures return a result. This does not promise recovery from VM-fatal errors or make every invalid Java caller safe. The Fabric connector must map these typed states rather than parsing English diagnostic strings.
+
 Minecraft is launched and signed in through the official launcher. Ooze neither implements OAuth nor exports session credentials; no separate Azure registration is part of this architecture.
 
 References: [Java 21 JNI functions](https://docs.oracle.com/en/java/javase/21/docs/specs/jni/functions.html), [Rust FFI unwind rules](https://doc.rust-lang.org/stable/nomicon/ffi.html#ffi-and-unwinding). Implementation dependency `jni` is pinned to 0.21.1 in Cargo.lock; its checked-in downloaded source was consulted for direct-buffer capacity/address behavior.
