@@ -2,7 +2,11 @@
 
 Ooze Client is a **Fabric mod for Minecraft Java Edition 1.21.11**. You play it through the **official Minecraft Launcher**, exactly like any other Fabric mod.
 
-> **Current build (C0):** the native engine is not bundled yet, so the game starts as normal vanilla Minecraft and shows a toast saying **"Ooze Client is off"**. That is expected until the C0b milestone.
+> **Current build (C0):** there are no player-facing Ooze features yet; they start in later milestones.
+> - **Windows x64:** a release JAR bundles the native engine, which loads silently.
+> - **Other systems:** the game starts as normal vanilla Minecraft and shows a toast saying **"Ooze Client is off"**.
+> - A JAR built without the native resources shows the same toast on Windows.
+> - Windows loading has not been launch-tested yet (C0b).
 
 ## What you need
 

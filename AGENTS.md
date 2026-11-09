@@ -17,7 +17,7 @@ Two agents work in this repository. They do **not** share chat history: **handof
 | Owner | Paths | Responsibilities |
 |---|---|---|
 | **Claude** (Fabric integration and product lead) | `versions/mc1_21_11/**`, `native/crates/ooze-ui/**`, `assets-src/**`, Java-side localisation and resources, root Gradle files (`settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`, wrapper), `docs/**` product specs, `docs/INSTALL.md` | Fabric entrypoint and lifecycle, minimal mixins, input capture, screen hosts, HUD hook, vanilla UI integration, narration, compatibility adapters, the Java render adapter that consumes native frame output, game-facing module actions and hooks, Rust UI components, screens, navigation, focus and interactions, product UI state, product smoke, screenshot and accessibility tests, **independent review of Sol's engine and bridge** |
-| **Sol** (GPT-6.1 Sol: Rust engine and Java/Rust bridge) | `native/**` except `native/crates/ooze-ui/**`, `bridge-java/**`, the Cargo workspace and toolchain files, CI workflows (`.github/workflows/**`), benchmarks, `docs/engine/**`, the bridge protocol document | Native core (render primitives, text, animation, theme resolution, configuration I/O, settings and state algorithms, events, search, images), the JNI implementation, `bridge-java`, the versioned bridge protocol, native artifacts per platform, benchmarks, CI |
+| **Sol** (GPT-6.1 Sol: Rust engine and Java/Rust bridge) | `native/**` except `native/crates/ooze-ui/**` (currently `ooze-core`, `ooze-jni`, `tools/`, `licenses/`), `bridge-java/**`, `.cargo/**`, `rust-toolchain.toml`, CI workflows (`.github/workflows/**`), benchmarks, `docs/bridge/**` (ABI contract `docs/bridge/ABI_V1.md`) | Native core (render primitives, text, animation, theme resolution, configuration I/O, settings and state algorithms, events, search, images), the JNI implementation, `bridge-java`, the versioned bridge protocol, native artifacts per platform, benchmarks, CI |
 
 - **Changing the other owner's files:** don't edit them directly. Write the request into your handoff (or a `docs/handoffs/<OWNER>-<milestone>-request.md`) and let the owner make the change. Trivial, mechanical fixes needed to keep the build green are allowed only if the handoff records them.
 - **Branches:** each agent works on its own branch or worktree. Never push to the other agent's branch.
@@ -63,13 +63,14 @@ Two agents work in this repository. They do **not** share chat history: **handof
 
 ```bash
 ./gradlew build                                        # Java build + Java unit tests (all Gradle projects)
+./gradlew buildAll -PoozeNativeResources=<abs dir>     # bundle Sol's prebuilt Windows x64 DLL + manifest into the mod JAR
 ./gradlew :versions:mc1_21_11:runClient                # dev client (offline dev account; no real sign-in)
-xvfb-run -a ./gradlew :versions:mc1_21_11:runClientGameTest   # launch tests incl. title-screen screenshot (Linux)
+OOZE_NATIVE_RESOURCES=<abs dir> tools/launch-tests.sh  # full launch matrix + evidence (Linux via xvfb-run; Windows Git Bash adds real-DLL cases)
 ./gradlew buildAll                                     # distribution JAR → build/dist/
 ./gradlew :versions:mc1_21_11:runClient -PoozeEngineFault=incompatible   # dev-only: exercise engine diagnostics
 ```
 
-Rust commands (`cargo test`, native artifact builds) are defined by Sol's G-milestone handoffs and `docs/engine/`.
+Rust commands (`cargo fmt/clippy/test`, `native/tools/build-g0.ps1`) are defined by Sol in `docs/bridge/BUILD_AND_TEST.md`. Without `-PoozeNativeResources` the mod still builds (vanilla-only at runtime); the root build logs that it skipped Sol's DLL checks.
 
 ## Evidence vocabulary (use exactly these words)
 
@@ -103,5 +104,5 @@ See `docs/TESTING.md §10`.
 ## Style
 
 - **Java:** 21, Mojang names, small final classes and records, JSpecify `@Nullable`. No reflection in hot paths. No allocation in per-frame paths.
-- **Rust:** follow Sol's workspace lints (`docs/engine/`). In `ooze-ui`: no `unsafe`, no panics across the bridge, and no allocation in steady-state frames where avoidable.
+- **Rust:** follow Sol's workspace lints (`native/Cargo.toml`, `docs/bridge/`). In `ooze-ui`: no `unsafe`, no panics across the bridge, and no allocation in steady-state frames where avoidable.
 - Conventional commit messages (`feat(fabric): …`, `docs(spec): …`).

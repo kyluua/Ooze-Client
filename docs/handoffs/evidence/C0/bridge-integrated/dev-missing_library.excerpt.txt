@@ -1,0 +1,4 @@
+[Render thread/WARN] (OozeClient) Ooze Client 0.1.0-alpha.0+mc1.21.11 is OFF: No Ooze native library was found for linux-x86_64.
+[Render thread/WARN] (OozeClient)   state    : MISSING_LIBRARY
+[Render thread/INFO] (OozeClient) Ooze Client bootstrap: 10086 µs total, engine connect 649 µs, dev=true, state=MISSING_LIBRARY
+[Test thread/INFO] (OozeClient/C0-LaunchTest) C0 launch test PASSED: state=MISSING_LIBRARY, title screen reached, vanilla Options round-trip OK

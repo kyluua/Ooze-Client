@@ -17,10 +17,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Ooze Client Fabric entrypoint for Minecraft 1.21.11.
  *
- * <p>C0 scope: connect to the native engine through the Fabric-side {@link EngineConnector} port,
- * log a clear diagnostic, and register Ooze features only when the engine is loaded. With no
- * engine, Minecraft stays vanilla and shows one notice toast. Product UI arrives in later
- * milestones (docs/IMPLEMENTATION_PLAN.md).
+ * <p>C0 scope: load Sol's native bridge through {@link EngineConnector}, log a clear diagnostic,
+ * and register Ooze features only when the engine is loaded. Without a usable engine, Minecraft
+ * stays vanilla and shows one notice toast. Product UI arrives in later milestones
+ * (docs/IMPLEMENTATION_PLAN.md).
  */
 public final class OozeClient implements ClientModInitializer {
 
@@ -30,6 +30,7 @@ public final class OozeClient implements ClientModInitializer {
     private static volatile EngineStatus engineStatus =
             EngineStatus.of(EngineStatus.State.NOT_BUNDLED, "Not initialised yet.", "");
     private static volatile EngineGate gate = new EngineGate(engineStatus, false);
+    private static volatile EngineConnector connector;
 
     @Override
     public void onInitializeClient() {
@@ -41,8 +42,11 @@ public final class OozeClient implements ClientModInitializer {
                 .orElse("unknown");
         PlatformInfo platform = PlatformInfo.current();
 
+        // Version/hash-specific extraction cache for Sol's NativeLoader (never the temp-dir root).
+        java.nio.file.Path nativeCache = loader.getGameDir().resolve(".ooze").resolve("natives");
         EngineConnector connector = EngineConnectors.select(
-                platform, dev, System.getProperty(EngineConnectors.FAULT_PROPERTY), LOG::warn);
+                platform, nativeCache, dev, System.getProperty(EngineConnectors.FAULT_PROPERTY), LOG::warn);
+        OozeClient.connector = connector;
         long loadStart = System.nanoTime();
         EngineStatus status = EngineConnectors.connectSafely(connector);
         long loadMicros = (System.nanoTime() - loadStart) / 1_000;
@@ -78,5 +82,10 @@ public final class OozeClient implements ClientModInitializer {
 
     public static EngineGate gate() {
         return gate;
+    }
+
+    /** The connector chosen at start-up (read by developer tools and launch tests). */
+    public static EngineConnector connector() {
+        return connector;
     }
 }

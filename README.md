@@ -4,10 +4,11 @@ A premium, customisable **Minecraft Java Edition 1.21.11** client delivered as a
 
 Its interface is a glossy, elastic white "ooze" with a crisp ink outline, rendered as sharp vector geometry from 1080p to 4K. It moves like a soft, viscous liquid.
 
-> **Status: C0. A Fabric build with no native engine yet.**
+> **Status: C0. Fabric build with Sol's G0 Rust bridge integrated; no player-facing Ooze features yet.**
 > - The Fabric 1.21.11 build launches to the vanilla title screen.
-> - It reports a clear "Ooze Client is off" diagnostic, because the Rust engine and bridge (Sol's G0) are not integrated yet.
-> - Vanilla Minecraft stays fully usable.
+> - It loads the bridge, which bundles the Windows x64 DLL from Sol's CI.
+> - On unsupported platforms it reports a clear "Ooze Client is off" diagnostic, and vanilla stays fully usable.
+> - Windows launch evidence is still pending (C0b).
 >
 > See [`docs/handoffs/CLAUDE-C0.md`](docs/handoffs/CLAUDE-C0.md) for what is built and tested, and [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for what comes next. Coding agents: start with [`AGENTS.md`](AGENTS.md).
 

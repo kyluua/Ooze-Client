@@ -23,18 +23,20 @@ Ooze-Client/
 │       ├── main/resources/fabric.mod.json, assets/oozeclient/lang/*.json
 │       ├── test/java/…           headless JUnit tests (rules, gating, diagnostics)
 │       └── gametest/…            Fabric client gametests (dev-only mod "oozeclient-gametest"; never shipped)
-├── bridge-java/                  S ○  Java side of the bridge: native loading, status, protocol buffers (only `native` decls)
-├── native/                       S ○  Cargo workspace (toolchain, lints, CI scripts)
-│   ├── crates/<engine crates>    S ○  render primitives, text, animation, theme, config, settings, events, search, images
-│   ├── crates/<bridge crate>     S ○  JNI exports, protocol encode/decode, bounds checks
+├── bridge-java/                  S ✓  Java side of the bridge (G0): NativeLoader, EngineSession, InputBatch, FrameBuffer; only `native` decls
+├── .cargo/config.toml, rust-toolchain.toml   S ✓  Rust 1.99.1 pin; static CRT for windows-msvc
+├── native/                       S ✓  Cargo workspace (members crates/*), tools/build-g0.ps1, licenses/
+│   ├── crates/ooze-core/         S ✓  G0: packet validation, deterministic fixture (engine crates grow from here)
+│   ├── crates/ooze-jni/          S ✓  G0: JNI exports, bounded registry, panic containment
 │   └── crates/ooze-ui/           C ○  components, screens, navigation, focus, interactions, product UI state
 ├── assets-src/                   C ○  brand, theme tokens, fonts + OFL texts, icons (SVG), LICENSES.md
 ├── licenses/                     C ○  third-party licence texts copied into the JAR root
-├── docs/                         C ✓  product specification (Sol owns docs/engine/ and the bridge protocol doc)
+├── docs/                         C ✓  product specification (Sol owns docs/bridge/)
 │   ├── handoffs/                 C+S ✓  CLAUDE-<milestone>.md, SOL-<milestone>.md, requests
-│   ├── engine/                   S ○  engine and bridge protocol documentation
+│   ├── bridge/                   S ✓  ABI_V1.md, BUILD_AND_TEST.md, NATIVE_ARCHITECTURE.md, resources.json
 │   └── tokens/ooze_classic.theme.json   C ✓  canonical default theme
-└── .github/workflows/            S ○  CI (Sol)
+├── tools/launch-tests.sh         C ✓  launch-test matrix + evidence collection
+└── .github/workflows/native-g0.yml   S ✓  Windows build + contract harness (Sol)
 ```
 
 ## 2. How the pieces combine
@@ -42,9 +44,9 @@ Ooze-Client/
 | Gradle/Cargo unit | Language | Produces | Packaged into the JAR as |
 |---|---|---|---|
 | `:versions:mc1_21_11` | Java 21 | The remapped Fabric mod | The JAR itself: `ooze-client-<ver>+mc1.21.11.jar` |
-| `:bridge-java` (Sol) | Java 21 | Bridge classes | Jar-in-jar (`include`) or merged classes, as agreed in G0 |
-| `native/` (Sol) | Rust | `ooze_native` per platform | A resource inside the JAR (path agreed in G0); extracted and loaded by bridge-java |
-| `native/crates/ooze-ui` (Claude) | Rust | Linked into the native library | Part of `ooze_native` |
+| `:bridge-java` (Sol) | Java 21 | Bridge classes + native resources | **Merged once into the mod JAR** (not jar-in-jar, no second mod ID; `NativeBindings` not relocated) |
+| `native/` (Sol) | Rust | `ooze_jni.dll` (Windows x64) | `natives/windows-x86_64/ooze_jni.dll` + `META-INF/ooze/native.properties` inside the mod JAR, from Sol's prebuilt resources (`-PoozeNativeResources`); extracted to `<gameDir>/.ooze/natives/<ver>/<sha256>/…` and loaded by `NativeLoader` |
+| `native/crates/ooze-ui` (Claude) | Rust | Linked into the native library | Part of `ooze_jni` (not created yet) |
 
 **Native artifacts:**
 - **Windows x64** is first.

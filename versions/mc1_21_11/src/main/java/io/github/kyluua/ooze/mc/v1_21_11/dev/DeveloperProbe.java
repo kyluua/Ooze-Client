@@ -14,7 +14,7 @@ import org.slf4j.Logger;
 /**
  * Developer-only action that exercises the native bridge (C0 requirement 5). Registered only when
  * {@code EngineGate#developerProbeEnabled()} is true: development environment AND loaded engine.
- * Release builds and engine-less builds never show this key mapping.
+ * F9 runs one synchronous probe round trip (logged + toast) and opens {@link BridgeDiagnosticScreen}.
  */
 public final class DeveloperProbe {
 
@@ -29,19 +29,26 @@ public final class DeveloperProbe {
                 new KeyMapping(KEY_NAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F9, category));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (key.consumeClick()) {
-                EngineConnector.DevProbeResult result;
-                try {
-                    result = connector.developerProbe();
-                } catch (RuntimeException e) {
-                    result = new EngineConnector.DevProbeResult(false, e.toString(), 0L);
-                }
+                EngineConnector.DevProbeResult result = runProbe(connector);
                 log.info("[dev] bridge probe ok={} in {} µs: {}", result.ok(), result.elapsedNanos() / 1_000, result.summary());
                 SystemToast.addOrUpdate(
                         client.getToastManager(),
                         TOAST_ID,
                         Component.translatable(result.ok() ? "oozeclient.dev.probe.ok" : "oozeclient.dev.probe.failed"),
                         Component.literal(result.summary()));
+                if (result.ok() && !(client.screen instanceof BridgeDiagnosticScreen)) {
+                    client.setScreen(new BridgeDiagnosticScreen());
+                }
             }
         });
+    }
+
+    /** Runs the probe without letting a bridge failure escape into the game loop. */
+    public static EngineConnector.DevProbeResult runProbe(EngineConnector connector) {
+        try {
+            return connector.developerProbe();
+        } catch (RuntimeException e) {
+            return new EngineConnector.DevProbeResult(false, e.toString(), 0L);
+        }
     }
 }

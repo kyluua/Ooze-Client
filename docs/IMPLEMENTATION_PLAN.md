@@ -67,18 +67,22 @@ The details are Sol's. Listed here so the C-series knows what it waits for.
 - [x] Fabric entrypoint with a Fabric-side engine port and gate, diagnostics, a vanilla toast notice, and a developer probe hook registered only with a loaded engine in development.
 - [x] Headless tests (gate, fault injection, diagnostics, translations, source rules).
 - [x] Game-launched test to the vanilla title screen in vanilla-only mode (Linux + Xvfb), with a screenshot and a vanilla Options round trip.
-- [ ] Integrate Sol's bridge and the Windows x64 artifact. **Moved to C0b**, blocked on G0.
+- [x] Review Sol's G0 and integrate it:
+  - `:bridge-java` merged once into the mod JAR, with the Windows x64 DLL from Sol's CI artifact;
+  - `BridgeEngineConnector` over `NativeLoader.tryLoad`;
+  - dev-only probe plus `BridgeDiagnosticScreen` (input batches, fixture, eager lease copy, vanilla GUI render state).
+  
+  Game-launched on Linux, where the real state is `UNSUPPORTED_PLATFORM`.
 
-**Gate A (C0):** Built; Headless-tested; Game-launched on Linux in vanilla-only mode for `NOT_BUNDLED` plus at least one fault-injected state.
+**Gate A (C0):** Built; Headless-tested; Game-launched on Linux (vanilla-only, real bridge loader, fault-injected states, production JAR). **Passed.**
 
-### C0b — Bridge integration (Claude)
+### C0b — Windows verification of the integrated bridge (Claude, with a Windows host)
 
-**Depends on:** G0, C0.
+**Depends on:** C0 (done), a Windows x64 machine or CI runner.
 
-- [ ] Review Sol's G0 diff and record findings in the handoff **before** integrating.
-- [ ] Implement the single `EngineConnector` adapter over the agreed bridge-java API; map its states to TARGET_PLATFORM §5.
-- [ ] Package bridge-java and the Windows x64 native artifact into the JAR (the path agreed in G0); record the JAR byte size.
-- [ ] Wire the developer probe (F9, development only) to the bridge's probe call.
+Integration code is complete (C0). What remains is evidence, plus follow-ups to Sol's review items:
+- [ ] Run `OOZE_NATIVE_RESOURCES=<dir> tools/launch-tests.sh` on Windows x64 (Git Bash); commit the evidence.
+- [ ] Replace `BridgeStatusMapper`'s text classification with Sol's structured reason once it is provided.
 
 **Gate B:**
 - **Game-launched on Windows x64**, all of:

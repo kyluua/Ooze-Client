@@ -66,7 +66,9 @@ Official Minecraft Launcher ──(Microsoft sign-in, entitlement, session)─�
 
 ## 5. Native availability states (Fabric side)
 
-The Fabric adapter consumes the bridge's load result. Until Sol's G0 handoff lands, the build ships without the bridge and reports `NOT_BUNDLED`.
+The Fabric adapter consumes Sol's `NativeLoader.LoadResult` (G0: an `available` flag plus diagnostic text). `BridgeStatusMapper` classifies it. A drift-guard test pins the G0 phrases, and a structured reason code has been requested from Sol.
+
+Sol's loader checks the platform **first**, so on every non-Windows-x64 host the real state is `UNSUPPORTED_PLATFORM`, whatever the JAR contains. `NOT_BUNDLED` means the JAR has no `META-INF/ooze/native.properties` (built without `-PoozeNativeResources`). `MISSING_LIBRARY` means the manifest is present but the DLL is missing. A SHA-256 mismatch (a corrupt file) is reported as `LOAD_FAILED`.
 
 | State | Meaning | Behaviour |
 |---|---|---|
@@ -92,6 +94,7 @@ The Fabric adapter consumes the bridge's load result. Until Sol's G0 handoff lan
 | T3 | `net.fabricmc.fabric-loom-remap` exists from Loom 1.14 onwards; 1.17.21 runs on JDK 21 | ✓ verified 2026-11-09 (plugin markers + Gradle module metadata) |
 | T4 | The official 1.21.11 example uses Gradle 9.8.2 + `loom.officialMojangMappings()` | ✓ verified 2026-11-09 (fabric-example-mod branch `1.21.11`) |
 | T5 | Fabric API offers client gametests (`fabric-client-gametest` entrypoint, `runClientGameTest`) on 1.21.11 | ✓ verified by the C0 launch test (see `docs/handoffs/CLAUDE-C0.md`) |
+| T5b | 1.21.11 `GuiGraphics.guiRenderState` is package-private; custom elements go through `GuiRenderState#submitGuiElement` (accessor mixin); vanilla `RenderPipelines.GUI` draws QUADS | ✓ verified C0 (javap and accessor-applied launch check); fixture drawing **not yet Game-launched** (needs Windows) |
 | T6 | Since 1.21.6, GUI drawing is deferred through a GUI render state; since 1.21.9, input callbacks use record types | Verify in C1/C2 against the 1.21.11 jar |
 | T7 | Ordering of GUI elements with different pipelines within one stratum | Unknown; C1 must test it (ARCHITECTURE §5.9) |
 | T8 | LWJGL `tinyfd` is on the 1.21.11 runtime classpath (Java-side file dialog) | Verify in C7; a fallback is specified |

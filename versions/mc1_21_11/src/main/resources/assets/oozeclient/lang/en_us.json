@@ -5,9 +5,11 @@
   "oozeclient.engine.unavailable.unsupported_platform": "%s isn't supported yet. Minecraft runs normally.",
   "oozeclient.engine.unavailable.incompatible": "The native engine doesn't match this version. Minecraft runs normally.",
   "oozeclient.engine.unavailable.load_failed": "The native engine failed to load. Minecraft runs normally. Details are in the log.",
-
   "key.category.oozeclient.developer": "Ooze Client (developer)",
   "key.oozeclient.dev.bridge_probe": "Probe native bridge",
   "oozeclient.dev.probe.ok": "Native bridge probe passed",
-  "oozeclient.dev.probe.failed": "Native bridge probe failed"
+  "oozeclient.dev.probe.failed": "Native bridge probe failed",
+  "oozeclient.dev.diagnostic.title": "Ooze native bridge diagnostic (developer only)",
+  "oozeclient.dev.diagnostic.hint": "Frames rendered: %s · fixture colour %s · move the mouse, hold the left button to change colour, Esc to leave.",
+  "oozeclient.dev.diagnostic.failed": "The bridge diagnostic stopped (%s). Details are in the log; Minecraft keeps running."
 }

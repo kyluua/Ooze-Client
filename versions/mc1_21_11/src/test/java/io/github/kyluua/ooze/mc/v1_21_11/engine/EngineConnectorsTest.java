@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -13,24 +14,24 @@ import org.junit.jupiter.api.Test;
 class EngineConnectorsTest {
 
     private static final PlatformInfo LINUX = PlatformInfo.of("Linux", "amd64");
+    private static final Path CACHE = Path.of("build", "test-native-cache");
 
     @Test
-    void defaultBuildReportsNotBundled() {
+    void defaultSelectionUsesSolsBridge() {
         List<String> warnings = new ArrayList<>();
-        EngineConnector c = EngineConnectors.select(LINUX, true, null, warnings::add);
-        assertInstanceOf(UnbundledEngineConnector.class, c);
-        assertEquals(EngineStatus.State.NOT_BUNDLED, EngineConnectors.connectSafely(c).state());
+        EngineConnector c = EngineConnectors.select(LINUX, CACHE, true, null, warnings::add);
+        assertInstanceOf(BridgeEngineConnector.class, c);
         assertTrue(warnings.isEmpty());
     }
 
     @Test
     void faultInjectionOnlyInDevEnvironment() {
         List<String> warnings = new ArrayList<>();
-        EngineConnector release = EngineConnectors.select(LINUX, false, "incompatible", warnings::add);
-        assertInstanceOf(UnbundledEngineConnector.class, release);
+        EngineConnector release = EngineConnectors.select(LINUX, CACHE, false, "incompatible", warnings::add);
+        assertInstanceOf(BridgeEngineConnector.class, release);
         assertEquals(1, warnings.size());
 
-        EngineConnector dev = EngineConnectors.select(LINUX, true, "incompatible", warnings::add);
+        EngineConnector dev = EngineConnectors.select(LINUX, CACHE, true, "incompatible", warnings::add);
         EngineStatus s = EngineConnectors.connectSafely(dev);
         assertEquals(EngineStatus.State.INCOMPATIBLE, s.state());
         assertTrue(s.detail().contains("fault injection"), "injected states must say so in the log detail");
@@ -39,8 +40,8 @@ class EngineConnectorsTest {
     @Test
     void loadedCannotBeInjectedAndUnknownValuesWarn() {
         List<String> warnings = new ArrayList<>();
-        assertInstanceOf(UnbundledEngineConnector.class, EngineConnectors.select(LINUX, true, "loaded", warnings::add));
-        assertInstanceOf(UnbundledEngineConnector.class, EngineConnectors.select(LINUX, true, "banana", warnings::add));
+        assertInstanceOf(BridgeEngineConnector.class, EngineConnectors.select(LINUX, CACHE, true, "loaded", warnings::add));
+        assertInstanceOf(BridgeEngineConnector.class, EngineConnectors.select(LINUX, CACHE, true, "banana", warnings::add));
         assertEquals(2, warnings.size());
         assertNull(EngineConnectors.parseFault("LOADED"));
         assertEquals(EngineStatus.State.MISSING_LIBRARY, EngineConnectors.parseFault("missing"));

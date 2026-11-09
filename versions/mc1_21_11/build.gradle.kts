@@ -54,9 +54,12 @@ fabricApi {
 afterEvaluate {
     val gameTestRun = loom.runs.findByName("clientGameTest")
         ?: error("Loom did not create the 'clientGameTest' run; check fabricApi.configureTests")
-    providers.gradleProperty("oozeEngineFault").orNull?.let { fault ->
+    val fault = providers.gradleProperty("oozeEngineFault").orNull
+    if (fault != null) {
         gameTestRun.vmArg("-Doozeclient.dev.engineFault=$fault")
         gameTestRun.vmArg("-Doozeclient.test.expectEngineState=${fault.uppercase().replace('-', '_')}")
+    } else {
+        providers.gradleProperty("oozeExpectEngineState").orNull?.let { gameTestRun.vmArg("-Doozeclient.test.expectEngineState=$it") }
     }
 }
 
@@ -71,11 +74,10 @@ dependencies {
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
     compileOnly("org.jspecify:jspecify:1.0.0")
 
-    // Sol's bridge (G0). Present only after the handoff lands; see settings.gradle.kts.
-    if (findProject(":bridge-java") != null) {
-        implementation(project(":bridge-java"))
-        include(project(":bridge-java"))
-    }
+    // Sol's bridge (G0): compile + dev-runtime dependency. Its classes and resources are merged
+    // into this mod's JAR exactly once (see tasks.jar). Never `include` it: Loom would wrap it as
+    // a separate nested mod with its own generated mod ID, which Sol's contract forbids.
+    implementation(project(":bridge-java"))
 
     testCompileOnly("org.jspecify:jspecify:1.0.0")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
@@ -95,6 +97,8 @@ tasks.processResources {
     }
 }
 
+val bridgeJar = project(":bridge-java").tasks.named<Jar>("jar")
+
 tasks.jar {
     from(rootProject.file("LICENSE")) {
         rename { "LICENSE_ooze-client" }
@@ -102,6 +106,13 @@ tasks.jar {
     from(rootProject.file("licenses")) {
         into("licenses")
     }
+    // Merge bridge-java (classes + META-INF/ooze/** + natives/**) once; NativeBindings is not
+    // relocated, so its JNI symbol names stay valid.
+    dependsOn(bridgeJar)
+    from(bridgeJar.map { zipTree(it.archiveFile) }) {
+        exclude("META-INF/MANIFEST.MF")
+    }
+    duplicatesStrategy = DuplicatesStrategy.FAIL
 }
 
 val collectDist by tasks.registering(Copy::class) {

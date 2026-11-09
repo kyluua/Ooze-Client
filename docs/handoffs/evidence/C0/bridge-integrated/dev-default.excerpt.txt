@@ -1,0 +1,4 @@
+[Render thread/WARN] (OozeClient) Ooze Client 0.1.0-alpha.0+mc1.21.11 is OFF: linux-x86_64 is not a supported Ooze native platform yet.
+[Render thread/WARN] (OozeClient)   state    : UNSUPPORTED_PLATFORM
+[Render thread/INFO] (OozeClient) Ooze Client bootstrap: 7409 µs total, engine connect 1654 µs, dev=true, state=UNSUPPORTED_PLATFORM
+[Test thread/INFO] (OozeClient/C0-LaunchTest) C0 launch test PASSED: state=UNSUPPORTED_PLATFORM, title screen reached, vanilla Options round-trip OK

@@ -1,0 +1,4 @@
+[Render thread/WARN] (OozeClient) Ooze Client 0.1.0-alpha.0+mc1.21.11 is OFF: The Ooze native library version does not match this mod.
+[Render thread/WARN] (OozeClient)   state    : INCOMPATIBLE
+[Render thread/INFO] (OozeClient) Ooze Client bootstrap: 6942 µs total, engine connect 168 µs, dev=true, state=INCOMPATIBLE
+[Test thread/INFO] (OozeClient/C0-LaunchTest) C0 launch test PASSED: state=INCOMPATIBLE, title screen reached, vanilla Options round-trip OK

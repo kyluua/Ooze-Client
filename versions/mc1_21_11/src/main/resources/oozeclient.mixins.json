@@ -1,0 +1,12 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "io.github.kyluua.ooze.mc.v1_21_11.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "GuiGraphicsAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

@@ -47,20 +47,23 @@ A platform is **supported** only with a native artifact **and** a Game-launched 
 Run the whole matrix and collect evidence (screenshots, log excerpts, summary):
 
 ```bash
-tools/launch-tests.sh build/launch-evidence      # Linux uses xvfb-run; on Windows run in Git Bash without it
+OOZE_NATIVE_RESOURCES=<abs dir> tools/launch-tests.sh build/launch-evidence   # Linux uses xvfb-run; Windows: Git Bash
 ```
+
+The expected state defaults inside the test to **`LOADED` on Windows x64** and **`UNSUPPORTED_PLATFORM` elsewhere**. Sol's loader checks the platform first. `-PoozeExpectEngineState=<STATE>` overrides it.
+
+Every case also asserts that the `GuiGraphicsAccessor` mixin applied (dev and production-remapped).
 
 | Case | Task | Asserts |
 |---|---|---|
-| `dev-not_bundled` | `runClientGameTest` | Title screen reached; state `NOT_BUNDLED`; no `key.oozeclient.*` mappings; the notice was queued; vanilla Options round trip |
-| `dev-<state>` for `missing_library`, `unsupported_platform`, `incompatible`, `load_failed` | `runClientGameTest -PoozeEngineFault=<state>` | The same, for each fault-injected state |
-| `prod-not_bundled` | `runProductionClientGameTest` | The **shipped remapped JAR** in a production Fabric environment (`dev=false`); the same assertions |
-| `prod-fault-ignored` | `runProductionClientGameTest -PoozeEngineFault=incompatible` | A release build ignores developer fault injection (state stays `NOT_BUNDLED`, with a warning) |
+| `dev-default` | `runClientGameTest` | Title screen reached; **real** state from Sol's loader; when not loaded: no `key.oozeclient.*` mappings and the notice was queued; vanilla Options round trip |
+| `dev-<state>` for `missing_library`, `incompatible`, `load_failed`, `not_bundled` | `runClientGameTest -PoozeEngineFault=<state>` | The same, for each fault-injected state |
+| `prod-default` | `runProductionClientGameTest` | The **shipped remapped JAR** (bridge classes and DLL merged) in a production Fabric environment (`dev=false`); real loader state |
+| `prod-fault-ignored` | `runProductionClientGameTest -PoozeEngineFault=incompatible` | A release build ignores developer fault injection (real state, with a warning) |
+| `win-real-missing_library`, `win-real-corrupt`, `win-real-abi-mismatch` (**Windows x64 only**) | Generated from the provided resources: DLL removed, one DLL byte flipped, manifest `bridge.abi=2` | Real `MISSING_LIBRARY` / `LOAD_FAILED` / `INCOMPATIBLE` from Sol's loader; vanilla usable |
+| `LOADED` branch (**Windows x64 only**) | `dev-default` with resources | The F9 developer key exists; the probe round trip passes; `BridgeDiagnosticScreen` renders fixture frames; the colour switches `F8F9FF` → `171923` → `F8F9FF` with simulated left-button hold and release; two screenshots |
 
-**From C0b (needs Sol's G0):** on **Windows x64**:
-- `LOADED`, plus the developer probe round trip;
-- the real `MISSING_LIBRARY` (DLL removed);
-- the real `INCOMPATIBLE` (mismatched DLL).
+**Pending (Gate B, Windows x64):** the `win-real-*` cases and the `LOADED` branch are implemented, but they have not been run, because no Windows host has been available to Claude.
 
 **From C1 onwards:** screen screenshots at window sizes 1920×1080, 2560×1440 and 3840×2160; an ordering torture-scene golden; scripted flows.
 

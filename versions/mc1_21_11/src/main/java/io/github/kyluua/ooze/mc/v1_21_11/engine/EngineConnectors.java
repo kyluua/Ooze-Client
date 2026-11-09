@@ -1,5 +1,6 @@
 package io.github.kyluua.ooze.mc.v1_21_11.engine;
 
+import java.nio.file.Path;
 import java.util.Locale;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
@@ -18,7 +19,11 @@ public final class EngineConnectors {
      * @param warn sink for configuration warnings (e.g. an unknown fault value)
      */
     public static EngineConnector select(
-            PlatformInfo platform, boolean devEnvironment, @Nullable String faultValue, Consumer<String> warn) {
+            PlatformInfo platform,
+            Path nativeCacheRoot,
+            boolean devEnvironment,
+            @Nullable String faultValue,
+            Consumer<String> warn) {
         if (faultValue != null && !faultValue.isBlank()) {
             if (!devEnvironment) {
                 warn.accept("Ignoring -D" + FAULT_PROPERTY + " outside the development environment.");
@@ -32,9 +37,9 @@ public final class EngineConnectors {
                 }
             }
         }
-        // G0 integration point: when Sol's bridge-java is on the classpath, return the adapter that
-        // delegates to its agreed load/status API here. No bridge is bundled in C0 builds.
-        return new UnbundledEngineConnector();
+        // Sol's bridge-java (G0) is always compiled in; whether its native library is present,
+        // compatible and loadable on this platform is decided by NativeLoader at connect().
+        return new BridgeEngineConnector(nativeCacheRoot, platform);
     }
 
     /** Connects, converting any unexpected throwable into {@link EngineStatus.State#LOAD_FAILED}. */

@@ -72,9 +72,9 @@ Rules that will be enforced by tests:
 | Package (`io.github.kyluua.ooze.mc.v1_21_11.…`) | Contents |
 |---|---|
 | (root) | `OozeClient` entrypoint |
-| `engine` | `EngineConnector` (Fabric-side port over bridge-java), `EngineStatus`, `EngineGate`, `PlatformInfo` |
+| `engine` | `EngineConnector` (Fabric-side port), `BridgeEngineConnector` (the only adapter over Sol's `NativeLoader`/`EngineSession`), `BridgeStatusMapper` (G0 diagnostics → states), `EngineStatus`, `EngineGate`, `PlatformInfo` |
 | `diag` | Diagnostics formatting and logging, the vanilla-toast notice |
-| `dev` | Developer-only actions (registered only in the development environment and only with a loaded engine) |
+| `dev` | Developer-only actions (registered only in the development environment and only with a loaded engine): F9 bridge probe, `BridgeDiagnosticScreen` + `FixtureRenderState` (G0 fixture through vanilla's GUI render state) |
 | `render` (C1) | Frame output validation, GUI element render states, texture manager and budget checks |
 | `input` (C2) | Input capture and batching |
 | `screen` (C2) | `OozeScreenHost` and the hosts |
@@ -83,7 +83,7 @@ Rules that will be enforced by tests:
 | `hud` (C9) | HUD hook |
 | `narration` (C2) | Narrator bridge |
 | `compat` (C6) | Mod Menu and title-screen tray |
-| `mixin` | Minimal mixins, only where Fabric API has no event |
+| `mixin` | Minimal mixins, only where Fabric API has no event. C0: `GuiGraphicsAccessor` (read access to the frame's `GuiRenderState`; accessor only) |
 
 ## 3. Runtime lifecycle
 
@@ -145,7 +145,7 @@ execute platform commands on the render thread
 - Bounded input and snapshot sizes.
 - Frame output size limits declared in the protocol.
 
-The binary format, buffer ownership and version negotiation belong to Sol's bridge protocol document. This section defines the product requirements that format must meet.
+The binary format, buffer ownership and version negotiation belong to Sol's contract, [`docs/bridge/ABI_V1.md`](bridge/ABI_V1.md). G0 implements the subset `OZIN` input batches plus a 104-byte `OZFR` diagnostic fixture. **Lease rule:** close a `FrameLease` only after vanilla consumed the vertices, or eagerly copy them into Minecraft-owned data first (C0 copies eagerly). This section defines the product requirements the full format must meet.
 
 ### 5.2 Frame output contents (product requirements)
 
