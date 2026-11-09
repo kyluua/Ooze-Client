@@ -1,0 +1,4 @@
+[Render thread/WARN]: Ooze Client 0.1.0-alpha.0+mc1.21.11 is OFF: This build of Ooze Client does not include the native engine.
+[Render thread/WARN]:   state    : NOT_BUNDLED
+[Render thread/INFO]: Ooze Client bootstrap: 6196 µs total, engine connect 16 µs, dev=false, state=NOT_BUNDLED
+[Test thread/INFO]: C0 launch test PASSED: state=NOT_BUNDLED, title screen reached, vanilla Options round-trip OK

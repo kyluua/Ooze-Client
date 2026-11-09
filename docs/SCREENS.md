@@ -600,9 +600,9 @@ Navigation is provided by two cooperating parts: the **sidebar** (S03) and the *
                          Soft on the outside. v0.1.0 "Gel"
  ╭────────────────────────────────────────────────────────────────────────────────╮
  │ VERSION                                                                        │
- │ Ooze Client      0.1.0+mc26.1        Minecraft     26.1.2                      │
- │ Fabric Loader    0.x.y               Fabric API    0.x.y+26.1                  │
- │ Java             25.0.1 (vendor)     Renderer      Vulkan · <GPU name>         │
+ │ Ooze Client      0.1.0+mc1.21.11     Minecraft     1.21.11                     │
+ │ Fabric Loader    0.20.1              Fabric API    0.141.6+1.21.11             │
+ │ Java             21.0.x (vendor)     Renderer      OpenGL · <GPU name>         │
  │ [Copy debug info]  [Open config folder]  [Open logs folder]                    │
  ╰────────────────────────────────────────────────────────────────────────────────╯
  ╭─────────────╮ ╭───────────╮  ╭─ LICENCES v ────────────────────────────────────╮
@@ -614,7 +614,7 @@ Navigation is provided by two cooperating parts: the **sidebar** (S03) and the *
  [ GitHub ^ ]  opens the repository URL through Minecraft's confirm-link dialog
 ```
 
-- **Version data** is real, from the platform info adapter. The renderer row shows the active backend (OpenGL or Vulkan) and the GPU renderer string.
+- **Version data** is real: Java snapshots for Minecraft, Loader, Fabric API, Java and the GPU renderer string, plus an **Engine** row with the bridge version and native platform (for example `windows-x86_64`). The renderer is OpenGL, the only backend on 1.21.11.
 - **Copy debug info** copies a Markdown block (versions, OS, renderer, quality tier, UI scale, active theme, installed mods count) to the clipboard and shows a success toast.
 - **Changelog** comes from the bundled `changelog.json`. **Credits** lists contributors from `credits.json`.
 - **Licences** use Accordion (C26) rows. **View licence** opens the Licence viewer modal (C20) with the full text.

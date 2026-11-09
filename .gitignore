@@ -1,0 +1,24 @@
+# Gradle / Loom
+.gradle/
+build/
+**/build/
+run/
+**/run/
+.kotlin/
+out/
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+bin/
+
+# Rust (Sol's workspace; listed here so a fresh checkout stays clean)
+native/target/
+
+# OS
+.DS_Store
+Thumbs.db

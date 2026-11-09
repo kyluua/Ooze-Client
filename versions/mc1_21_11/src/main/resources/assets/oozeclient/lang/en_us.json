@@ -1,0 +1,13 @@
+{
+  "oozeclient.engine.unavailable.title": "Ooze Client is off",
+  "oozeclient.engine.unavailable.not_bundled": "This build has no native engine. Minecraft runs normally.",
+  "oozeclient.engine.unavailable.missing_library": "No native engine for %s. Minecraft runs normally.",
+  "oozeclient.engine.unavailable.unsupported_platform": "%s isn't supported yet. Minecraft runs normally.",
+  "oozeclient.engine.unavailable.incompatible": "The native engine doesn't match this version. Minecraft runs normally.",
+  "oozeclient.engine.unavailable.load_failed": "The native engine failed to load. Minecraft runs normally. Details are in the log.",
+
+  "key.category.oozeclient.developer": "Ooze Client (developer)",
+  "key.oozeclient.dev.bridge_probe": "Probe native bridge",
+  "oozeclient.dev.probe.ok": "Native bridge probe passed",
+  "oozeclient.dev.probe.failed": "Native bridge probe failed"
+}

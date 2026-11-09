@@ -1,0 +1,4 @@
+[Render thread/WARN] (OozeClient) Ooze Client 0.1.0-alpha.0+mc1.21.11 is OFF: The Ooze native library failed to load.
+[Render thread/WARN] (OozeClient)   state    : LOAD_FAILED
+[Render thread/INFO] (OozeClient) Ooze Client bootstrap: 15099 µs total, engine connect 406 µs, dev=true, state=LOAD_FAILED
+[Test thread/INFO] (OozeClient/C0-LaunchTest) C0 launch test PASSED: state=LOAD_FAILED, title screen reached, vanilla Options round-trip OK

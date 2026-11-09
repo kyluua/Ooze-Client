@@ -47,16 +47,17 @@ Every component supplies a `NarrationInfo(role, label, value, state, hint)` for 
 
 ### 1.5 Component API conventions
 
-- Components are retained nodes (`extends Node`) configured with builders. Values bind to `Property<T>` (two-way) so settings, themes and config stay in sync.
+- Components are **Rust** retained nodes in `native/crates/ooze-ui`, configured with builders. Values bind two-way to observable state, so settings, themes and config stay in sync.
 - No component hard-codes colours, sizes or timings. It reads `ThemeToken`, `SpaceToken`, `SizeToken` and `MotionToken`.
 - Each component lists its theme tokens in a static `TOKENS` descriptor, which the Theme Studio uses to highlight what a token affects.
 
-```java
-Button.primary(Text.translatable("oozeclient.action.save"))
-      .icon(Icons.CHECK).size(ControlSize.MD)
-      .onActivate(this::save)
-      .tooltip(Text.translatable("oozeclient.tooltip.save"))
-      .build();
+```rust
+// Illustrative; the real API lands with C3.
+Button::primary(tr("oozeclient.action.save"))
+    .icon(Icon::Check)
+    .size(ControlSize::Md)
+    .on_activate(|ctx| ctx.save())
+    .tooltip(tr("oozeclient.tooltip.save"))
 ```
 
 ---

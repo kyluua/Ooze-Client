@@ -29,6 +29,7 @@ flowchart LR
 
 ### F1 — First launch
 
+0. The player signs in and presses Play in the **official Minecraft Launcher**. Ooze plays no part in authentication.
 1. The vanilla loading overlay completes. Ooze's async start-up (config, fonts, theme, background) ran in parallel.
 2. If Minecraft requires its accessibility onboarding, it shows unchanged first.
 3. **S01 Intro** plays (about 1.6 s, skippable).
@@ -179,3 +180,4 @@ The first applicable step consumes Esc:
 | Mixin injection target missing (optional feature) | Disable the feature (for example, module keybinds fall back to KeyMapping polling) and show an About diagnostic entry. **Never crash** for optional features |
 | HUD widget off-screen after a resolution change | Clamp it into the safe bounds on load; it keeps its anchor |
 | tinyfd unavailable or the dialog fails | Hide **Pick a file…** and show **Open folder** plus the drag-and-drop hint |
+| Native engine not bundled, missing, unsupported on this platform, incompatible or failing to load | **Vanilla-only mode** (TARGET_PLATFORM §5): one multi-line log diagnostic with a next step; one vanilla "Ooze Client is off" toast on the first title screen; no Ooze key mappings, screens, HUD or title-screen changes. Implemented and launch-tested in C0 |

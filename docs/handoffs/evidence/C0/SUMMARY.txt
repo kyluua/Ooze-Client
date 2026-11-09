@@ -1,0 +1,7 @@
+dev-not_bundled            PASS   state=NOT_BUNDLED
+dev-missing_library        PASS   state=MISSING_LIBRARY
+dev-unsupported_platform   PASS   state=UNSUPPORTED_PLATFORM
+dev-incompatible           PASS   state=INCOMPATIBLE
+dev-load_failed            PASS   state=LOAD_FAILED
+prod-not_bundled           PASS   state=NOT_BUNDLED
+prod-fault-ignored         PASS   state=NOT_BUNDLED
