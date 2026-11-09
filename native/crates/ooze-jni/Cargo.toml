@@ -1,0 +1,19 @@
+[package]
+name = "ooze-jni"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+fault-injection = []
+
+[dependencies]
+ooze-core = { path = "../ooze-core" }
+jni = "=0.21.1"
+
+[lints]
+workspace = true
