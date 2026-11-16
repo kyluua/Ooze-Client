@@ -526,3 +526,130 @@ fn keyboard_focus_is_visible_and_tab_reaches_the_main_action() {
     assert!(reached, "Play is reachable with Tab");
     shot(&mut h, "13-keyboard-focus");
 }
+
+/// The interface over Sol's real backend capabilities (no reopen-browser, Java check, export or
+/// up-front install status; one operation at a time).
+fn real_profile(mut snap: Snapshot) -> Snapshot {
+    snap.system.capabilities = crate::core_backend::capabilities();
+    snap.system.system_reduced_motion = None;
+    snap.install = InstallStatus::Unknown;
+    snap
+}
+
+#[test]
+fn over_the_real_backend_unsupported_controls_are_absent() {
+    let mut s = real_profile(snapshot());
+    s.account = Some(account());
+    let (mut h, handle) = harness(s, MotionPreference::Off);
+    settle(&mut h);
+    // Play installs and verifies on demand; the interface says so instead of claiming a status.
+    h.get_by_role_and_label(Role::Button, "Play");
+    assert!(shows(
+        &h,
+        "installs and verifies the game files when you press Play"
+    ));
+    shot(&mut h, "14-real-backend-play");
+    h.get_by_role_and_label(Role::Button, "Play").click();
+    settle(&mut h);
+    assert_eq!(count(&handle, |c| *c == Command::Play), 1);
+    // While an operation runs, nothing else can be submitted (the backend would answer Busy).
+    push_all(
+        &mut h,
+        &handle,
+        vec![Event::Started {
+            op: OperationId(1),
+            kind: OperationKind::Launch,
+        }],
+    );
+    h.get_by_role_and_label(Role::Tab, "Settings").click();
+    settle(&mut h);
+    assert!(
+        h.get_by_role_and_label(Role::Button, "Sign out")
+            .accesskit_node()
+            .is_disabled()
+    );
+    assert!(
+        h.query_by_role_and_label(Role::RadioButton, "Follow Windows")
+            .is_none(),
+        "no OS setting is read, so no 'Follow Windows'"
+    );
+    h.get_by_role_and_label(Role::Tab, "Diagnostics").click();
+    settle(&mut h);
+    assert!(
+        h.query_by_role_and_label(Role::Button, "Export diagnostics")
+            .is_none()
+    );
+}
+
+#[test]
+fn sign_in_over_the_real_backend_has_no_reopen_button() {
+    let (mut h, handle) = harness(real_profile(snapshot()), MotionPreference::Off);
+    settle(&mut h);
+    h.get_by_role_and_label(Role::Button, "Sign in").click();
+    settle(&mut h);
+    let op = OperationId(1);
+    push_all(
+        &mut h,
+        &handle,
+        vec![
+            Event::Started {
+                op,
+                kind: OperationKind::SignIn,
+            },
+            Event::Progress {
+                op,
+                progress: Progress {
+                    step: Step::WaitingForBrowser,
+                    done: 0,
+                    total: None,
+                    unit: ProgressUnit::Steps,
+                },
+            },
+        ],
+    );
+    assert!(
+        h.query_by_role_and_label(Role::Button, "Open browser again")
+            .is_none()
+    );
+    h.get_by_role_and_label(Role::Button, "Cancel");
+    // A coarse backend error shows the backend's own safe message as the body.
+    push_all(
+        &mut h,
+        &handle,
+        vec![Event::Finished {
+            op,
+            outcome: Outcome::Failed(LauncherError {
+                kind: ErrorKind::Authentication,
+                detail: "Sign-in timed out after three minutes. Retry when ready.".into(),
+                retryable: false,
+            }),
+        }],
+    );
+    assert!(shows(&h, "Sign-in didn't complete"));
+    assert!(shows(&h, "timed out after three minutes"));
+}
+
+#[test]
+fn startup_failure_shows_one_clear_page() {
+    let backend = crate::core_backend::FailedBackend {
+        error: LauncherError {
+            kind: ErrorKind::Busy,
+            detail: "Another Ooze launcher is using this data directory.".into(),
+            retryable: false,
+        },
+    };
+    let app = LauncherApp::new(Box::new(backend), AppOptions::default());
+    let mut h = Harness::builder()
+        .with_size(vec2(1120.0, 740.0))
+        .with_pixels_per_point(2.0)
+        .build_ui_state(|ui, app: &mut LauncherApp| app.frame(ui), app);
+    h.set_render_cursor(false);
+    h.run_steps(4);
+    assert!(shows(&h, "Ooze Launcher is already running"));
+    assert!(h.query_by_role_and_label(Role::Tab, "Play").is_none());
+    assert!(
+        h.query_all_by_role(Role::Button).next().is_none(),
+        "no controls that cannot work"
+    );
+    shot(&mut h, "15-startup-busy");
+}

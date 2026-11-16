@@ -1,9 +1,10 @@
-//! The interface's view of the launcher backend: the **proposed** `LAUNCHER_API_V1`.
+//! The interface's internal view of the launcher backend.
 //!
-//! Codex owns the real contract (`docs/launcher/LAUNCHER_API_V1.md`, `ooze-launcher-core`). It
-//! had not been published when this crate was written, so this module states exactly what the
-//! interface needs (see `docs/handoffs/CLAUDE-L0-request.md`). When Codex's contract lands, this
-//! module becomes a thin adapter over it and the screens do not change.
+//! Sol owns the real contract (`docs/launcher/LAUNCHER_API_V1.md`, `ooze-launcher-core`, API 1).
+//! `core_backend.rs` adapts that API to this view; the screens and the reducer only see these
+//! types. Features the real backend does not offer are switched off through [`Capabilities`] so
+//! the interface hides them (Real or absent). The fixture backend (tests, developer preview)
+//! enables everything to exercise every screen.
 //!
 //! Security boundary: nothing in this module can carry a credential. Accounts are display
 //! summaries (username and UUID). Errors carry a typed kind plus a backend-redacted detail string.
@@ -34,7 +35,9 @@ pub struct AccountSummary {
 pub struct ProfileSummary {
     pub minecraft: String,
     pub fabric_loader: String,
+    /// Empty when the release does not state it.
     pub fabric_api: String,
+    /// Empty when the release does not state it.
     pub ooze: String,
     pub java_major: u32,
 }
@@ -82,9 +85,36 @@ pub struct MemoryBounds {
     pub recommended_mib: u32,
 }
 
+/// What the connected backend can actually do. The interface hides every control whose
+/// capability is false.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Capabilities {
+    pub reopen_browser: bool,
+    pub check_java: bool,
+    pub export_diagnostics: bool,
+    pub open_folders: bool,
+    /// The backend reports install status up front. When false, Play prepares the install itself.
+    pub install_status: bool,
+    /// The backend runs several operations at once. When false, the interface submits nothing
+    /// (except Cancel) while any operation or game is active.
+    pub concurrent_operations: bool,
+}
+
+impl Capabilities {
+    pub const ALL: Self = Self {
+        reopen_browser: true,
+        check_java: true,
+        export_diagnostics: true,
+        open_folders: true,
+        install_status: true,
+        concurrent_operations: true,
+    };
+}
+
 /// Facts about this machine and build that the interface displays or uses for defaults.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SystemInfo {
+    pub capabilities: Capabilities,
     pub launcher_version: String,
     /// (major, minor) of the backend API.
     pub api_version: (u16, u16),
@@ -184,6 +214,13 @@ pub enum Step {
     InstallingFabric,
     InstallingOoze,
     Verifying,
+    /// Microsoft, Xbox Live and Minecraft Services, reported as one step.
+    Authorizing,
+    // Install (coarse steps of the real backend)
+    Resolving,
+    Downloading,
+    ExtractingJava,
+    CheckingJava,
     // Launch
     RefreshingSession,
     StartingJava,
@@ -220,6 +257,15 @@ impl Progress {
 /// Typed failure reasons. The interface maps each to a localised title, body and actions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ErrorKind {
+    // Coarse backend categories: the interface shows the backend's safe message as the body.
+    UnsupportedPlatform,
+    Configuration,
+    Io,
+    Network,
+    Authentication,
+    Metadata,
+    JavaRuntime,
+    CredentialStore,
     // Configuration (developer/build problem, not the player's fault)
     AuthNotConfigured,
     /// Minecraft Services rejected the app registration (new apps need Mojang/Microsoft approval).
@@ -381,10 +427,38 @@ pub enum Event {
 /// Called by the backend (from any thread) after it queues events, so the window repaints.
 pub type Waker = Box<dyn Fn() + Send + Sync>;
 
+impl ErrorKind {
+    /// Coarse categories whose title is generic; the backend's (safe, redacted) message is the
+    /// most precise explanation available and becomes the body.
+    pub fn body_from_backend(self) -> bool {
+        matches!(
+            self,
+            Self::UnsupportedPlatform
+                | Self::Configuration
+                | Self::Io
+                | Self::Network
+                | Self::Authentication
+                | Self::Metadata
+                | Self::JavaRuntime
+                | Self::CredentialStore
+                | Self::Internal
+        )
+    }
+}
+
 /// The backend as the interface uses it. Implementations must never block: work runs on the
 /// backend's own threads and results arrive through [`Backend::drain_events`].
 pub trait Backend {
     fn api_version(&self) -> (u16, u16);
+    /// Set when the backend could not start (unsupported platform, another launcher running,
+    /// unreadable settings). The interface then shows only this error.
+    fn startup_error(&self) -> Option<LauncherError> {
+        None
+    }
+    /// True while events may arrive and the backend has no waker: the window then polls.
+    fn wants_polling(&self) -> bool {
+        false
+    }
     fn set_waker(&mut self, waker: Waker);
     /// Accept or reject a command immediately. Rejections are typed (`Busy`, `AlreadyRunning`, ...).
     fn submit(&mut self, command: Command) -> Result<OperationId, LauncherError>;

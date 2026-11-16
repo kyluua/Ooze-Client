@@ -7,8 +7,10 @@ license = "MIT"
 publish = false
 description = "Ooze Launcher desktop interface: screens, components, navigation, focus and product UI state over the launcher backend API"
 
-# Codex owns the shared launcher workspace (launcher/Cargo.toml, Cargo.lock) and registers this
-# crate there; until it exists this crate builds standalone. See docs/handoffs/CLAUDE-L0-request.md.
+# Sol owns the shared launcher workspace (launcher/Cargo.toml, Cargo.lock). Until Sol adds this
+# crate to its members (requested in docs/handoffs/CLAUDE-L0.md), it is its own workspace root so
+# both build without editing Sol's manifest. Remove this table once it is a member.
+[workspace]
 
 [features]
 default = []
@@ -16,13 +18,19 @@ default = []
 dev-fixtures = []
 
 [dependencies]
+ooze-launcher-core = { path = "../ooze-launcher-core" }
 eframe = { version = "=0.37.0", default-features = false, features = ["accesskit", "wgpu", "x11", "wayland"] }
 regex = "1.13"
 rfd = "0.18"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [dev-dependencies]
 egui_kittest = { version = "=0.37.0", features = ["snapshot", "wgpu"] }
+
+[[bin]]
+name = "ooze-launcher"
+path = "src/bin/ooze-launcher.rs"
 
 [[bin]]
 name = "ooze-launcher-preview"

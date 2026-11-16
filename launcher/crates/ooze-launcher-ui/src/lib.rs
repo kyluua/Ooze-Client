@@ -2,8 +2,8 @@
 //!
 //! Screens, components, navigation, focus, localisation and product UI state for the standalone
 //! Ooze Launcher. The backend (Microsoft sign-in, installation, Java and process lifecycle,
-//! credential storage, packaging) is Codex's `ooze-launcher-core`; this crate talks to it only
-//! through [`api::Backend`].
+//! credential storage, packaging) is Sol's `ooze-launcher-core` (LAUNCHER_API_V1); this crate
+//! reaches it only through [`core_backend::CoreBackend`], which implements [`api::Backend`].
 //!
 //! Hard rules for this crate:
 //! - It never receives, stores, logs or displays a credential. Accounts are display summaries.
@@ -21,6 +21,7 @@ compile_error!(
 
 pub mod api;
 pub mod app;
+pub mod core_backend;
 pub mod i18n;
 pub mod motion;
 pub mod paint;
@@ -37,8 +38,7 @@ mod ui_tests;
 
 pub use app::{AppOptions, LauncherApp};
 
-/// Open the launcher window over `backend` and run until it closes. Codex's packaged
-/// `ooze-launcher` binary calls this with the real `ooze-launcher-core` backend.
+/// Open the launcher window over `backend` and run until it closes.
 pub fn run(backend: Box<dyn api::Backend>) -> eframe::Result {
     let title = i18n::Strings::en_us().get("app.name").to_owned();
     eframe::run_native(

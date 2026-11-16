@@ -19,6 +19,7 @@ pub fn account() -> AccountSummary {
 pub fn snapshot() -> Snapshot {
     Snapshot {
         system: SystemInfo {
+            capabilities: Capabilities::ALL,
             launcher_version: "0.1.0-l0 (fixture)".into(),
             api_version: (API_MAJOR, 0),
             default_install_root: PathBuf::from(r"C:\Users\Player\AppData\Roaming\.ooze"),
@@ -27,7 +28,7 @@ pub fn snapshot() -> Snapshot {
                 max_mib: 12288,
                 recommended_mib: 4096,
             },
-            system_reduced_motion: None,
+            system_reduced_motion: Some(false),
         },
         profile: ProfileSummary {
             minecraft: "1.21.11".into(),

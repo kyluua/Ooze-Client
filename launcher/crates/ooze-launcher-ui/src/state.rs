@@ -12,9 +12,9 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 
 use crate::api::{
-    AccountSummary, Command, ErrorKind, Event, GameSessionId, GameState, InstallStatus, JavaInfo,
-    LauncherError, LogLine, OperationId, OperationKind, Outcome, Payload, ProfileSummary, Progress,
-    Settings, Snapshot, Step, SystemInfo, WhilePlaying,
+    AccountSummary, Capabilities, Command, ErrorKind, Event, GameSessionId, GameState,
+    InstallStatus, JavaInfo, LauncherError, LogLine, OperationId, OperationKind, Outcome, Payload,
+    ProfileSummary, Progress, Settings, Snapshot, Step, SystemInfo, WhilePlaying,
 };
 use crate::redact::redact;
 
@@ -219,10 +219,27 @@ impl Model {
             return Primary::SignIn;
         }
         match self.install {
-            InstallStatus::Unknown | InstallStatus::NotInstalled => Primary::Install,
             InstallStatus::NeedsRepair => Primary::Repair,
             InstallStatus::Ready => Primary::Play,
+            // A backend without up-front install status installs and verifies as part of Play.
+            InstallStatus::Unknown | InstallStatus::NotInstalled
+                if !self.capabilities().install_status =>
+            {
+                Primary::Play
+            }
+            InstallStatus::Unknown | InstallStatus::NotInstalled => Primary::Install,
         }
+    }
+
+    pub fn capabilities(&self) -> Capabilities {
+        self.system
+            .as_ref()
+            .map_or(Capabilities::ALL, |s| s.capabilities)
+    }
+
+    /// True while any tracked operation or the game is active.
+    pub fn busy(&self) -> bool {
+        !self.ops.is_empty() || self.game_live()
     }
 
     /// The command the primary button submits, if any.
@@ -246,6 +263,14 @@ impl Model {
         }
         let busy_install = self.prepare_op().is_some();
         let busy_launch = self.launch_op().is_some() || self.game_live();
+        let caps = self.capabilities();
+        let local = matches!(
+            command,
+            Command::Cancel { .. } | Command::ReopenSignInBrowser { .. } | Command::OpenFolder(_)
+        );
+        if !caps.concurrent_operations && !local && self.busy() {
+            return false;
+        }
         match command {
             Command::Play => self.primary() == Primary::Play,
             Command::Prepare { .. } => !busy_install && !busy_launch,
@@ -259,9 +284,11 @@ impl Model {
                         .is_none()
             }
             Command::Cancel { op } => self.op(*op).is_some_and(|o| !o.cancelling),
-            Command::ReopenSignInBrowser { op } => self.sign_in_op().is_some_and(|o| o.id == *op),
+            Command::ReopenSignInBrowser { op } => {
+                caps.reopen_browser && self.sign_in_op().is_some_and(|o| o.id == *op)
+            }
             Command::CheckJava { .. } => {
-                !matches!(self.java_check, Some(JavaCheckView::Checking(_)))
+                caps.check_java && !matches!(self.java_check, Some(JavaCheckView::Checking(_)))
             }
             Command::UpdateSettings(_) => {
                 !busy_launch
@@ -269,10 +296,13 @@ impl Model {
                         .running(|k| k == OperationKind::UpdateSettings)
                         .is_none()
             }
-            Command::ExportDiagnostics => self
-                .running(|k| k == OperationKind::ExportDiagnostics)
-                .is_none(),
-            Command::OpenFolder(_) => true,
+            Command::ExportDiagnostics => {
+                caps.export_diagnostics
+                    && self
+                        .running(|k| k == OperationKind::ExportDiagnostics)
+                        .is_none()
+            }
+            Command::OpenFolder(_) => caps.open_folders,
         }
     }
 

@@ -218,16 +218,27 @@ impl LauncherApp {
         )
     }
 
+    /// Apply queued backend events. Called before every frame and from `App::logic`, which eframe
+    /// also runs while the window is hidden or minimised, so the backend's bounded queue drains.
+    pub fn pump(&mut self, ctx: &Context) {
+        self.backend.drain_events(&mut self.events);
+        for event in self.events.drain(..) {
+            self.model.apply(event);
+        }
+        if self.backend.wants_polling() {
+            // The real backend has no waker: poll while an operation or the game is active.
+            let ms = if self.model.game_live() { 250 } else { 100 };
+            ctx.request_repaint_after(std::time::Duration::from_millis(ms));
+        }
+    }
+
     /// Run one frame. `eframe::App::ui` and the test harness both call this.
     pub fn frame(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         if !self.initialised {
             self.initialise(&ctx);
         }
-        self.backend.drain_events(&mut self.events);
-        for event in self.events.drain(..) {
-            self.model.apply(event);
-        }
+        self.pump(&ctx);
         self.poll_pick();
         if let Some(effect) = self.model.take_window_effect() {
             match effect {
@@ -319,6 +330,33 @@ impl LauncherApp {
             )
             .show(ui, |ui| self.status_line(ui, kit));
 
+        if let Some(error) = self.backend.startup_error() {
+            CentralPanel::default()
+                .frame(Frame::new().fill(th.c.canvas))
+                .show(ui, |ui| {
+                    self.centered(ui, kit, |_, ui, kit| {
+                        let (title, body) = match error.kind {
+                            ErrorKind::UnsupportedPlatform => (
+                                "app.startup.unsupported.title",
+                                "app.startup.unsupported.body",
+                            ),
+                            ErrorKind::Busy => ("app.startup.busy.title", "app.startup.busy.body"),
+                            _ => ("app.startup.failed.title", "app.startup.failed.body"),
+                        };
+                        kit.title(ui, kit.t(title));
+                        kit.body(ui, kit.t(body));
+                        ui.add_space(th.space.sm);
+                        kit.caption(
+                            ui,
+                            &kit.tr.fmt(
+                                "error.details_line",
+                                &[&format!("{:?}", error.kind), &redact(&error.detail)],
+                            ),
+                        );
+                    });
+                });
+            return;
+        }
         let api = self.backend.api_version();
         if api.0 != API_MAJOR {
             CentralPanel::default()
@@ -653,18 +691,18 @@ impl LauncherApp {
                 th.c.text_primary,
                 kit.tr.fmt("play.profile_title", &[&profile.minecraft]),
             );
-            kit.caption(
-                ui,
-                &kit.tr.fmt(
-                    "play.profile_versions",
-                    &[
-                        &profile.fabric_loader,
-                        &profile.fabric_api,
-                        &profile.ooze,
-                        &profile.java_major.to_string(),
-                    ],
-                ),
-            );
+            let java = profile.java_major.to_string();
+            let parts: Vec<String> = [
+                ("play.version.fabric_loader", profile.fabric_loader.as_str()),
+                ("play.version.fabric_api", profile.fabric_api.as_str()),
+                ("play.version.ooze", profile.ooze.as_str()),
+                ("play.version.java", java.as_str()),
+            ]
+            .into_iter()
+            .filter(|(_, v)| !v.is_empty())
+            .map(|(k, v)| kit.tr.fmt(k, &[v]))
+            .collect();
+            kit.caption(ui, &parts.join(" · "));
         }
         ui.add_space(th.space.lg);
 
@@ -687,6 +725,9 @@ impl LauncherApp {
                 }
                 InstallStatus::NeedsRepair => {
                     (Icon::Warning, th.c.warning, "install.status.needs_repair")
+                }
+                InstallStatus::Unknown if !self.model.capabilities().install_status => {
+                    (Icon::Info, th.c.info, "install.status.checked_on_play")
                 }
                 InstallStatus::Unknown => (Icon::Info, th.c.info, "install.status.unknown"),
             };
@@ -747,14 +788,15 @@ impl LauncherApp {
         kit.label_step(ui, step, progress);
         ui.horizontal(|ui| {
             let waiting = step == Step::WaitingForBrowser;
-            if kit
-                .button(
-                    ui,
-                    kit.t("sign_in.reopen_browser"),
-                    ButtonKind::Secondary,
-                    waiting && !cancelling,
-                )
-                .clicked()
+            if self.model.capabilities().reopen_browser
+                && kit
+                    .button(
+                        ui,
+                        kit.t("sign_in.reopen_browser"),
+                        ButtonKind::Secondary,
+                        waiting && !cancelling,
+                    )
+                    .clicked()
             {
                 self.submit(Command::ReopenSignInBrowser { op });
             }
@@ -845,7 +887,8 @@ impl LauncherApp {
                     None => kit.t("notice.game_crashed.body").to_owned(),
                 };
                 let mut actions = vec![(kit.t("notice.action.view_logs"), ButtonKind::Secondary)];
-                if crash_report.is_some() {
+                let can_open = crash_report.is_some() && self.model.capabilities().open_folders;
+                if can_open {
                     actions.push((
                         kit.t("notice.action.open_crash_reports"),
                         ButtonKind::Secondary,
@@ -860,9 +903,7 @@ impl LauncherApp {
                     &actions,
                 ) {
                     Some(0) => self.page = Page::Diagnostics,
-                    Some(1) if crash_report.is_some() => {
-                        self.submit(Command::OpenFolder(Folder::CrashReports))
-                    }
+                    Some(1) if can_open => self.submit(Command::OpenFolder(Folder::CrashReports)),
                     Some(_) => self.model.dismiss_notice(),
                     None => {}
                 }
@@ -935,7 +976,12 @@ impl LauncherApp {
             ButtonKind::Quiet,
         ));
         actions.push((kit.t("common.dismiss"), ButtonKind::Quiet));
-        let body = kit.t(body_key).to_owned();
+        // Coarse backend categories carry the backend's safe, specific message; typed kinds use our copy.
+        let body = if error.kind.body_from_backend() && !error.detail.is_empty() {
+            redact(&error.detail).into_owned()
+        } else {
+            kit.t(body_key).to_owned()
+        };
         let pressed = kit.banner(ui, Tone::Danger, kit.t(title_key), &body, &actions);
         if self.details_open {
             ui.add_space(th.space.xs);
@@ -1071,23 +1117,33 @@ impl LauncherApp {
         ui.add_space(th.space.lg);
         kit.card(ui, Surface::Card, |ui| {
             kit.section(ui, kit.t("settings.a11y.section"));
+            // "Follow Windows" only when the backend can actually read the Windows setting.
+            let follow = self
+                .model
+                .system
+                .as_ref()
+                .is_some_and(|s| s.system_reduced_motion.is_some());
+            let mut motion_options = Vec::with_capacity(4);
+            if follow {
+                motion_options.push((
+                    MotionPreference::FollowSystem,
+                    kit.t("settings.a11y.motion.system"),
+                ));
+            }
+            motion_options.extend([
+                (MotionPreference::Full, kit.t("settings.a11y.motion.full")),
+                (
+                    MotionPreference::Reduced,
+                    kit.t("settings.a11y.motion.reduced"),
+                ),
+                (MotionPreference::Off, kit.t("settings.a11y.motion.off")),
+            ]);
             ui.add_space(th.space.sm);
             kit.segmented(
                 ui,
                 "motion",
                 kit.t("settings.a11y.motion"),
-                &[
-                    (
-                        MotionPreference::FollowSystem,
-                        kit.t("settings.a11y.motion.system"),
-                    ),
-                    (MotionPreference::Full, kit.t("settings.a11y.motion.full")),
-                    (
-                        MotionPreference::Reduced,
-                        kit.t("settings.a11y.motion.reduced"),
-                    ),
-                    (MotionPreference::Off, kit.t("settings.a11y.motion.off")),
-                ],
+                &motion_options,
                 &mut draft.motion,
             );
             kit.caption(ui, kit.t("settings.a11y.motion_note"));
@@ -1218,14 +1274,15 @@ impl LauncherApp {
             || self.model.launch_op().is_some()
             || self.model.game_live();
         ui.horizontal_wrapped(|ui| {
-            if kit
-                .button(
-                    ui,
-                    kit.t("install.open_folder"),
-                    ButtonKind::Secondary,
-                    true,
-                )
-                .clicked()
+            if self.model.capabilities().open_folders
+                && kit
+                    .button(
+                        ui,
+                        kit.t("install.open_folder"),
+                        ButtonKind::Secondary,
+                        true,
+                    )
+                    .clicked()
             {
                 self.submit(Command::OpenFolder(Folder::InstallRoot));
             }
@@ -1255,7 +1312,7 @@ impl LauncherApp {
                 ui,
                 kit.t("install.repair_action"),
                 ButtonKind::Secondary,
-                !busy && self.model.account.is_some(),
+                !busy && self.model.may_submit(&Command::Prepare { repair: true }),
             )
             .clicked()
         {
@@ -1330,18 +1387,28 @@ impl LauncherApp {
                     {
                         self.start_pick(PickTarget::Java);
                     }
-                    if kit
-                        .button(
-                            ui,
-                            kit.t("settings.java.check"),
-                            ButtonKind::Secondary,
-                            !self.java_path.trim().is_empty() && self.model.may_submit(&check),
-                        )
-                        .clicked()
+                    if self.model.capabilities().check_java
+                        && kit
+                            .button(
+                                ui,
+                                kit.t("settings.java.check"),
+                                ButtonKind::Secondary,
+                                !self.java_path.trim().is_empty() && self.model.may_submit(&check),
+                            )
+                            .clicked()
                     {
                         self.submit(check);
                     }
                 });
+                if !self.model.capabilities().check_java {
+                    // The backend validates Java (21, x64) when saving is used for a launch.
+                    let typed = self.java_path.trim();
+                    if !typed.is_empty() {
+                        draft.java = JavaChoice::Custom(PathBuf::from(typed));
+                    }
+                    kit.caption(ui, kit.t("settings.java.checked_on_play"));
+                    return;
+                }
                 match self.model.java_check.clone() {
                     Some(JavaCheckView::Checking(_)) => {
                         ui.horizontal(|ui| {
@@ -1434,31 +1501,35 @@ impl LauncherApp {
                 ui.ctx().copy_text(text);
                 self.live_text = kit.t("diag.copied").to_owned();
             }
-            if kit
-                .button(
-                    ui,
-                    kit.t("diag.export"),
-                    ButtonKind::Secondary,
-                    self.model.may_submit(&Command::ExportDiagnostics),
-                )
-                .clicked()
+            let caps = self.model.capabilities();
+            if caps.export_diagnostics
+                && kit
+                    .button(
+                        ui,
+                        kit.t("diag.export"),
+                        ButtonKind::Secondary,
+                        self.model.may_submit(&Command::ExportDiagnostics),
+                    )
+                    .clicked()
             {
                 self.submit(Command::ExportDiagnostics);
             }
-            if kit
-                .button(ui, kit.t("diag.open_logs"), ButtonKind::Secondary, true)
-                .clicked()
+            if caps.open_folders
+                && kit
+                    .button(ui, kit.t("diag.open_logs"), ButtonKind::Secondary, true)
+                    .clicked()
             {
                 self.submit(Command::OpenFolder(Folder::Logs));
             }
-            if kit
-                .button(
-                    ui,
-                    kit.t("notice.action.open_crash_reports"),
-                    ButtonKind::Secondary,
-                    true,
-                )
-                .clicked()
+            if caps.open_folders
+                && kit
+                    .button(
+                        ui,
+                        kit.t("notice.action.open_crash_reports"),
+                        ButtonKind::Secondary,
+                        true,
+                    )
+                    .clicked()
             {
                 self.submit(Command::OpenFolder(Folder::CrashReports));
             }
@@ -1640,6 +1711,10 @@ impl LauncherApp {
 }
 
 impl eframe::App for LauncherApp {
+    fn logic(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        self.pump(ctx);
+    }
+
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         if ui.ctx().input(|i| i.viewport().close_requested()) && !self.on_close_requested() {
             ui.ctx().send_viewport_cmd(ViewportCommand::CancelClose);
@@ -1739,6 +1814,11 @@ pub fn step_key(step: Step) -> &'static str {
         Step::InstallingFabric => "step.installing_fabric",
         Step::InstallingOoze => "step.installing_ooze",
         Step::Verifying => "step.verifying",
+        Step::Authorizing => "step.authorizing",
+        Step::Resolving => "step.resolving",
+        Step::Downloading => "step.downloading",
+        Step::ExtractingJava => "step.extracting_java",
+        Step::CheckingJava => "step.checking_java",
         Step::RefreshingSession => "step.refreshing_session",
         Step::StartingJava => "step.starting_java",
         Step::WaitingForTitleScreen => "step.waiting_for_title_screen",
@@ -1749,6 +1829,20 @@ pub fn step_key(step: Step) -> &'static str {
 /// Localisation keys (title, body) for each typed error.
 pub fn error_keys(kind: ErrorKind) -> (&'static str, &'static str) {
     match kind {
+        ErrorKind::UnsupportedPlatform => (
+            "error.unsupported_platform.title",
+            "error.unsupported_platform.body",
+        ),
+        ErrorKind::Configuration => ("error.configuration.title", "error.configuration.body"),
+        ErrorKind::Io => ("error.io.title", "error.io.body"),
+        ErrorKind::Network => ("error.network.title", "error.network.body"),
+        ErrorKind::Authentication => ("error.authentication.title", "error.authentication.body"),
+        ErrorKind::Metadata => ("error.metadata.title", "error.metadata.body"),
+        ErrorKind::JavaRuntime => ("error.java_runtime.title", "error.java_runtime.body"),
+        ErrorKind::CredentialStore => (
+            "error.credential_store.title",
+            "error.credential_store.body",
+        ),
         ErrorKind::AuthNotConfigured => (
             "error.auth_not_configured.title",
             "error.auth_not_configured.body",
