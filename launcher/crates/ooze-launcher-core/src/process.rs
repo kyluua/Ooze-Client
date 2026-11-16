@@ -246,7 +246,13 @@ pub(crate) fn launch(
         .stderr(Stdio::piped());
     // Never Debug/print cmd: its game arguments contain the session token.
     let mut child=cmd.spawn().map_err(|_|error(ErrorCode::Process,"Java could not be started. Check the runtime, Windows application policy and installation."))?;
-    on_started(child.id());
+    let pid = child.id();
+    if let Err(error) = crate::game_guard::record(&settings.instance_dir, pid) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(error);
+    }
+    on_started(pid);
     let stdout = child.stdout.take().ok_or_else(io_error)?;
     let stderr = child.stderr.take().ok_or_else(io_error)?;
     let handles = [
@@ -268,6 +274,7 @@ pub(crate) fn launch(
     for handle in handles {
         let _ = handle.join();
     }
+    crate::game_guard::clear(&settings.instance_dir, pid)?;
     Ok(status.code())
 }
 fn stream<R: Read + Send + 'static, F: Fn(String) + Send + Sync + 'static>(
@@ -281,11 +288,7 @@ fn stream<R: Read + Send + 'static, F: Fn(String) + Send + Sync + 'static>(
         let mut reader = BufReader::new(input);
         let mut line = Vec::new();
         let mut oversized = false;
-        loop {
-            let available = match reader.fill_buf() {
-                Ok(b) => b,
-                Err(_) => break,
-            };
+        while let Ok(available) = reader.fill_buf() {
             if available.is_empty() {
                 if !line.is_empty() || oversized {
                     emit_line(&line, oversized, label, &log, &redactor, &*callback);
@@ -329,11 +332,11 @@ fn emit_line(
         redactor.line(String::from_utf8_lossy(line).trim_end())
     };
     let text = format!("[{label}] {text}");
-    if let Ok(mut log) = log.lock() {
-        if log.1 + text.len() + 1 <= 16 * 1024 * 1024 {
-            let _ = writeln!(log.0, "{text}");
-            log.1 += text.len() + 1;
-        }
+    if let Ok(mut log) = log.lock()
+        && log.1 + text.len() < 16 * 1024 * 1024
+    {
+        let _ = writeln!(log.0, "{text}");
+        log.1 += text.len() + 1;
     }
     callback(text);
 }
@@ -341,6 +344,98 @@ fn emit_line(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(windows)]
+    fn real_java21_process_nonzero_exit_and_redacted_logs() {
+        let java_home = std::env::var_os("JAVA_HOME_21_X64")
+            .expect("Set JAVA_HOME_21_X64 to an actual Java 21 JDK for this test");
+        let jdk = std::path::PathBuf::from(java_home);
+        let dir = tempfile::Builder::new()
+            .prefix("ooze paths with spaces ")
+            .tempdir()
+            .unwrap();
+        let root = dir.path().join("generation");
+        fs::create_dir(&root).unwrap();
+        fs::create_dir(root.join("natives")).unwrap();
+        fs::create_dir(root.join("mods")).unwrap();
+        let source = root.join("LauncherFixture.java");
+        fs::write(&source,r#"public class LauncherFixture { public static void main(String[] args) throws Exception { Thread.sleep(500); System.out.println("--accessToken " + args[0]); System.err.println("Authorization: Bearer " + args[0]); System.exit(7); } }"#).unwrap();
+        assert!(
+            command(&jdk.join("bin/javac.exe"))
+                .arg(&source)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let instance = dir.path().join("game");
+        fs::create_dir(&instance).unwrap();
+        let settings = Settings {
+            instance_dir: instance,
+            java_path: Some(jdk.join("bin/java.exe")),
+            memory_mib: 1024,
+        };
+        let prepared = Prepared {
+            root: root.clone(),
+            installation: metadata::Installation {
+                schema: 1,
+                release_sha256: "test-only".into(),
+                directory: "test-only".into(),
+                files: vec![],
+                classpath: vec!["classes".into()],
+                main_class: "LauncherFixture".into(),
+                jvm_args: vec!["-cp".into(), "${classpath}".into()],
+                game_args: vec!["${auth_access_token}".into()],
+                asset_index: "29".into(),
+                managed_java: None,
+                version_name: "test-only".into(),
+            },
+        };
+        // A private test fixture exercises process/redaction only, never product authentication.
+        fs::create_dir(root.join("classes")).unwrap();
+        fs::copy(
+            root.join("LauncherFixture.class"),
+            root.join("classes/LauncherFixture.class"),
+        )
+        .unwrap();
+        for _ in 0..2 {
+            let session = Session {
+                token: Zeroizing::new("private-test-token".into()),
+                account: crate::api::AccountSummary {
+                    username: "Fixture".into(),
+                    uuid: "0".repeat(32),
+                },
+                xuid: "".into(),
+            };
+            assert_eq!(
+                launch(
+                    &prepared,
+                    &settings,
+                    session,
+                    "test-only",
+                    dir.path(),
+                    |pid| assert!(pid > 0),
+                    |line| assert!(!line.contains("private-test-token"))
+                )
+                .unwrap(),
+                Some(7)
+            );
+            assert!(
+                !settings
+                    .instance_dir
+                    .join(".ooze-running-game.json")
+                    .exists()
+            );
+        }
+        for file in fs::read_dir(dir.path().join("logs")).unwrap() {
+            assert!(
+                !fs::read_to_string(file.unwrap().path())
+                    .unwrap()
+                    .contains("private-test-token")
+            );
+        }
+        let args = fs::read_to_string(root.join("classpath.args")).unwrap();
+        assert!(!args.contains("private-test-token"));
+    }
     #[test]
     fn java_21_only_and_argfile_paths() {
         assert!(validate_properties(true, "java.version = 21.0.12\nos.arch = amd64").is_ok());

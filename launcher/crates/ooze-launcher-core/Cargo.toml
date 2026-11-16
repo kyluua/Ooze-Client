@@ -20,6 +20,7 @@ fs2.workspace = true
 webbrowser.workspace = true
 regex.workspace = true
 zeroize.workspace = true
+sysinfo.workspace = true
 keyring.workspace = true
 
 [lints]

@@ -23,6 +23,7 @@ fs2 = "0.4"
 webbrowser = "1"
 regex = "1"
 zeroize = "1"
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
 clap = { version = "4", features = ["derive"] }
 

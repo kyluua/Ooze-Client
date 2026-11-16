@@ -186,23 +186,23 @@ impl Launcher {
     }
     pub fn cancel(&self, id: OperationId) -> bool {
         let state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(active) = &state.active {
-            if active.id == id && !active.game_committed {
-                active.cancel.store(true, Ordering::Release);
-                return true;
-            }
+        if let Some(active) = &state.active
+            && active.id == id
+            && !active.game_committed
+        {
+            active.cancel.store(true, Ordering::Release);
+            return true;
         }
         false
     }
 }
 impl Drop for Launcher {
     fn drop(&mut self) {
-        if let Ok(state) = self.inner.state.lock() {
-            if let Some(active) = &state.active {
-                if !active.game_committed {
-                    active.cancel.store(true, Ordering::Release);
-                }
-            }
+        if let Ok(state) = self.inner.state.lock()
+            && let Some(active) = &state.active
+            && !active.game_committed
+        {
+            active.cancel.store(true, Ordering::Release);
         }
     }
 }
@@ -233,13 +233,34 @@ impl Context {
     fn client_id(&self) -> Result<&str> {
         self.inner.config.microsoft_client_id.as_deref().filter(|s|!s.is_empty()).ok_or_else(||error(ErrorCode::Configuration,"The developer must configure Ooze's owned Microsoft OAuth client ID. Players do not register applications."))
     }
+    fn credential_key(&self) -> Result<String> {
+        use sha2::Digest;
+        let path = self
+            .inner
+            .config
+            .data_dir
+            .canonicalize()
+            .map_err(|_| io_error())?
+            .to_string_lossy()
+            .to_ascii_lowercase();
+        Ok(format!(
+            "{}-{}",
+            self.client_id()?,
+            hex::encode(sha2::Sha256::digest(path.as_bytes()))
+        ))
+    }
     fn set_account(&self, account: Option<AccountSummary>) -> Result<()> {
         let mut state = self.inner.state.lock().map_err(|_| io_error())?;
+        let previous = state.saved.account.clone();
         state.saved.account = account.clone();
-        util::atomic_json(
+        let result = util::atomic_json(
             &util::join(&self.inner.config.data_dir, "settings.json")?,
             &state.saved,
-        )?;
+        );
+        if result.is_err() {
+            state.saved.account = previous;
+        }
+        result?;
         drop(state);
         self.control(LauncherEvent::AccountChanged {
             id: self.id,
@@ -264,16 +285,20 @@ impl Context {
             return result;
         }
         if matches!(command, LauncherCommand::SignOut) {
-            auth::forget(self.client_id()?)?;
+            auth::forget(&self.credential_key()?)?;
             return self.set_account(None);
         }
         let http = Http::new()?;
         if matches!(command, LauncherCommand::SignIn) {
             self.progress(Stage::Authorizing, 0, None);
-            let session =
-                auth::authenticate(self.client_id()?, true, &http, &|| self.check(), &|| {
-                    self.progress(Stage::AwaitingBrowser, 0, None)
-                })?;
+            let session = auth::authenticate(
+                self.client_id()?,
+                &self.credential_key()?,
+                true,
+                &http,
+                &|| self.check(),
+                &|| self.progress(Stage::AwaitingBrowser, 0, None),
+            )?;
             return self.set_account(Some(session.account));
         }
         let settings = self
@@ -286,8 +311,14 @@ impl Context {
             .clone();
         let session = if matches!(command, LauncherCommand::Launch) {
             self.progress(Stage::Authorizing, 0, None);
-            let session =
-                auth::authenticate(self.client_id()?, false, &http, &|| self.check(), &|| {})?;
+            let session = auth::authenticate(
+                self.client_id()?,
+                &self.credential_key()?,
+                false,
+                &http,
+                &|| self.check(),
+                &|| {},
+            )?;
             self.set_account(Some(session.account.clone()))?;
             Some(session)
         } else {
@@ -357,6 +388,40 @@ fn validate_settings(settings: &Settings) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(windows)]
+    fn repeated_play_busy_and_cancel_are_bounded() {
+        let dir = tempfile::tempdir().unwrap();
+        let launcher = Launcher::open(LauncherConfig {
+            data_dir: dir.path().to_owned(),
+            release_manifest: dir.path().join("release.json"),
+            microsoft_client_id: None,
+        })
+        .unwrap();
+        let flag = Arc::new(AtomicBool::new(false));
+        launcher.inner.state.lock().unwrap().active = Some(Active {
+            id: OperationId(42),
+            cancel: flag.clone(),
+            game_committed: false,
+        });
+        assert_eq!(
+            launcher.submit(LauncherCommand::Launch).unwrap_err().code,
+            ErrorCode::Busy
+        );
+        assert!(!launcher.cancel(OperationId(41)));
+        assert!(launcher.cancel(OperationId(42)));
+        assert!(flag.load(Ordering::Acquire));
+        launcher
+            .inner
+            .state
+            .lock()
+            .unwrap()
+            .active
+            .as_mut()
+            .unwrap()
+            .game_committed = true;
+        assert!(!launcher.cancel(OperationId(42)));
+    }
     #[test]
     fn invalid_memory_and_relative_paths() {
         let settings = Settings {

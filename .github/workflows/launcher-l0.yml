@@ -16,6 +16,7 @@ jobs:
       - name: Rust format, lint and backend tests
         shell: pwsh
         run: |
+          $env:JAVA_HOME_21_X64 = $env:JAVA_HOME_21_X64
           cargo fmt --manifest-path launcher/Cargo.toml --all -- --check
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cargo clippy --manifest-path launcher/Cargo.toml --locked --workspace --all-targets -- -D warnings
@@ -28,8 +29,28 @@ jobs:
           cargo build --manifest-path launcher/Cargo.toml --locked --release --workspace
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           ./launcher/target/release/ooze-launcher-cli.exe --version
+      - name: Assemble real Ooze mod with production Windows engine
+        shell: pwsh
+        run: |
+          ./native/tools/build-g0.ps1 -JavaHome $env:JAVA_HOME_21_X64
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $env:JAVA_HOME = $env:JAVA_HOME_21_X64
+          ./gradlew.bat build buildAll --no-daemon --console=plain
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Prepare portable review package and exercise install/repair
+        shell: pwsh
+        run: |
+          ./launcher/packaging/prepare-release.ps1 -OozeJar './build/dist/ooze-client-0.1.0-alpha.0+mc1.21.11.jar' -CliExe './launcher/target/release/ooze-launcher-cli.exe' -OutputDirectory './launcher/dist/ooze-l0-windows-x64'
+          $package = (Resolve-Path './launcher/dist/ooze-l0-windows-x64').Path
+          $testData = Join-Path $env:RUNNER_TEMP 'Ooze install with spaces'
+          & "$package/ooze-launcher-cli.exe" --data-dir $testData install
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & "$package/ooze-launcher-cli.exe" --data-dir $testData repair
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & "$package/ooze-launcher-cli.exe" --data-dir $testData status
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ooze-launcher-l0-cli-windows-x64
-          path: launcher/target/release/ooze-launcher-cli.exe
+          name: ooze-launcher-l0-backend-windows-x64
+          path: launcher/dist/ooze-l0-windows-x64/
           if-no-files-found: error

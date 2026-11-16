@@ -56,6 +56,7 @@ pub(crate) fn claim_instance(instance: &Path) -> Result<fs::File> {
             "Another launcher is using this game instance.",
         )
     })?;
+    crate::game_guard::check(instance)?;
     Ok(lock)
 }
 pub(crate) fn prepare(
@@ -77,6 +78,8 @@ pub(crate) fn prepare(
     if pointer.is_file() {
         let current: Installation = util::read_json(&pointer)?;
         if current.schema == 1
+            && !current.files.is_empty()
+            && current.files.len() <= 100000
             && current.release_sha256 == release_hash
             && (settings.java_path.is_some() || current.managed_java.is_some())
         {

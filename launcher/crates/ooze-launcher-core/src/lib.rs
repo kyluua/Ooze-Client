@@ -2,6 +2,7 @@
 pub mod api;
 mod auth;
 mod backend;
+mod game_guard;
 mod install;
 mod metadata;
 mod net;

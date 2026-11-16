@@ -10,7 +10,7 @@ use oauth2::{
 };
 use serde_json::{Value, json};
 use std::{
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
     time::{Duration, Instant},
 };
@@ -52,12 +52,21 @@ pub(crate) fn forget(id: &str) -> Result<()> {
 }
 pub(crate) fn authenticate(
     id: &str,
+    credential_key: &str,
     interactive: bool,
     http: &Http,
     check: &impl Fn() -> Result<()>,
     browser_wait: &impl Fn(),
 ) -> Result<Session> {
-    if id.len() != 36 || !id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+    if id.len() != 36
+        || !id.bytes().enumerate().all(|(i, c)| {
+            if [8, 13, 18, 23].contains(&i) {
+                c == b'-'
+            } else {
+                c.is_ascii_hexdigit()
+            }
+        })
+    {
         return Err(error(
             ErrorCode::Configuration,
             "Configure Ooze's owned public Microsoft client ID before signing in.",
@@ -109,7 +118,7 @@ pub(crate) fn authenticate(
             .request(&http.client)
             .map_err(|_| auth_error())?
     } else {
-        let refresh = Zeroizing::new(credential(id)?.get_password().map_err(|_| {
+        let refresh = Zeroizing::new(credential(credential_key)?.get_password().map_err(|_| {
             error(
                 ErrorCode::Authentication,
                 "No usable saved session. Sign in through Microsoft.",
@@ -128,7 +137,7 @@ pub(crate) fn authenticate(
     check()?;
     // Persist rotation immediately, even if a later entitlement request is temporarily unavailable.
     if let Some(refresh) = token.refresh_token() {
-        credential(id)?
+        credential(credential_key)?
             .set_password(refresh.secret())
             .map_err(|_| {
                 error(
@@ -181,7 +190,7 @@ fn callback(stream: &mut TcpStream, port: u16, state: &CsrfToken) -> Result<Stri
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .map_err(|_| auth_error())?;
-    let mut reader = BufReader::new(stream);
+    let mut reader = BufReader::new(stream).take(8193);
     let mut bytes = Vec::new();
     loop {
         let before = bytes.len();
@@ -378,6 +387,30 @@ fn profile_summary(value: &Value) -> Result<AccountSummary> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn browser_wait_cancellation_and_refresh_failure_are_controlled() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let err = wait_callback(&listener, 1234, &CsrfToken::new("test".into()), &|| {
+            Err(error(ErrorCode::Cancelled, "cancelled"))
+        })
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::Cancelled);
+        let client = BasicClient::new(ClientId::new("test-only".into())).set_token_uri(
+            TokenUrl::new("https://login.microsoftonline.com/consumers/oauth2/v2.0/token".into())
+                .unwrap(),
+        );
+        let transport =
+            |_: oauth2::HttpRequest| -> std::result::Result<oauth2::HttpResponse, std::io::Error> {
+                Ok(oauth2::http::Response::builder().status(400).header("content-type","application/json").body(br#"{"error":"invalid_grant","error_description":"test refresh token expired"}"#.to_vec()).unwrap())
+            };
+        assert!(
+            client
+                .exchange_refresh_token(&RefreshToken::new("test-only".into()))
+                .request(&transport)
+                .is_err()
+        );
+    }
     #[test]
     fn callback_rejects_state_mismatch_duplicates_and_denial() {
         let state = CsrfToken::new("expected".into());

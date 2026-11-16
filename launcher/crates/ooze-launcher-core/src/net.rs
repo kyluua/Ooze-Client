@@ -30,10 +30,10 @@ impl Artifact {
             return Err(metadata_error());
         }
         for (value, length) in [(&self.sha1, 40), (&self.sha256, 64)] {
-            if let Some(value) = value {
-                if value.len() != length || !value.bytes().all(|c| c.is_ascii_hexdigit()) {
-                    return Err(metadata_error());
-                }
+            if let Some(value) = value
+                && (value.len() != length || !value.bytes().all(|c| c.is_ascii_hexdigit()))
+            {
+                return Err(metadata_error());
             }
         }
         if let Some(url) = &self.url {
@@ -136,11 +136,6 @@ impl Http {
             .build()
             .map_err(|_| error(ErrorCode::Network, "Couldn't initialize HTTPS."))?;
         Ok(Self { client })
-    }
-    pub fn json<T: DeserializeOwned>(&self, url: &str) -> Result<T> {
-        trusted_url(url)?;
-        let response = self.client.get(url).send().map_err(|_| network_error())?;
-        decode(response)
     }
     pub fn artifact(
         &self,
