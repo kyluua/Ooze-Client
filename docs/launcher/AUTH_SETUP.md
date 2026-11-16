@@ -7,10 +7,13 @@ the public Rust UI API. Minecraft itself receives its required game session.
 
 ## Current status
 
-On 2026-11-15 the owner confirmed that there is no client ID yet and requested
-these setup instructions. Registration, consent, service access and live sign-in
-are **pending**. These instructions do not claim that any of them passed.
-They configure the existing backend; no external application was created by Sol.
+On 2026-11-15 the owner supplied public application ID
+`359e0deb-13e8-4616-978f-0fc1f8e273d2` after creating the Microsoft registration.
+It is recorded in `launcher/packaging/public-auth.json`; Windows launcher CI reads
+that file before compiling so the CLI embeds the owned ID. This ID is public
+configuration, not a secret. Consent, the saved portal settings, Minecraft
+Services access and live sign-in remain **unverified**. No external application
+was created or approved by Sol.
 
 ## 1. Register the developer-owned application
 
@@ -82,11 +85,11 @@ service/account errors are requested in [Claude's B1 review](../handoffs/CLAUDE-
 
 ## 4. Configure the current CLI for development
 
-Extract a verified backend package, open PowerShell in its directory and replace
-the placeholder below with the public application GUID:
+For an existing backend package without an embedded ID, extract it, open
+PowerShell in its directory and set the owner-supplied public application GUID:
 
 ```powershell
-$env:OOZE_MICROSOFT_CLIENT_ID = 'REPLACE_WITH_OWNED_APPLICATION_CLIENT_ID'
+$env:OOZE_MICROSOFT_CLIENT_ID = '359e0deb-13e8-4616-978f-0fc1f8e273d2'
 ./ooze-launcher-cli.exe status
 ./ooze-launcher-cli.exe sign-in
 ```
@@ -121,11 +124,13 @@ commands are documented for later execution; no live login has been run here.
 ## 5. Configure the player-facing release
 
 The current CLI resolves the environment variable first and otherwise uses an ID
-embedded at compile time. A release engineer sets the same public variable
-**before** compiling the release, then packages the resulting executable:
+embedded at compile time. Windows launcher CI sets this public build variable
+from `launcher/packaging/public-auth.json`. For a local developer build, run the
+following from the repository root before compiling and packaging:
 
 ```powershell
-$env:OOZE_MICROSOFT_CLIENT_ID = 'REPLACE_WITH_OWNED_APPLICATION_CLIENT_ID'
+$publicAuth = Get-Content './launcher/packaging/public-auth.json' -Raw | ConvertFrom-Json
+$env:OOZE_MICROSOFT_CLIENT_ID = $publicAuth.microsoft_client_id
 cargo build --manifest-path launcher/Cargo.toml --locked --release -p ooze-launcher-cli
 ```
 
@@ -180,7 +185,8 @@ mod log files.
 
 ## Actual validation boundary
 
-No owned client ID was configured at implementation start. OAuth callback/state,
+No owned client ID was configured at implementation start; the owner has since
+supplied the public ID above. OAuth callback/state,
 denial, cancellation, refresh-error handling, entitlement parsing and redaction
 have controlled tests; these do not prove Microsoft consent, Minecraft service
 access, a real token refresh or an online launcher game session. SOL-L0 records
