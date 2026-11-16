@@ -36,6 +36,8 @@ public final class BridgeDiagnosticScreen extends Screen {
 
     // Last rendered fixture, for launch tests and the on-screen readout.
     private volatile int lastArgb;
+    /** GUI-coordinate centroid of the last fixture's first triangle (for the pixel check). */
+    private volatile float[] lastCentroid = {0, 0};
     private volatile long framesRendered;
 
     public BridgeDiagnosticScreen() {
@@ -110,10 +112,19 @@ public final class BridgeDiagnosticScreen extends Screen {
                 argb[i] = bytes.getInt(at + 8); // numeric 0xAARRGGBB == Minecraft setColor(int)
             }
         }
+        submitTriangles(graphics, xy, argb);
+        lastArgb = argb[0];
+        lastCentroid = new float[] {(xy[0] + xy[2] + xy[4]) / 3f, (xy[1] + xy[3] + xy[5]) / 3f};
+        framesRendered++;
+    }
+
+    /**
+     * Submits an owned triangle list (GUI coordinates, numeric ARGB) through vanilla's deferred GUI
+     * render state. Shared with the launch test's pixel probe so both use one path.
+     */
+    public static void submitTriangles(GuiGraphics graphics, float[] xy, int[] argb) {
         ((GuiGraphicsAccessor) graphics).oozeclient$guiRenderState()
                 .submitGuiElement(new FixtureRenderState(graphics.pose(), xy, argb, null));
-        lastArgb = argb[0];
-        framesRendered++;
     }
 
     @Override
@@ -146,6 +157,10 @@ public final class BridgeDiagnosticScreen extends Screen {
     }
 
     /** ARGB of the most recent fixture (0xFFF8F9FF released, 0xFF171923 pressed). */
+    public float[] lastCentroid() {
+        return lastCentroid.clone();
+    }
+
     public int lastArgb() {
         return lastArgb;
     }

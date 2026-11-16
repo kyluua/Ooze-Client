@@ -16,9 +16,10 @@ import org.joml.Matrix3x2fc;
  * <p>Vertices are already converted from physical framebuffer pixels to GUI coordinates and are
  * an <b>owned copy</b>: no bridge {@code FrameLease} is referenced, so the lease is closed before
  * this element is submitted (eager-copy rule in docs/bridge/ABI_V1.md). Vanilla's {@code GUI}
- * pipeline draws QUADS, so each triangle is emitted as a degenerate quad (v0, v1, v2, v2).
+ * pipeline draws QUADS with back-face culling, so each triangle is re-wound to vanilla's order and
+ * emitted as a degenerate quad (a, b, c, c).
  */
-final class FixtureRenderState implements GuiElementRenderState {
+public final class FixtureRenderState implements GuiElementRenderState {
 
     private final Matrix3x2f pose;
     private final float[] xy; // GUI coordinates, 2 floats per vertex
@@ -26,7 +27,7 @@ final class FixtureRenderState implements GuiElementRenderState {
     private final @Nullable ScreenRectangle scissor;
     private final ScreenRectangle bounds;
 
-    FixtureRenderState(Matrix3x2fc pose, float[] xy, int[] argb, @Nullable ScreenRectangle scissor) {
+    public FixtureRenderState(Matrix3x2fc pose, float[] xy, int[] argb, @Nullable ScreenRectangle scissor) {
         if (xy.length != argb.length * 2 || argb.length % 3 != 0) {
             throw new IllegalArgumentException("triangle list expected");
         }
@@ -52,13 +53,36 @@ final class FixtureRenderState implements GuiElementRenderState {
 
     @Override
     public void buildVertices(VertexConsumer consumer) {
+        // vanilla's GUI pipeline culls back faces (RenderPipelines.GUI never disables culling),
+        // and the bridge does not promise a winding. Emit every triangle in vanilla's quad winding
+        // (top-left, bottom-left, bottom-right: negative signed area with y down), accounting for a
+        // mirroring pose. Found by Sol's Windows C0b run: the native fixture was wound the other way.
+        boolean mirrored = pose.determinant() < 0;
         for (int v = 0; v < argb.length; v += 3) {
-            for (int k = 0; k < 3; k++) {
-                consumer.addVertexWith2DPose(pose, xy[(v + k) * 2], xy[(v + k) * 2 + 1]).setColor(argb[v + k]);
+            int a = v;
+            int b = v + 1;
+            int c = v + 2;
+            if ((signedArea(a, b, c) > 0) != mirrored) {
+                int t = b;
+                b = c;
+                c = t;
             }
-            // Degenerate fourth vertex: QUADS → (v0,v1,v2) + (v2,v2,v0) with zero area.
-            consumer.addVertexWith2DPose(pose, xy[(v + 2) * 2], xy[(v + 2) * 2 + 1]).setColor(argb[v + 2]);
+            vertex(consumer, a);
+            vertex(consumer, b);
+            vertex(consumer, c);
+            // Degenerate fourth vertex: QUADS → (a,b,c) + (a,c,c) with zero area.
+            vertex(consumer, c);
         }
+    }
+
+    private void vertex(VertexConsumer consumer, int i) {
+        consumer.addVertexWith2DPose(pose, xy[i * 2], xy[i * 2 + 1]).setColor(argb[i]);
+    }
+
+    /** Twice the signed area of triangle (a, b, c) in GUI coordinates (y down). */
+    float signedArea(int a, int b, int c) {
+        float ax = xy[a * 2], ay = xy[a * 2 + 1];
+        return (xy[b * 2] - ax) * (xy[c * 2 + 1] - ay) - (xy[c * 2] - ax) * (xy[b * 2 + 1] - ay);
     }
 
     @Override
