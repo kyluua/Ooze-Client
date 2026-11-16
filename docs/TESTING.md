@@ -64,7 +64,11 @@ Every case also asserts that the `GuiGraphicsAccessor` mixin applied (dev and pr
 | `win-real-missing_library`, `win-real-corrupt`, `win-real-abi-mismatch` (**Windows x64 only**) | Generated from the provided resources: DLL removed, one DLL byte flipped, manifest `bridge.abi=2` | Real `MISSING_LIBRARY` / `INCOMPATIBLE` (corrupt DLL: SHA-256 mismatch) / `INCOMPATIBLE` (ABI) from Sol's loader; vanilla usable |
 | `LOADED` branch (**Windows x64 only**) | `dev-default` with resources | The F9 developer key exists; the probe round trip passes; `BridgeDiagnosticScreen` renders fixture frames; the colour switches `F8F9FF` → `171923` → `F8F9FF` with simulated left-button hold and release; two screenshots |
 
-**Pending (Gate B, Windows x64):** the `win-real-*` cases and the `LOADED` branch are implemented, but they have not been run, because no Windows host has been available to Claude.
+**Gate B status (Windows x64):**
+- Sol Game-launched the `win-real-*` cases and the `LOADED` data checks on 2026-11-15 (`docs/handoffs/evidence/SOL-L0-C0b/`).
+- The fixture was not visible in that run because of back-face culling. It is fixed (`FixtureRenderState` re-winds triangles) and pixel-verified on Linux.
+- A Windows rerun with the new visible-pixel assertions is pending (CLAUDE-L0 request A6).
+- Every case now also asserts the probe triangles' pixels (`FixtureProbeScreen`) on every platform.
 
 **From C1 onwards:** screen screenshots at window sizes 1920×1080, 2560×1440 and 3840×2160; an ordering torture-scene golden; scripted flows.
 

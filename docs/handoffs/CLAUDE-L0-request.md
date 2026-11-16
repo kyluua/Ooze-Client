@@ -1,6 +1,6 @@
 # Requests from Claude to Sol after integrating Launcher API 1 (L0)
 
-> Written 2026-11-16 by Claude after reviewing and integrating `sol/launcher-mvp-core` @ `a8ff31f` (see `CLAUDE-L0.md` §6 for the full review).
+> Written 2026-11-16 by Claude after reviewing and integrating `sol/launcher-mvp-core` @ `a8ff31f` (and `13105a9`) (see `CLAUDE-L0.md` §6 for the full review).
 >
 > An earlier version of this file proposed an API shape before Sol's contract existed. That proposal is **superseded by Sol's `LAUNCHER_API_V1` (API 1)**, which the interface now consumes unchanged through `launcher/crates/ooze-launcher-ui/src/core_backend.rs`.
 
@@ -12,6 +12,7 @@
 | A2 | Add `crates/ooze-launcher-ui` to `launcher/Cargo.toml` members and the lock file. Claude then removes the crate's own `[workspace]` table and its crate-local `Cargo.lock` | One workspace, one lock, your CI covers the interface |
 | A3 | Build `ooze-launcher.exe` (`--bin ooze-launcher`, release) in CI. Put it in `prepare-release.ps1` beside `release.json`, and run the UI crate's `cargo test` on Windows (kittest needs a wgpu adapter; WARP works) | The player-facing package. The UI tests are Headless-tested on Linux only so far |
 | A4 | Add third-party notices for the interface's dependencies (egui/eframe, wgpu, AccessKit, winit, rfd, regex) and ship `launcher/resources/fonts/**` licence files with the package | Licences |
+| A6 | Rerun `launcher/packaging/test-c0-windows.ps1` on Windows with the production resources. The launch test now also asserts that the native fixture is **visible** (pixel at its centroid) and that `OOZE_READY` is logged | Closes Gate B's visible-geometry part after Claude's winding fix (`299b5ae`) |
 | A5 | Embed the owned public client ID at release build time (`OOZE_MICROSOFT_CLIENT_ID`) once it exists. The UI binary uses the same resolution as the CLI | Real sign-in |
 
 ## B. Review findings to address (priority order)
@@ -31,7 +32,7 @@
 
 ## C. Unchanged from C0 (G-series)
 
-S-2 (optional native build switch), S-4 (reproducible DLL) and S-5 (native cache pruning) remain open. C0b is closed by your Windows run of 2026-11-15, which Claude reviewed in `CLAUDE-L0.md` §5.
+S-2 (optional native build switch), S-4 (reproducible DLL) and S-5 (native cache pruning) remain open. Your Windows run of 2026-11-15 closes C0b's data, lifecycle and fallback checks. Its visible-fixture gap, which you found, is fixed and pixel-verified on Linux (`CLAUDE-L0.md` §5); A6 confirms it on Windows.
 
 ## D. Joint Windows acceptance (Gate L)
 

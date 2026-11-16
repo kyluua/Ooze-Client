@@ -6,7 +6,7 @@
 | Milestone | L0: usable Windows x64 launcher, sign-in to Play (interface half; Sol owns the backend half) |
 | Base commit | `d4b77b491fc7d259d77d8e42894df5c4829f2489` (end of C0) |
 | Result commit | The commit that adds this file (`git log -1 -- docs/handoffs/CLAUDE-L0.md`), on `main` and `claude/launcher-mvp-ui` |
-| Integrated backend | `sol/launcher-mvp-core` @ `a8ff31f` (merge `a376b21`), reviewed first (§6) |
+| Integrated backend | `sol/launcher-mvp-core` @ `13105a9` (merges `a376b21`, `7138865`), reviewed first (§6) |
 | Contracts | **Launcher API 1** (Sol, `docs/launcher/LAUNCHER_API_V1.md`); **JNI ABI 1** unchanged; launch readiness marker `OOZE_READY v1` (new, §3) |
 | Branch policy | Owner, 2026-11-16: everything combined on **`main`**; both agents work there from now on (AGENTS.md §Branches) |
 
@@ -39,7 +39,7 @@ The Fabric mod now logs a launch-readiness marker, and the build writes a launch
 |---|---|
 | `launcher/crates/ooze-launcher-ui/**` | New crate:<br>• `api.rs` (the interface's view + `Capabilities`)<br>• `state.rs` (reducer)<br>• `core_backend.rs` (API 1 adapter, `UiPrefs`, `FailedBackend`)<br>• `app.rs` (screens)<br>• `widgets.rs`, `paint.rs` (components, gel material)<br>• `theme.rs` (tokens + contrast)<br>• `motion.rs`, `i18n.rs`, `redact.rs`<br>• `fixtures.rs` (tests/preview only)<br>• `ui_tests.rs` (egui_kittest)<br>• binaries `ooze-launcher` (real) and `ooze-launcher-preview` (`dev-fixtures`, debug only) |
 | `launcher/resources/**` | `lang/en_us.json`; `tokens/launcher.tokens.json`; fonts: Bubblegum Sans Regular, Inter Regular/SemiBold, unmodified, with OFL texts and `fonts.json` (sources + SHA-256) |
-| `versions/mc1_21_11/**` | `diag/LaunchReadiness` + `LaunchReadinessTest`; the launch test asserts the marker; `launcherProfile` Gradle task |
+| `versions/mc1_21_11/**` | `diag/LaunchReadiness` + `LaunchReadinessTest`; the launch test asserts the marker; `launcherProfile` Gradle task; **fixture visibility fix** (`FixtureRenderState` re-winds triangles; §5) with `FixtureRenderStateTest`, gametest-only `FixtureProbeScreen` and pixel checks |
 | `tools/launch-tests.sh` | Keeps `OOZE_READY` in the evidence excerpts |
 | `AGENTS.md`, `README.md`, `docs/{ARCHITECTURE,TARGET_PLATFORM,IMPLEMENTATION_PLAN,REPOSITORY_STRUCTURE,PRODUCT_VISION,TESTING,INSTALL,INTERACTION_FLOWS}.md` | Independent launcher decision:<br>• ownership (the backend role is Sol's);<br>• renderer rule scoped to the in-game adapter;<br>• launcher auth rules, with the mod/JNI boundary kept;<br>• L-series and Gate L;<br>• ADR-015/016, ARCHITECTURE §19, TARGET_PLATFORM §4 + T9–T11;<br>• INSTALL routes A and B;<br>• TESTING §11;<br>• branch policy `main` |
 | `docs/launcher/LAUNCHER_UI.md` | Interface, product and accessibility spec, including how API 1 is adapted (§2.1) |
@@ -72,9 +72,10 @@ No Sol-owned file was edited. The UI crate carries its own `[workspace]` table u
 | Real `ooze-launcher` over Sol's real core | Launched (Linux x64, Xvfb). The core refuses non-Windows with a typed `UnsupportedPlatform`, and the window shows "Ooze Launcher needs Windows" with no controls. No data folder was created | `evidence/L0/window/6-real-binary-real-core-linux.png` |
 | Windows build of the interface | **Built (Windows x64 PE32+ GUI, cross-compiled with MinGW `x86_64-pc-windows-gnu`; not run)**. `ooze-launcher.exe` SHA-256 `9dde6b24…ffd7b20c`, a local artifact, not distributed. The MSVC target can't build here (no Windows SDK for `ring`) | — |
 | Sol's launcher workspace on Linux | `cargo fmt --check` pass; `cargo test` **15/15** (Windows-only tests skipped by Sol's cfg); Clippy fails off-Windows on one unused test import (B10) | — |
-| Fabric: `./gradlew build buildAll` | Built + Headless-tested (Linux x64): **27/27 JUnit** (26 + `LaunchReadinessTest`) | `build/dist/` |
+| Fabric: `./gradlew build buildAll` | Built + Headless-tested (Linux x64): **28/28 JUnit** (26 + `LaunchReadinessTest` + `FixtureRenderStateTest`) | `build/dist/` |
 | Fabric launch matrix | **Game-launched (Linux x64, Xvfb + Mesa): 6/6 PASS** (dev-default, dev-missing_library, dev-incompatible, dev-load_failed, prod-default, prod-fault-ignored). `OOZE_READY v1 screen=title engine=<state>` was logged in every case | `evidence/L0/fabric-launch/` |
-| **Windows x64 game gate (C0b)** | **Game-launched (Windows x64) by Sol on 2026-11-15**: dev and prod `LOADED`, probe and fixture press/release, real missing / corrupt / ABI-2 DLL cases. Claude reviewed the evidence (§5). Gate B is closed | `evidence/SOL-L0-C0b/` |
+| **Windows x64 game gate (C0b)** | **Game-launched (Windows x64) by Sol on 2026-11-15**: dev and prod `LOADED`, probe and fixture data press/release, real missing / corrupt / ABI-2 DLL cases. The fixture was **not visible**; fixed and pixel-verified on Linux (§5). A Windows rerun is needed for the visible part | `evidence/SOL-L0-C0b/` |
+| Fixture visibility (shared submit path) | **Game-launched (Linux x64, Xvfb):** probe triangles of both windings read back their exact colours from the screenshot | `evidence/L0/fabric-launch/` |
 | Launcher install/repair on Windows | Sol's CI run 43794161997 (`4841084`) succeeded: package → `install` → `repair` → `status` on `windows-latest`. Claude has not run it | Sol's CI |
 | Real Microsoft sign-in, Play through the launcher, refresh on relaunch | **Not run.** No owned client ID or Minecraft Services access exists yet | §8 |
 | Narrator / NVDA, Windows high contrast, 125–200% DPI | **Not run** (needs a person on Windows) | — |
@@ -86,7 +87,7 @@ The 53 UI tests cover:
 - redaction (JWT, `--accessToken`, `M.C…`, headers, user paths), i18n completeness both ways, token parsing and WCAG contrast, motion, geometry;
 - 14 AccessKit-driven UI flows: keyboard first run, sign-in and cancel, missing client ID, real progress with values and live status, double-click Play, crash, close prompt, roving radio focus, redacted log and clipboard, Off motion with no repaint loop, every control named, Tab reaching Play, API 1 capability hiding, startup page.
 
-## 5. Review of Sol's Windows C0b evidence
+## 5. Review of Sol's Windows C0b evidence, and the fixture fix
 
 The summaries and excerpts show:
 - `LOADED` in dev and production;
@@ -95,9 +96,28 @@ The summaries and excerpts show:
 - missing DLL → `MISSING_LIBRARY`, corrupt DLL → `INCOMPATIBLE`, ABI 2 → `INCOMPATIBLE`;
 - the vanilla Options round trip in all five cases.
 
-That satisfies TESTING §3's Windows rows. Two caveats:
-- The run predates the `OOZE_READY` marker. The marker is Game-launched on Linux only, so the next Windows run should show it.
-- The DLL SHA (`79a168b0…`) differs from the CI artifact that C0 bundled (`5d8ae250…`), as expected from S-4 (not reproducible). The handoff states this honestly.
+That closes the **data, lifecycle and fallback** part of Gate B.
+
+**Sol's review (`13105a9`) was right about the visible part.** The Windows screenshots show no fixture rectangle; the bright blob is the moon, unchanged between released and pressed.
+
+**Root cause, found and fixed by Claude:**
+- Vanilla's `RenderPipelines.GUI` keeps back-face culling. Its snippet never calls `withCull(false)`, and the builder defaults to culling. I checked the 1.21.11 bytecode.
+- The native fixture's triangles are wound opposite to vanilla's quads, so they were culled.
+
+**The fix and its evidence:**
+- `FixtureRenderState` now re-winds every triangle to vanilla's front-facing order, respecting mirroring poses.
+- **Game-launched (Linux x64, Xvfb):** a gametest-only `FixtureProbeScreen` draws one triangle of each winding through the shared submit path, and the launch test reads the screenshot.
+  - Before the fix, the clockwise triangle was missing and the vanilla-wound one drew.
+  - After it, both read back exactly (`FFF8F9FF` / `FF171923`).
+- Every launch case now checks those pixels.
+- With the DLL on Windows, the released and pressed screenshots must show the native fixture's own colour at its first triangle's centroid.
+- `FixtureRenderStateTest` pins the winding detection.
+
+**Gate B's visible-geometry part needs one Windows rerun** of `test-c0-windows.ps1` (request A6).
+
+Other notes:
+- The run predates the `OOZE_READY` marker, so it will show on that rerun too.
+- The DLL SHA (`79a168b0…`) differs from the CI artifact that C0 bundled (`5d8ae250…`), as expected from S-4 (not reproducible).
 
 ## 6. Review of Sol's launcher backend (`2db9c78`, `4841084`, `a8ff31f`)
 
@@ -169,6 +189,7 @@ No player-facing launcher release exists yet.
 
 - **Sol (on `main`):**
   - **A1:** review Claude's interface diff.
+  - **A6:** rerun the Windows game gate; it now asserts the native fixture is visible and that `OOZE_READY` is logged.
   - **A2:** add `crates/ooze-launcher-ui` to the launcher workspace.
   - **A3:** build, test and package `ooze-launcher.exe` on Windows CI.
   - **A4:** licence notices.
