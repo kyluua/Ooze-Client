@@ -1,19 +1,20 @@
 # Ooze Client — Milestone Implementation Plan
 
-> Deliverable 15. Rewritten 2026-11-09 for the owner's decisions: Fabric 1.21.11, a Java 21 adapter, a Rust engine and UI, authentication through the launcher, and Windows x64 first.
-> - **C-series:** Claude (Fabric integration, Rust UI, product).
-> - **G-series:** Sol (Rust engine, bridge, native artifacts, CI).
+> Deliverable 15. Rewritten 2026-11-09 for the owner's decisions: Fabric 1.21.11, a Java 21 adapter, a Rust engine and UI, and Windows x64 first. Updated 2026-11-16 for the owner's decision to ship an **independent Ooze Launcher with its own Microsoft sign-in** (L-series).
+> - **C-series:** Claude (Fabric integration, in-game Rust UI, product).
+> - **G-series:** Sol (Rust engine, bridge, native artifacts, native CI).
+> - **L-series:** the launcher; Claude (interface, product, accessibility, Fabric distribution inputs) and Codex (backend, auth, installer, process, packaging, launcher CI).
 >
 > Each milestone ends with a handoff in `docs/handoffs/` (AGENTS.md).
 
 ## 0. Working rules
 
-1. **One milestone per branch or PR**, ending with a handoff. Large milestones may be split (`C3a`, `C3b`).
+1. **One milestone at a time per agent, committed on `main`** (AGENTS.md §Branches), ending with a handoff. Large milestones may be split (`C3a`, `C3b`).
 2. **Dependencies are hard.** Don't start work that needs an unfinished dependency; do the independent parts and record the exact missing item.
 3. **Gates are early and repeated.** Every milestone's acceptance list includes its own performance, accessibility and launch checks (§3). There is no "fix it all at the end" milestone.
 4. **Evidence vocabulary:** Built, Headless-tested, Game-launched, Manually verified (AGENTS.md). A Windows claim needs Windows evidence.
 5. **Real or absent.** Nothing user-visible ships before it works. Developer tools are dev-only. Samples are labelled.
-6. **No invented bridge methods.** The C-series consumes Sol's published bridge API, and requests changes through handoffs.
+6. **No invented bridge methods.** The C-series consumes Sol's published bridge API, and requests changes through handoffs. The launcher interface likewise consumes Codex's published launcher API; until it exists, the interface states its needs as a proposal (`docs/handoffs/CLAUDE-L0-request.md`) and develops against test-only fixtures.
 
 ## 1. Dependency graph
 
@@ -38,6 +39,10 @@ flowchart LR
   G5[G5 images] --> C7
   C6 & C7 & C8 & C9 --> C10[C10 polish, audits, release candidate]
   C5 --> FB[Feature backlog milestones F-xx]
+  C0 --> L0UI[L0 launcher interface - Claude]
+  L0API[L0 launcher API + backend - Codex] --> L0I[L0 integration + Windows acceptance]
+  L0UI --> L0I
+  C0b --> L0I
 ```
 
 ## 2. Milestones
@@ -197,8 +202,42 @@ Integration code is complete (C0). What remains is evidence, plus follow-ups to 
 
 - Drip lifecycles, breathing edges, surface tension.
 - Full accessibility audit; robustness suite; licences; the Windows x64 release JAR.
-- Install documentation verified on a clean Windows machine with the official launcher.
+- Install documentation verified on a clean Windows machine with the Ooze Launcher (and the manual official-launcher route in INSTALL.md).
 - **Gate:** TESTING §10 holds for the codebase; Manually verified install on Windows x64.
+
+### L-series: the Ooze Launcher
+
+#### L0 — Usable Windows x64 launcher: sign-in to Play (Claude interface + Codex backend)
+
+**Depends on:** C0 (Fabric build, launch tests), Codex's `LAUNCHER_API_V1` and backend, C0b's Windows DLL evidence for the real-DLL acceptance.
+
+**Claude delivers:**
+- `launcher/crates/ooze-launcher-ui`: the egui/eframe window with first run, Play, Settings, Diagnostics and the close prompt (docs/launcher/LAUNCHER_UI.md).
+  - Tokens from the shared theme; Bubblegum Sans + Inter (OFL); en_us strings.
+  - Full / Reduced / Off motion; AccessKit names, roles, values and live status; keyboard-only operation.
+  - Defence-in-depth redaction.
+- Fixtures under `cfg(test)` / `dev-fixtures` only (release builds refuse the feature).
+- Fabric distribution inputs:
+  - `build/dist/ooze-launcher-profile.json` (pinned profile + checksums);
+  - the `OOZE_READY v1` title-screen marker in the mod, asserted by every launch test.
+- Reconciled specs; review of Codex's backend; `docs/handoffs/CLAUDE-L0.md`.
+
+**Codex delivers:**
+- `LAUNCHER_API_V1` and `ooze-launcher-core`:
+  - browser + PKCE sign-in with the owned public client ID; Xbox/XSTS/Minecraft Services; entitlement; refresh; DPAPI credential storage;
+  - installer and verifier (Mojang manifest, Fabric profile, Fabric API, Ooze JAR, Java 21);
+  - process lifecycle with `OOZE_READY` detection; redacted logs and diagnostics export.
+- `ooze-launcher-cli`, workspace, packaging, launcher CI, `AUTH_SETUP.md`, `BUILD_AND_TEST.md`, `docs/handoffs/CODEX-L0.md`.
+
+**Acceptance (Gate L):** see §3. External prerequisites that may block it are recorded honestly:
+- the owned Microsoft public client ID (app registration);
+- Minecraft Services approval for that app;
+- a legitimately entitled Microsoft account;
+- a Windows x64 machine.
+
+#### L1+ (not planned in detail)
+
+Only after L0 is accepted. Candidates come from the product owner, not from this plan.
 
 ### Feature backlog milestones (F-xx)
 
@@ -216,6 +255,7 @@ Real modules come from `docs/FEATURE_BACKLOG.md`, one entry per milestone, after
 | Perf | Every milestone ≥ C1 | The scenes it adds stay within PERFORMANCE_AND_ACCESSIBILITY §2 | Measured tables in the handoff |
 | A11y | Every UI milestone ≥ C2 | Keyboard, focus-visible, reduced motion and Off for everything new | Scripted gametest + checklist |
 | Launch | Every milestone | Windows x64 smoke launch (from C0b), Linux vanilla-only smoke | Game-launched |
+| L | L0 | Packaged launcher on a clean Windows x64 install dir:<br>• entitled-account browser sign-in, cancel and retry<br>• real install, network loss and retry, repair preserving `saves/` and `options.txt`<br>• Play → Fabric 1.21.11 on Java 21 → `OOZE_READY … engine=LOADED`<br>• exit, restart, relaunch on refreshed credentials<br>• exported diagnostics contain no tokens<br>• Narrator walkthrough | Built (package) + Game-launched (Windows x64) + Manually verified (Narrator); interface Headless-tested on every change |
 
 ## 4. Dependency repairs relative to the previous plan
 
@@ -234,8 +274,11 @@ Real modules come from `docs/FEATURE_BACKLOG.md`, one entry per milestone, after
 | Risk | Impact | Mitigation |
 |---|---|---|
 | G0 is late | C0b, C1 and everything after are blocked | C0 completed independently; requests to Sol recorded in `docs/handoffs/CLAUDE-C0.md` |
+| No Windows host for Claude | C0b and Gate L can't be evidenced | Requested Windows CI from Sol and Codex; the joint acceptance run is scripted in `CLAUDE-L0-request.md` §4 |
 | JNI overhead or frame size | Frame time | One call per frame, direct buffers, measured in G1 and C1 gates |
 | GUI render-state ordering | Layering bugs | C1 investigation and golden |
 | Windows-only native support in early milestones | Linux and macOS users get vanilla-only mode | A clear diagnostic; platforms are added only with artifacts and launch tests |
 | Native crash takes down the game | Lost session | Sol's bridge rule: no panics across FFI; fault isolation tests in G0/G1 |
 | Font licences | Legal | Unmodified files, OFL texts, attribution UI |
+| No owned Microsoft client ID, or Minecraft Services has not approved the app | The launcher cannot sign anyone in | Typed `AuthNotConfigured` / `AuthAppNotApproved` errors with honest copy; never an offline fallback; the blocker is recorded in the L0 handoffs |
+| Launcher API published late | The L0 interface can't integrate | The interface states its needs (`CLAUDE-L0-request.md`) and uses test-only fixtures; one adapter file changes on integration |

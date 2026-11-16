@@ -1,6 +1,6 @@
 # Ooze Client
 
-A premium, customisable **Minecraft Java Edition 1.21.11** client delivered as a **Fabric** mod and loaded by the **official Minecraft Launcher**.
+A premium, customisable **Minecraft Java Edition 1.21.11** client delivered as a **Fabric** mod, plus the **Ooze Launcher**: a Windows desktop launcher with its own Microsoft sign-in that installs and starts Minecraft with Fabric and Ooze.
 
 Its interface is a glossy, elastic white "ooze" with a crisp ink outline, rendered as sharp vector geometry from 1080p to 4K. It moves like a soft, viscous liquid.
 
@@ -10,7 +10,9 @@ Its interface is a glossy, elastic white "ooze" with a crisp ink outline, render
 > - On unsupported platforms it reports a clear "Ooze Client is off" diagnostic, and vanilla stays fully usable.
 > - Windows launch evidence is still pending (C0b).
 >
-> See [`docs/handoffs/CLAUDE-C0.md`](docs/handoffs/CLAUDE-C0.md) for what is built and tested, and [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for what comes next. Coding agents: start with [`AGENTS.md`](AGENTS.md).
+> - **Launcher (L0, in progress):** the Rust interface is built and Headless-tested over test-only fixtures. It waits for Codex's backend (sign-in, installer, process) and for the project's Microsoft app registration and Minecraft Services approval. There is no launcher release yet.
+>
+> See [`docs/handoffs/CLAUDE-L0.md`](docs/handoffs/CLAUDE-L0.md) and [`docs/handoffs/CLAUDE-C0.md`](docs/handoffs/CLAUDE-C0.md) for what is built and tested, and [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for what comes next. Coding agents: start with [`AGENTS.md`](AGENTS.md).
 
 ## Target
 
@@ -21,8 +23,8 @@ Its interface is a glossy, elastic white "ooze" with a crisp ink outline, render
 | Java | 21 (Fabric adapter) |
 | Engine and UI | **Rust**, through one batched JNI bridge |
 | Native platforms | **Windows x64 first**. Other platforms run vanilla with a diagnostic until supported |
-| Sign-in | Official Minecraft Launcher only. Ooze has **no account system** |
-| Distribution | `ooze-client-<ver>+mc1.21.11.jar` |
+| Sign-in | The Ooze Launcher (system-browser Microsoft sign-in), or the official launcher for a manual install. Ooze has **no Ooze account or server**; the mod never sees credentials |
+| Distribution | `ooze-client-<ver>+mc1.21.11.jar`; the Ooze Launcher package (Windows x64, not released yet) |
 
 ## Build and test
 
@@ -30,6 +32,8 @@ Its interface is a glossy, elastic white "ooze" with a crisp ink outline, render
 ./gradlew build                     # remapped JAR + Java unit tests
 ./gradlew buildAll                  # → build/dist/
 tools/launch-tests.sh               # real client launches (Linux: under xvfb-run) + screenshots
+(cd launcher/crates/ooze-launcher-ui && cargo test)          # launcher interface tests
+(cd launcher/crates/ooze-launcher-ui && cargo run --features dev-fixtures --bin ooze-launcher-preview -- ready)  # developer preview
 ```
 
 Installation for players: [`docs/INSTALL.md`](docs/INSTALL.md).

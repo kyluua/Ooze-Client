@@ -233,6 +233,8 @@ pub enum ErrorKind {
     XboxRegionUnavailable,
     XboxBanned,
     NotEntitled,
+    /// Owns the game but has not chosen a Minecraft name (profile) yet.
+    NoMinecraftProfile,
     SessionExpired,
     // Network and services
     Offline,

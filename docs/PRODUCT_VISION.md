@@ -67,17 +67,18 @@ Loud     ○○○○○○○●●●  Quiet        (quiet surfaces, expressiv
 - All 12 screens in [SCREENS.md](SCREENS.md), fully interactive.
 - The full component library in [COMPONENTS.md](COMPONENTS.md).
 - Sample modules and HUD widgets, clearly labelled **Sample**, that exercise every framework capability.
-- One Fabric distribution for **Minecraft Java Edition 1.21.11**, loaded by the **official Minecraft Launcher**.
+- One Fabric distribution for **Minecraft Java Edition 1.21.11**.
+- The **Ooze Launcher** (owner decision 2026-11-16): a Windows x64 desktop launcher with its own Microsoft sign-in that installs, verifies and directly starts 1.21.11 + Fabric + Ooze. Its first milestone, L0, is only the path from sign-in to Play ([docs/launcher/LAUNCHER_UI.md](launcher/LAUNCHER_UI.md)). The mod also stays installable by hand into the official launcher.
 - The native engine runs on **Windows x64** first. Other platforms run vanilla with a clear diagnostic until their artifacts and launch tests exist (TARGET_PLATFORM §2).
 
 **Out of scope for v0.1.** These are deliberate non-goals:
 
 - Gameplay modules beyond the labelled samples.
-- Online services: accounts, cosmetics servers, friends, telemetry, analytics, auto-updates, remote news feeds.
+- Online services of our own: Ooze accounts, cosmetics servers, friends, telemetry, analytics, remote news feeds. (The launcher talks only to Microsoft, Xbox, Minecraft, Mojang and Fabric services, for sign-in and installation.)
 - Custom UI sound assets. v0.1 uses the vanilla UI click with Ooze pitch and volume tuning.
 - Features that give an unfair advantage on servers. When modules arrive, the module metadata includes fair-play classification ([ARCHITECTURE.md §8](ARCHITECTURE.md)).
 - Builds for 26.x or any Minecraft version other than 1.21.11 (owner decision, 2026-11-09).
-- Any account system, Microsoft login, Azure app registration or separate launcher. Sign-in, entitlement and account switching belong to the official Minecraft Launcher (TARGET_PLATFORM §4).
+- Any **Ooze** account system or login server. Microsoft sign-in, entitlement and account switching live in the Ooze Launcher's backend, which keeps credentials out of the interface, the mod and the JNI engine (TARGET_PLATFORM §4).
 
 ## 7. Success criteria
 

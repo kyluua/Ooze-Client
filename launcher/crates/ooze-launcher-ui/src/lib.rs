@@ -36,3 +36,14 @@ pub mod fixtures;
 mod ui_tests;
 
 pub use app::{AppOptions, LauncherApp};
+
+/// Open the launcher window over `backend` and run until it closes. Codex's packaged
+/// `ooze-launcher` binary calls this with the real `ooze-launcher-core` backend.
+pub fn run(backend: Box<dyn api::Backend>) -> eframe::Result {
+    let title = i18n::Strings::en_us().get("app.name").to_owned();
+    eframe::run_native(
+        "ooze-launcher",
+        LauncherApp::native_options(&title),
+        Box::new(move |_cc| Ok(Box::new(LauncherApp::new(backend, AppOptions::default())))),
+    )
+}

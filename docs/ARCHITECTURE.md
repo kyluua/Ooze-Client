@@ -6,6 +6,8 @@
 > - most Ooze engine and UI logic in Rust behind one batched JNI bridge;
 > - authentication only through the official Minecraft Launcher.
 >
+> Updated 2026-11-16: the owner chose a **fully independent Ooze Launcher with its own Microsoft sign-in** (§19, ADR-015/016). It supersedes "official launcher only" for the standalone product. The mod's identity boundary (§17) is unchanged.
+>
 > Section numbers match the previous version so cross-references in other documents stay valid.
 
 **Identifiers**
@@ -25,10 +27,10 @@
    - Rust owns UI state, components, layout, animation, theming, typography, configuration, settings, search and HUD composition.
    - Java owns everything that touches Minecraft or Fabric objects, the GPU and the vanilla renderer.
 2. **One bridge, batched.** Each frame Java sends one bounded input batch plus snapshot deltas, and receives one **versioned frame output**: geometry, texture work and platform commands. There is never JNI per vertex, glyph, entity, widget or setting.
-3. **No raw graphics APIs anywhere.** Rust never calls OpenGL, Vulkan or NanoVG. Java submits geometry only through vanilla GUI pipelines (ADR-001, ADR-002).
+3. **No raw graphics APIs in game.** Inside Minecraft, Rust never calls OpenGL, Vulkan or NanoVG, and Java submits geometry only through vanilla GUI pipelines (ADR-001, ADR-002). This rule is about the in-game adapter; the separate launcher window uses a maintained Rust GUI toolkit (§19, ADR-016).
 4. **Native code is Minecraft-agnostic.** Only Ooze-defined data crosses the bridge. Obfuscated or mapped Minecraft symbols never do.
 5. **Vanilla is preserved and the engine fails soft.** If the native engine is missing or incompatible, Minecraft runs as vanilla with a clear diagnostic and no non-working Ooze controls (TARGET_PLATFORM §5).
-6. **Identity stays with the launcher.** Only username and UUID reach Rust, for display (§17).
+6. **Identity stays with the launcher.** The mod never handles credentials; only username and UUID reach the in-game Rust UI, for display (§17). The Ooze Launcher's backend owns sign-in and credentials; its interface sees only display summaries (§19).
 7. **Data-driven appearance.** Themes, fonts, wallpapers and motion are tokens and data.
 
 ## 2. Layers
@@ -401,13 +403,23 @@ The fuzzy index and scoring are unchanged from the previous specification:
 
 See TARGET_PLATFORM §4.
 
+**Inside the Fabric mod** (unchanged by the launcher decision):
+
 | Item | Rule |
 |---|---|
-| Sign-in, entitlement and session | The official launcher and Minecraft |
-| Ooze account system | **None.** No Microsoft login, no Azure application registration, no app-approval dependency |
-| Crosses into Rust | Username and UUID, display only |
-| Never crosses, logs or persists | Access tokens, session IDs, refresh tokens, Microsoft account data |
-| Account switching | In the launcher; no Ooze control |
+| Sign-in, entitlement and session | Done before Minecraft starts, by whichever launcher started it (the Ooze Launcher, or the official launcher for a manual install) |
+| Crosses into Rust (JNI) | Username and UUID, display only |
+| Never read, crosses, logs or persists | Access tokens, session IDs, refresh tokens, Microsoft account data |
+| Account switching | In the launcher; no in-game Ooze control |
+
+**In the Ooze Launcher** (§19):
+
+| Item | Rule |
+|---|---|
+| Sign-in | System browser + PKCE with the project's registered public client ID. No password collection, no client secret, no borrowed client IDs, no reading other launchers' stores |
+| Tokens | Only in the backend (`ooze-launcher-core`), stored with Windows DPAPI, passed to Minecraft only through the launch interface; the launch command is never logged raw |
+| Interface | Receives `AccountSummary { username, uuid }` and typed states only |
+| Ooze account system or login server | **None** |
 
 ---
 
@@ -426,6 +438,44 @@ See TARGET_PLATFORM §4.
 | 009 | Ooze scale model independent of Minecraft's GUI scale | Kept |
 | 010 | Exact-type event bus | Kept (Rust) |
 | 011 | ~~Gradle subprojects plus shared source dirs for several Minecraft targets~~ | **Superseded** by ADR-013 |
-| 012 | **Authentication only through the official Minecraft Launcher**; Ooze has no account system | New |
+| 012 | **Authentication only through the official Minecraft Launcher**; Ooze has no account system | **Superseded for the standalone product** by ADR-015 (still true inside the mod: no credentials in the mod or JNI) |
 | 013 | **Rust engine and UI with a Java 21 Fabric adapter, joined by one batched, versioned JNI bridge owned by Sol** | New (owner decision 2026-11-09) |
 | 014 | **Single target Minecraft 1.21.11**; 26.1/26.2 removed | New (owner decision 2026-11-09) |
+| 015 | **Independent Ooze Launcher with its own Microsoft sign-in** (system browser + PKCE, owned public client ID, DPAPI storage) that installs and directly launches 1.21.11 + Fabric + Ooze. No Ooze account system or server | New (owner decision 2026-11-16) |
+| 016 | **Launcher UI in Rust with egui/eframe + AccessKit** (Windows UI Automation); the in-game "no custom renderer" rule (ADR-002) does not apply to the separate desktop window | New (2026-11-16) |
+
+---
+
+## 19. Ooze Launcher (desktop)
+
+Details: `docs/launcher/LAUNCHER_UI.md` (interface, Claude); `docs/launcher/LAUNCHER_API_V1.md`, `AUTH_SETUP.md`, `BUILD_AND_TEST.md` (backend, Codex).
+
+```
+┌──────────────────────── ooze-launcher.exe (Windows x64) ─────────────────────────┐
+│ ooze-launcher-ui (Claude, egui/eframe + AccessKit)                              │
+│   screens · components · focus · i18n · Model (reducer over backend events)     │
+│        │ Command (non-blocking submit)              ▲ Event (drain + waker)       │
+│        ▼                                            │                            │
+│ LAUNCHER_API_V1 (versioned Rust API, independent of the JNI ABI)                 │
+│ ooze-launcher-core (Codex)                                                       │
+│   browser+PKCE → Xbox Live → XSTS → Minecraft Services → entitlement → profile   │
+│   DPAPI credentials · installer/verifier · Java 21 · process lifecycle · logs    │
+└──────────────────────────────────────────┬───────────────────────────────────────┘
+                                           │ spawns (detached), reads stdout
+                                           ▼
+                Java 21 → Minecraft 1.21.11 + Fabric Loader 0.20.1 + Fabric API + Ooze mod
+                       (mod logs "OOZE_READY v1 screen=title engine=<STATE>")
+```
+
+- **Inputs from the Fabric build:**
+  - `build/dist/ooze-client-<ver>+mc1.21.11.jar` (bundled in the launcher package);
+  - `build/dist/ooze-launcher-profile.json` (pinned versions, Fabric API URL + SHA-256, mod SHA-256, readiness marker).
+  - Minecraft files are downloaded from Mojang and verified, never bundled.
+- **Readiness:** a launch is *verified* only when the backend sees `OOZE_READY v1` on the game's stdout. Install completion and a spawned process are not verification.
+- **Responsiveness:**
+  - all network, disk, auth and process work is off the UI thread;
+  - the interface ignores stale operation and session events;
+  - one Play at a time;
+  - closing while Minecraft runs asks first, and the game keeps running.
+- **Player data:** install and repair never touch `saves/`, `screenshots/`, `resourcepacks/`, `shaderpacks/` or `options.txt`. Changing the install location never moves or deletes the old one.
+- **Fixtures:** the interface's scripted backends exist only for tests and the developer preview (`dev-fixtures`, refused by release builds).

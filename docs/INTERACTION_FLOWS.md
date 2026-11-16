@@ -29,7 +29,7 @@ flowchart LR
 
 ### F1 — First launch
 
-0. The player signs in and presses Play in the **official Minecraft Launcher**. Ooze plays no part in authentication.
+0. The player signs in and presses Play in the **Ooze Launcher** (docs/launcher/LAUNCHER_UI.md), or in the official launcher for a manual install. The mod plays no part in authentication.
 1. The vanilla loading overlay completes. Ooze's async start-up (config, fonts, theme, background) ran in parallel.
 2. If Minecraft requires its accessibility onboarding, it shows unchanged first.
 3. **S01 Intro** plays (about 1.6 s, skippable).

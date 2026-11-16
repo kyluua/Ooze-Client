@@ -123,6 +123,8 @@
   "error.xbox_banned.body": "Microsoft has restricted this account. Contact Xbox support for details.",
   "error.not_entitled.title": "This account doesn't own Minecraft: Java Edition",
   "error.not_entitled.body": "Sign in with the Microsoft account you bought Minecraft: Java Edition with, or buy it at minecraft.net.",
+  "error.no_minecraft_profile.title": "Choose your Minecraft name first",
+  "error.no_minecraft_profile.body": "This account owns Minecraft: Java Edition but has no Minecraft name yet. Set one at minecraft.net, then sign in again.",
   "error.session_expired.title": "Please sign in again",
   "error.session_expired.body": "Your saved sign-in has expired or was revoked.",
   "error.offline.title": "Can't reach the internet",

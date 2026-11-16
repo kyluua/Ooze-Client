@@ -3,6 +3,8 @@
 > Deliverable 12. This replaces the earlier multi-version strategy: per the owner's decision on 2026-11-09, 26.1/26.2 builds are no longer requirements.
 >
 > It covers what Ooze targets, how the build is pinned, where native code runs, how authentication works, and what must be verified before claiming support.
+>
+> Updated 2026-11-16: Ooze also ships the **Ooze Launcher**, an independent Windows x64 desktop launcher with its own Microsoft sign-in (§4, ARCHITECTURE §19).
 
 ## 1. Target
 
@@ -17,6 +19,7 @@
 | Gradle | **9.8.2** (wrapper with pinned SHA-256) | Matches the official 1.21.11 example mod |
 | Distribution | One remapped Fabric JAR: `ooze-client-<ver>+mc1.21.11.jar` | `./gradlew buildAll` → `build/dist/` |
 | Engine | Rust, via Sol's `bridge-java` + per-platform native library | ARCHITECTURE §2 |
+| Launcher | Ooze Launcher, Rust (egui/eframe), Windows x64; installs the profile above from `build/dist/ooze-launcher-profile.json` | ARCHITECTURE §19 |
 
 **Pinning rules**
 - Versions live in `versions/mc1_21_11/gradle.properties` (Minecraft, Loader, Fabric API) and the root `build.gradle.kts` (Loom).
@@ -47,22 +50,33 @@ The C0 development container is Linux x64. It can **game-launch** the client in 
 
 ## 4. Authentication and identity
 
+**Primary path: the Ooze Launcher** (owner decision 2026-11-16).
+
 ```
-Official Minecraft Launcher ──(Microsoft sign-in, entitlement, session)──► Minecraft 1.21.11 + Fabric Loader
-                                                                              │
-                                                     Ooze Fabric adapter (Java) reads only:
-                                                     · username (display)  · UUID (display / skin lookup by vanilla)
-                                                                              │  bounded snapshot
-                                                                              ▼
-                                                                         Rust UI (display only)
+Ooze Launcher backend (Codex) ──(system browser + PKCE, owned public client ID)──► Microsoft
+        │  Xbox Live → XSTS → Minecraft Services → entitlement → profile
+        │  tokens stay in the backend (Windows DPAPI); never in the UI, logs or exports
+        ├──► launcher UI (Claude): AccountSummary { username, uuid } + typed states only
+        └──(launch interface; command never logged raw)──► Minecraft 1.21.11 + Fabric Loader
+                                                              │
+                                     Ooze Fabric adapter (Java) reads only:
+                                     · username (display)  · UUID (display / skin lookup by vanilla)
+                                                              │  bounded snapshot
+                                                              ▼
+                                                         in-game Rust UI (display only)
 ```
 
-- Ooze is a **Fabric client mod**. It is not a launcher and adds **no login**, **no Azure application registration** and **no approval dependency**.
-- The launcher and Minecraft keep the session. Ooze never reads, logs, stores or transmits access tokens, session IDs, refresh tokens or Microsoft account data.
-- The Rust UI receives only username and UUID, for display: the profile chip and About.
-- Account switching happens in the launcher. Ooze shows no "switch account" control.
-- A separate launcher with its own authentication is **outside this architecture**.
-- Development runs (`runClient`) use Loom's offline development account. That is a development convenience, not a product feature.
+- **Developer configuration, not per-player setup.** The launcher needs the project's own registered Microsoft **public client** application. It is a desktop app with no client secret, using the system browser and PKCE. The registration is made once by the developer; see Microsoft's [app registration quickstart](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app) and [public vs confidential clients](https://learn.microsoft.com/en-us/entra/identity-platform/msal-client-applications). Codex documents the exact steps in `docs/launcher/AUTH_SETUP.md`.
+- **Minecraft Services approval.** New third-party applications must be approved for Minecraft Services. Until then the services reject sign-in with "Invalid app registration" (observed by other developers in 2026; verify the current process in `AUTH_SETUP.md`). The "no app registration / no approval" wish of 2026-11-09 **cannot be promised** for an independent launcher. The launcher shows `AuthNotConfigured` or `AuthAppNotApproved` honestly and never falls back to offline play.
+- **No paid hosting.** There is no Azure hosting, no Ooze login server and no Ooze account.
+- **Passwords and other launchers.** Ooze never collects Microsoft passwords and never reads another launcher's credentials.
+- **Account switching** happens in the Ooze Launcher (Settings → Account → Switch account / Sign out).
+
+**Inside the mod** (unchanged): the mod never reads, logs, stores or transmits tokens or session IDs. The in-game Rust UI receives only username and UUID.
+
+**Secondary path: manual install** into the official Minecraft Launcher (INSTALL.md §B). It still works because Ooze is a normal Fabric mod; sign-in is then the official launcher's.
+
+**Development** runs (`runClient`, launch tests) use Loom's offline development account. That is a development convenience, not a product feature.
 
 ## 5. Native availability states (Fabric side)
 
@@ -102,3 +116,6 @@ A controlled bridge failure at runtime (in the developer probe or the diagnostic
 | T6 | Since 1.21.6, GUI drawing is deferred through a GUI render state; since 1.21.9, input callbacks use record types | Verify in C1/C2 against the 1.21.11 jar |
 | T7 | Ordering of GUI elements with different pipelines within one stratum | Unknown; C1 must test it (ARCHITECTURE §5.9) |
 | T8 | LWJGL `tinyfd` is on the 1.21.11 runtime classpath (Java-side file dialog) | Verify in C7; a fallback is specified |
+| T9 | Fabric API `0.141.6+1.21.11` on maven.fabricmc.net has SHA-256 `bdff7fd7…b9ed0f` (2,426,039 bytes); `meta.fabricmc.net/v2/versions/loader/1.21.11/0.20.1/profile/json` resolves | ✓ verified 2026-11-16 (downloaded, matches Fabric's `.sha256`) |
+| T10 | New third-party apps need Minecraft Services approval; unapproved apps get HTTP 403 "Invalid app registration" | Reported by developers (Microsoft Q&A, Feb 2026); **Codex must verify** the current process in AUTH_SETUP.md |
+| T11 | egui/eframe 0.37 exposes AccessKit 0.25 → `accesskit_windows` 0.35 (UI Automation, including LiveRegionChanged) | ✓ verified 2026-11-16 (crate sources); Narrator run pending |

@@ -1,6 +1,6 @@
 # Ooze Client — Acceptance Criteria & Testing
 
-> Deliverable 14. Updated 2026-11-09 for Fabric 1.21.11 + Rust.
+> Deliverable 14. Updated 2026-11-09 for Fabric 1.21.11 + Rust; launcher layers added 2026-11-16 (§11).
 > Milestone-specific gates are in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) §3.
 
 ## 0. Evidence vocabulary
@@ -10,7 +10,7 @@ Every result reported in a handoff uses exactly one of these words, and states t
 | Word | Meaning |
 |---|---|
 | **Built** | Compiles and packages |
-| **Headless-tested** | Automated tests passed without a game window: JUnit, `cargo test`, contract tests, goldens |
+| **Headless-tested** | Automated tests passed without a game window: JUnit, `cargo test`, contract tests, goldens, egui_kittest (launcher interface through its AccessKit tree) |
 | **Game-launched** | A real Minecraft 1.21.11 client started with the mod, and the stated automated check passed |
 | **Manually verified** | A person looked at or used it, on stated hardware |
 
@@ -39,6 +39,7 @@ A platform is **supported** only with a native artifact **and** a Game-launched 
 | `PlatformInfoTest` | OS and architecture normalisation; only `windows-x86_64` is in the supported list |
 | `EngineDiagnosticsTest` | Every failure state has a full log block and an `en_us` translation with matching placeholders; no account or secret wording |
 | `SourceRulesTest` | The adapter declares no `native` methods, imports no raw graphics APIs and references no session secrets |
+| `LaunchReadinessTest` | The `OOZE_READY v1 screen=title engine=<STATE>` line matches the launcher contract for every state |
 
 **Rust:** the engine-side tests listed in the previous specification (springs against RK4, cubic-bezier, OKLab and contrast, tessellation watertightness, text layout, search ranking, config atomicity and migrations, events, settings) are Sol's. `ooze-ui` tests are Claude's from C2.
 
@@ -52,7 +53,7 @@ OOZE_NATIVE_RESOURCES=<abs dir> tools/launch-tests.sh build/launch-evidence   # 
 
 The expected state defaults inside the test to **`LOADED` on Windows x64** and **`UNSUPPORTED_PLATFORM` elsewhere**. Sol's loader checks the platform first. `-PoozeExpectEngineState=<STATE>` overrides it.
 
-Every case also asserts that the `GuiGraphicsAccessor` mixin applied (dev and production-remapped).
+Every case also asserts that the `GuiGraphicsAccessor` mixin applied (dev and production-remapped), and that the launcher readiness marker `OOZE_READY v1 screen=title engine=<STATE>` was logged when the title screen opened.
 
 | Case | Task | Asserts |
 |---|---|---|
@@ -121,7 +122,7 @@ Unchanged. Verify the COMPONENTS §13 matrix in the dev-only Component Gallery (
 
 ## 10. Definition of Done
 
-1. `./gradlew build` passes. Sol's `cargo` checks pass for any touched crate.
+1. `./gradlew build` passes. The owning workspace's `cargo fmt`, `clippy -D warnings` and `cargo test` pass for any touched crate (Sol: `native/`; Codex: `launcher/`; Claude: `ooze-ui`, `ooze-launcher-ui`).
 2. Launch tests (§3) pass for every case the milestone touches. Windows x64 evidence is required from C0b onwards.
 3. No `native` declarations outside bridge-java; no raw GL, Vulkan or NanoVG; no session secrets (`SourceRulesTest` plus Rust lints).
 4. Tokens, not literals. Every user-facing string has an `en_us` key.
@@ -129,3 +130,14 @@ Unchanged. Verify the COMPONENTS §13 matrix in the dev-only Component Gallery (
 6. No visible non-working control; samples are labelled; developer tools are dev-only.
 7. Performance budgets met for the scenes the milestone touches, with tables in the handoff.
 8. The handoff is written with evidence words and lists any spec deviations, with the docs updated.
+
+## 11. Launcher (L-series)
+
+| Layer | Tooling | Owner | Covers |
+|---|---|---|---|
+| Interface unit | `cargo test` in `ooze-launcher-ui` | Claude | Reducer (stale events, single Play, cancel, close guard, minimise/restore, session expiry), redaction, i18n completeness, token parsing and contrast, motion modes, superellipse geometry |
+| Interface through AccessKit | egui_kittest (headless wgpu; lavapipe on Linux) | Claude | Keyboard-only first run, sign-in guidance and cancel, honest configuration errors, real progress with values and live announcements, double-click Play, crash handling, close prompt, roving focus in radio groups, redacted log and clipboard, "Off" motion has no repaint loop, every interactive node has a name. Optional PNGs via `OOZE_UI_SCREENSHOT_DIR` |
+| Developer preview in a real window | `ooze-launcher-preview` (`dev-fixtures`) under Xvfb or on Windows | Claude | Real event loop, waker thread, X11/Win32 input. Simulated backend, so it is **not** evidence of sign-in, install or launch |
+| Backend unit and contract | Codex's tests | Codex | OAuth/PKCE, XSTS error mapping, entitlement, credential storage, installer checksums, path safety, process lifecycle, redaction |
+| Joint acceptance (Gate L) | Packaged app on Windows x64 | Claude + Codex | `docs/handoffs/CLAUDE-L0-request.md` §4. Game-launched means `OOZE_READY … engine=LOADED` was observed, not just a spawned process |
+| Screen reader | Narrator (and NVDA) | Claude, with a person | Manually verified only |

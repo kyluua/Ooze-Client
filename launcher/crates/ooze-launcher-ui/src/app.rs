@@ -1771,6 +1771,10 @@ pub fn error_keys(kind: ErrorKind) -> (&'static str, &'static str) {
         ErrorKind::XboxRegionUnavailable => ("error.xbox_region.title", "error.xbox_region.body"),
         ErrorKind::XboxBanned => ("error.xbox_banned.title", "error.xbox_banned.body"),
         ErrorKind::NotEntitled => ("error.not_entitled.title", "error.not_entitled.body"),
+        ErrorKind::NoMinecraftProfile => (
+            "error.no_minecraft_profile.title",
+            "error.no_minecraft_profile.body",
+        ),
         ErrorKind::SessionExpired => ("error.session_expired.title", "error.session_expired.body"),
         ErrorKind::Offline => ("error.offline.title", "error.offline.body"),
         ErrorKind::ServiceUnavailable => (
