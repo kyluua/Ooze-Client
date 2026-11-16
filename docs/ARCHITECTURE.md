@@ -448,7 +448,7 @@ See TARGET_PLATFORM §4.
 
 ## 19. Ooze Launcher (desktop)
 
-Details: `docs/launcher/LAUNCHER_UI.md` (interface, Claude); `docs/launcher/LAUNCHER_API_V1.md`, `AUTH_SETUP.md`, `BUILD_AND_TEST.md` (backend, Codex).
+Details: `docs/launcher/LAUNCHER_UI.md` (interface, Claude); `docs/launcher/LAUNCHER_API_V1.md`, `AUTH_SETUP.md`, `BUILD_AND_TEST.md` (backend, Sol).
 
 ```
 ┌──────────────────────── ooze-launcher.exe (Windows x64) ─────────────────────────┐
@@ -457,7 +457,7 @@ Details: `docs/launcher/LAUNCHER_UI.md` (interface, Claude); `docs/launcher/LAUN
 │        │ Command (non-blocking submit)              ▲ Event (drain + waker)       │
 │        ▼                                            │                            │
 │ LAUNCHER_API_V1 (versioned Rust API, independent of the JNI ABI)                 │
-│ ooze-launcher-core (Codex)                                                       │
+│ ooze-launcher-core (Sol)                                                       │
 │   browser+PKCE → Xbox Live → XSTS → Minecraft Services → entitlement → profile   │
 │   DPAPI credentials · installer/verifier · Java 21 · process lifecycle · logs    │
 └──────────────────────────────────────────┬───────────────────────────────────────┘

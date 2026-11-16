@@ -53,7 +53,7 @@ The C0 development container is Linux x64. It can **game-launch** the client in 
 **Primary path: the Ooze Launcher** (owner decision 2026-11-16).
 
 ```
-Ooze Launcher backend (Codex) ──(system browser + PKCE, owned public client ID)──► Microsoft
+Ooze Launcher backend (Sol) ──(system browser + PKCE, owned public client ID)──► Microsoft
         │  Xbox Live → XSTS → Minecraft Services → entitlement → profile
         │  tokens stay in the backend (Windows DPAPI); never in the UI, logs or exports
         ├──► launcher UI (Claude): AccountSummary { username, uuid } + typed states only
@@ -66,7 +66,7 @@ Ooze Launcher backend (Codex) ──(system browser + PKCE, owned public client 
                                                          in-game Rust UI (display only)
 ```
 
-- **Developer configuration, not per-player setup.** The launcher needs the project's own registered Microsoft **public client** application. It is a desktop app with no client secret, using the system browser and PKCE. The registration is made once by the developer; see Microsoft's [app registration quickstart](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app) and [public vs confidential clients](https://learn.microsoft.com/en-us/entra/identity-platform/msal-client-applications). Codex documents the exact steps in `docs/launcher/AUTH_SETUP.md`.
+- **Developer configuration, not per-player setup.** The launcher needs the project's own registered Microsoft **public client** application. It is a desktop app with no client secret, using the system browser and PKCE. The registration is made once by the developer; see Microsoft's [app registration quickstart](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app) and [public vs confidential clients](https://learn.microsoft.com/en-us/entra/identity-platform/msal-client-applications). Sol documents the exact steps in `docs/launcher/AUTH_SETUP.md`.
 - **Minecraft Services approval.** New third-party applications must be approved for Minecraft Services. Until then the services reject sign-in with "Invalid app registration" (observed by other developers in 2026; verify the current process in `AUTH_SETUP.md`). The "no app registration / no approval" wish of 2026-11-09 **cannot be promised** for an independent launcher. The launcher shows `AuthNotConfigured` or `AuthAppNotApproved` honestly and never falls back to offline play.
 - **No paid hosting.** There is no Azure hosting, no Ooze login server and no Ooze account.
 - **Passwords and other launchers.** Ooze never collects Microsoft passwords and never reads another launcher's credentials.
@@ -117,5 +117,5 @@ A controlled bridge failure at runtime (in the developer probe or the diagnostic
 | T7 | Ordering of GUI elements with different pipelines within one stratum | Unknown; C1 must test it (ARCHITECTURE §5.9) |
 | T8 | LWJGL `tinyfd` is on the 1.21.11 runtime classpath (Java-side file dialog) | Verify in C7; a fallback is specified |
 | T9 | Fabric API `0.141.6+1.21.11` on maven.fabricmc.net has SHA-256 `bdff7fd7…b9ed0f` (2,426,039 bytes); `meta.fabricmc.net/v2/versions/loader/1.21.11/0.20.1/profile/json` resolves | ✓ verified 2026-11-16 (downloaded, matches Fabric's `.sha256`) |
-| T10 | New third-party apps need Minecraft Services approval; unapproved apps get HTTP 403 "Invalid app registration" | Reported by developers (Microsoft Q&A, Feb 2026); **Codex must verify** the current process in AUTH_SETUP.md |
+| T10 | New third-party apps need Minecraft Services approval; unapproved apps get HTTP 403 "Invalid app registration" | Reported by developers (Microsoft Q&A, Feb 2026); **Sol must verify** the current process in AUTH_SETUP.md |
 | T11 | egui/eframe 0.37 exposes AccessKit 0.25 → `accesskit_windows` 0.35 (UI Automation, including LiveRegionChanged) | ✓ verified 2026-11-16 (crate sources); Narrator run pending |

@@ -1,7 +1,7 @@
 # Ooze Client — Repository Structure
 
 > Deliverable 11. Rewritten 2026-11-09 for the 1.21.11 / Rust architecture; launcher added 2026-11-16.
-> - **Owner:** C = Claude, S = Sol, X = Codex.
+> - **Owner:** C = Claude, S = Sol (Sol also owns the launcher backend; the L0 brief called that role "Codex").
 > - **State:** ✓ = exists, ○ = planned.
 
 ## 1. Tree
@@ -32,18 +32,19 @@ Ooze-Client/
 ├── assets-src/                   C ○  brand, theme tokens, fonts + OFL texts, icons (SVG), LICENSES.md
 ├── licenses/                     C ○  third-party licence texts copied into the JAR root
 ├── docs/                         C ✓  product specification (Sol owns docs/bridge/)
-│   ├── handoffs/                 C+S+X ✓  CLAUDE-/SOL-/CODEX-<milestone>.md, requests, evidence/
+│   ├── handoffs/                 C+S ✓  CLAUDE-/SOL-<milestone>.md, requests, reviews, evidence/
 │   ├── bridge/                   S ✓  ABI_V1.md, BUILD_AND_TEST.md, NATIVE_ARCHITECTURE.md, resources.json
-│   ├── launcher/                 C+X  LAUNCHER_UI.md (C ✓); LAUNCHER_API_V1.md, AUTH_SETUP.md, BUILD_AND_TEST.md (X ○)
+│   ├── launcher/                 C+S  LAUNCHER_UI.md (C ✓); LAUNCHER_API_V1.md, AUTH_SETUP.md, BUILD_AND_TEST.md, INSTALLATION_V1.md (S ✓)
 │   └── tokens/ooze_classic.theme.json   C ✓  canonical default theme
 ├── launcher/                     –    the standalone Ooze Launcher (Rust, Windows x64 first)
-│   ├── Cargo.toml, Cargo.lock    X ○  launcher workspace (registers every launcher crate)
-│   ├── crates/ooze-launcher-ui/  C ✓  egui/eframe interface: screens, components, focus, i18n, UI state; dev-only preview binary
-│   ├── crates/ooze-launcher-core/ X ○  sign-in, Xbox/Minecraft services, credentials, installer, Java, process lifecycle, LAUNCHER_API_V1
-│   ├── crates/ooze-launcher-cli/ X ○  headless driver of the core
+│   ├── Cargo.toml, Cargo.lock    S ✓  launcher workspace (core, cli; ooze-launcher-ui membership requested)
+│   ├── crates/ooze-launcher-ui/  C ✓  egui/eframe interface + `ooze-launcher` binary over the real core; dev-only preview binary
+│   ├── crates/ooze-launcher-core/ S ✓  sign-in, Xbox/Minecraft services, credentials, installer, Java, process lifecycle, LAUNCHER_API_V1
+│   ├── crates/ooze-launcher-cli/ S ✓  developer CLI over the same core
+│   ├── packaging/                S ✓  prepare-release.ps1 (portable package), test-c0-windows.ps1
 │   └── resources/                C ✓  fonts (+ OFL texts, fonts.json), lang/en_us.json, tokens/launcher.tokens.json
 ├── tools/launch-tests.sh         C ✓  launch-test matrix + evidence collection
-└── .github/workflows/native-g0.yml   S ✓  Windows build + contract harness (Sol); launcher-*.yml are Codex's (○)
+└── .github/workflows/          S ✓  native-g0.yml (bridge), launcher-l0.yml (launcher build, tests, package, install/repair on Windows)
 ```
 
 ## 2. How the pieces combine
@@ -54,7 +55,7 @@ Ooze-Client/
 | `:bridge-java` (Sol) | Java 21 | Bridge classes + native resources | **Merged once into the mod JAR** (not jar-in-jar, no second mod ID; `NativeBindings` not relocated) |
 | `native/` (Sol) | Rust | `ooze_jni.dll` (Windows x64) | `natives/windows-x86_64/ooze_jni.dll` + `META-INF/ooze/native.properties` inside the mod JAR, from Sol's prebuilt resources (`-PoozeNativeResources`); extracted to `<gameDir>/.ooze/natives/<ver>/<sha256>/…` and loaded by `NativeLoader` |
 | `native/crates/ooze-ui` (Claude) | Rust | Linked into the native library | Part of `ooze_jni` (not created yet) |
-| `launcher/` (Codex workspace; Claude's UI crate) | Rust | `ooze-launcher.exe` (Windows x64) | Not in the mod JAR. The launcher package bundles the mod JAR and `ooze-launcher-profile.json` from `build/dist/`; it never bundles Minecraft files |
+| `launcher/` (Sol's workspace; Claude's UI crate) | Rust | `ooze-launcher.exe` (Windows x64) | Not in the mod JAR. The launcher package bundles the mod JAR and `ooze-launcher-profile.json` from `build/dist/`; it never bundles Minecraft files |
 
 **Native artifacts:**
 - **Windows x64** is first.
@@ -66,7 +67,7 @@ Ooze-Client/
 | Topic | Convention |
 |---|---|
 | Java packages | `io.github.kyluua.ooze.mc.v1_21_11.*`; bridge-java packages are defined by Sol |
-| Rust | Crate names `ooze-*`; `native/` workspace lints are Sol's, `launcher/` workspace lints are Codex's |
+| Rust | Crate names `ooze-*`; `native/` workspace lints are Sol's, `launcher/` workspace lints are Sol's |
 | Commits | Conventional commits on `main` (AGENTS.md §Branches); a handoff document per milestone |
 | Generated assets | Produced by build tasks; committed only if listed in `assets-src/LICENSES.md` |
 | Versioning | SemVer for the mod; JAR suffix `+mc1.21.11`; the bridge version is reported in the handoff and logs |

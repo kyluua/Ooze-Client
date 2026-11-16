@@ -1,6 +1,6 @@
 //! Defence-in-depth redaction for anything the interface displays, copies or exports.
 //!
-//! The backend owns redaction of logs and diagnostic bundles (Codex, LAUNCHER_API_V1). The
+//! The backend owns redaction of logs and diagnostic bundles (Sol, LAUNCHER_API_V1). The
 //! interface never receives credentials by design, but game output and backend text are passed
 //! through this filter again before they reach the screen or the clipboard, so a backend
 //! regression cannot leak a token into a screenshot or a pasted bug report.

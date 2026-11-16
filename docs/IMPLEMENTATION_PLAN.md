@@ -3,7 +3,7 @@
 > Deliverable 15. Rewritten 2026-11-09 for the owner's decisions: Fabric 1.21.11, a Java 21 adapter, a Rust engine and UI, and Windows x64 first. Updated 2026-11-16 for the owner's decision to ship an **independent Ooze Launcher with its own Microsoft sign-in** (L-series).
 > - **C-series:** Claude (Fabric integration, in-game Rust UI, product).
 > - **G-series:** Sol (Rust engine, bridge, native artifacts, native CI).
-> - **L-series:** the launcher; Claude (interface, product, accessibility, Fabric distribution inputs) and Codex (backend, auth, installer, process, packaging, launcher CI).
+> - **L-series:** the launcher; Claude (interface, product, accessibility, Fabric distribution inputs) and Sol (backend, auth, installer, process, packaging, launcher CI).
 >
 > Each milestone ends with a handoff in `docs/handoffs/` (AGENTS.md).
 
@@ -14,7 +14,7 @@
 3. **Gates are early and repeated.** Every milestone's acceptance list includes its own performance, accessibility and launch checks (§3). There is no "fix it all at the end" milestone.
 4. **Evidence vocabulary:** Built, Headless-tested, Game-launched, Manually verified (AGENTS.md). A Windows claim needs Windows evidence.
 5. **Real or absent.** Nothing user-visible ships before it works. Developer tools are dev-only. Samples are labelled.
-6. **No invented bridge methods.** The C-series consumes Sol's published bridge API, and requests changes through handoffs. The launcher interface likewise consumes Codex's published launcher API; until it exists, the interface states its needs as a proposal (`docs/handoffs/CLAUDE-L0-request.md`) and develops against test-only fixtures.
+6. **No invented bridge methods.** The C-series consumes Sol's published bridge API, and requests changes through handoffs. The launcher interface likewise consumes Sol's published launcher API; until it exists, the interface states its needs as a proposal (`docs/handoffs/CLAUDE-L0-request.md`) and develops against test-only fixtures.
 
 ## 1. Dependency graph
 
@@ -40,7 +40,7 @@ flowchart LR
   C6 & C7 & C8 & C9 --> C10[C10 polish, audits, release candidate]
   C5 --> FB[Feature backlog milestones F-xx]
   C0 --> L0UI[L0 launcher interface - Claude]
-  L0API[L0 launcher API + backend - Codex] --> L0I[L0 integration + Windows acceptance]
+  L0API[L0 launcher API + backend - Sol] --> L0I[L0 integration + Windows acceptance]
   L0UI --> L0I
   C0b --> L0I
 ```
@@ -207,9 +207,9 @@ Integration code is complete (C0). What remains is evidence, plus follow-ups to 
 
 ### L-series: the Ooze Launcher
 
-#### L0 — Usable Windows x64 launcher: sign-in to Play (Claude interface + Codex backend)
+#### L0 — Usable Windows x64 launcher: sign-in to Play (Claude interface + Sol backend)
 
-**Depends on:** C0 (Fabric build, launch tests), Codex's `LAUNCHER_API_V1` and backend, C0b's Windows DLL evidence for the real-DLL acceptance.
+**Depends on:** C0 (Fabric build, launch tests), Sol's `LAUNCHER_API_V1` and backend, C0b's Windows DLL evidence for the real-DLL acceptance.
 
 **Claude delivers:**
 - `launcher/crates/ooze-launcher-ui`: the egui/eframe window with first run, Play, Settings, Diagnostics and the close prompt (docs/launcher/LAUNCHER_UI.md).
@@ -220,14 +220,14 @@ Integration code is complete (C0). What remains is evidence, plus follow-ups to 
 - Fabric distribution inputs:
   - `build/dist/ooze-launcher-profile.json` (pinned profile + checksums);
   - the `OOZE_READY v1` title-screen marker in the mod, asserted by every launch test.
-- Reconciled specs; review of Codex's backend; `docs/handoffs/CLAUDE-L0.md`.
+- Reconciled specs; review of Sol's backend; `docs/handoffs/CLAUDE-L0.md`.
 
-**Codex delivers:**
+**Sol delivers:**
 - `LAUNCHER_API_V1` and `ooze-launcher-core`:
   - browser + PKCE sign-in with the owned public client ID; Xbox/XSTS/Minecraft Services; entitlement; refresh; DPAPI credential storage;
   - installer and verifier (Mojang manifest, Fabric profile, Fabric API, Ooze JAR, Java 21);
   - process lifecycle with `OOZE_READY` detection; redacted logs and diagnostics export.
-- `ooze-launcher-cli`, workspace, packaging, launcher CI, `AUTH_SETUP.md`, `BUILD_AND_TEST.md`, `docs/handoffs/CODEX-L0.md`.
+- `ooze-launcher-cli`, workspace, packaging, launcher CI, `AUTH_SETUP.md`, `BUILD_AND_TEST.md`, `docs/handoffs/SOL-L0.md`.
 
 **Acceptance (Gate L):** see §3. External prerequisites that may block it are recorded honestly:
 - the owned Microsoft public client ID (app registration);
@@ -274,7 +274,7 @@ Real modules come from `docs/FEATURE_BACKLOG.md`, one entry per milestone, after
 | Risk | Impact | Mitigation |
 |---|---|---|
 | G0 is late | C0b, C1 and everything after are blocked | C0 completed independently; requests to Sol recorded in `docs/handoffs/CLAUDE-C0.md` |
-| No Windows host for Claude | C0b and Gate L can't be evidenced | Requested Windows CI from Sol and Codex; the joint acceptance run is scripted in `CLAUDE-L0-request.md` §4 |
+| No Windows host for Claude | C0b and Gate L can't be evidenced | Requested Windows CI from Sol and Sol; the joint acceptance run is scripted in `CLAUDE-L0-request.md` §4 |
 | JNI overhead or frame size | Frame time | One call per frame, direct buffers, measured in G1 and C1 gates |
 | GUI render-state ordering | Layering bugs | C1 investigation and golden |
 | Windows-only native support in early milestones | Linux and macOS users get vanilla-only mode | A clear diagnostic; platforms are added only with artifacts and launch tests |

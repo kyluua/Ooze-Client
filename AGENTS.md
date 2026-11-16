@@ -21,16 +21,15 @@ The specification in `docs/` is the source of truth. Implement it milestone by m
 
 ## Who owns what
 
-Three agents work in this repository. They do **not** share chat history: **handoffs and commits carry all context**.
+Two agents work in this repository. They do **not** share chat history: **handoffs and commits carry all context**. (The L0 brief called the launcher-backend role "Sol"; in this repository that role is **Sol**, as recorded in `docs/handoffs/SOL-L0-CONTRACT.md`.)
 
 | Owner | Paths | Responsibilities |
 |---|---|---|
-| **Claude** (product lead: Fabric integration, in-game UI, launcher interface) | `versions/mc1_21_11/**`, `native/crates/ooze-ui/**`, `assets-src/**`, `launcher/crates/ooze-launcher-ui/**`, `launcher/resources/**`, Java-side localisation and resources, root Gradle files (`settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`, wrapper), `tools/launch-tests.sh`, `docs/**` product specs (including `docs/launcher/LAUNCHER_UI.md`), `docs/INSTALL.md` | **In game:** Fabric entrypoint and lifecycle, minimal mixins, input capture, screen hosts, HUD hook, vanilla UI integration, narration, compatibility adapters, the Java render adapter, game-facing module hooks, Rust in-game UI. **Launcher:** screens, components, navigation, focus, accessibility, localisation and product UI state over Codex's API. **Both:** product smoke, screenshot and accessibility tests; the launcher profile manifest from the Fabric build; **independent review of Sol's and Codex's work** |
-| **Sol** (GPT-6.1 Sol: Rust engine and Java/Rust bridge) | `native/**` except `native/crates/ooze-ui/**` (currently `ooze-core`, `ooze-jni`, `tools/`, `licenses/`), `bridge-java/**`, `.cargo/**`, `rust-toolchain.toml`, `.github/workflows/native-*.yml`, benchmarks, `docs/bridge/**` (ABI contract `docs/bridge/ABI_V1.md`) | Native core (render primitives, text, animation, theme resolution, configuration I/O, settings and state algorithms, events, search, images), the JNI implementation, `bridge-java`, the versioned bridge protocol, native artifacts per platform, benchmarks, native CI |
-| **Codex** (launcher backend, packaging) | `launcher/Cargo.toml`, `launcher/Cargo.lock`, `launcher/crates/ooze-launcher-core/**`, `launcher/crates/ooze-launcher-cli/**`, launcher build, packaging and toolchain files, `.github/workflows/launcher-*.yml`, `docs/launcher/LAUNCHER_API_V1.md`, `docs/launcher/AUTH_SETUP.md`, `docs/launcher/BUILD_AND_TEST.md` | Microsoft sign-in (system browser + PKCE), Xbox Live / XSTS / Minecraft Services authorisation, entitlement, refresh, Windows-protected credential storage, installation and verification (Mojang manifest, Fabric profile, Fabric API, Ooze JAR, Java 21 runtime), process launching and lifecycle, log capture and redaction, diagnostics export, the versioned launcher API, packaging, launcher CI |
+| **Claude** (product lead: Fabric integration, in-game UI, launcher interface) | `versions/mc1_21_11/**`, `native/crates/ooze-ui/**`, `assets-src/**`, `launcher/crates/ooze-launcher-ui/**`, `launcher/resources/**`, Java-side localisation and resources, root Gradle files (`settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`, wrapper), `tools/launch-tests.sh`, `docs/**` product specs (including `docs/launcher/LAUNCHER_UI.md`), `docs/INSTALL.md` | **In game:** Fabric entrypoint and lifecycle, minimal mixins, input capture, screen hosts, HUD hook, vanilla UI integration, narration, compatibility adapters, the Java render adapter, game-facing module hooks, Rust in-game UI. **Launcher:** screens, components, navigation, focus, accessibility, localisation and product UI state over Sol's API. **Both:** product smoke, screenshot and accessibility tests; the launcher profile manifest from the Fabric build; **independent review of Sol's and Sol's work** |
+| **Sol** (GPT-6.1 Sol: Rust engine, Java/Rust bridge, launcher backend) | `native/**` except `native/crates/ooze-ui/**` (currently `ooze-core`, `ooze-jni`, `tools/`, `licenses/`), `bridge-java/**`, `.cargo/**`, `rust-toolchain.toml`, `launcher/Cargo.toml`, `launcher/Cargo.lock`, `launcher/.gitignore`, `launcher/crates/ooze-launcher-core/**`, `launcher/crates/ooze-launcher-cli/**`, `launcher/packaging/**`, CI workflows (`.github/workflows/**`), benchmarks, `docs/bridge/**` (ABI contract `docs/bridge/ABI_V1.md`), `docs/launcher/LAUNCHER_API_V1.md`, `AUTH_SETUP.md`, `BUILD_AND_TEST.md`, `INSTALLATION_V1.md` | **Engine:** native core (render primitives, text, animation, theme resolution, configuration I/O, settings and state algorithms, events, search, images), the JNI implementation, `bridge-java`, the versioned bridge protocol, native artifacts per platform, benchmarks. **Launcher backend:** Microsoft sign-in (system browser + PKCE), Xbox Live / XSTS / Minecraft Services, entitlement, refresh, Windows-protected credential storage, installation and verification, process launching and lifecycle, log redaction, the versioned launcher API (API 1), packaging. **CI** for both |
 
 - **Changing another owner's files:** don't edit them directly. Write the request into your handoff (or `docs/handoffs/<REQUESTER>-<milestone>-request.md`) and let the owner make the change. Trivial, mechanical fixes needed to keep the build green are allowed only if the handoff records them.
-- **Shared workspace files:** Codex registers launcher crates in `launcher/Cargo.toml`. Sol owns `native/Cargo.toml`.
+- **Shared workspace files:** Sol owns `native/Cargo.toml` and `launcher/Cargo.toml` and registers crates in them (Claude's `ooze-launcher-ui` membership is requested in `CLAUDE-L0.md`).
 
 ## Branches
 
@@ -44,7 +43,7 @@ Three agents work in this repository. They do **not** share chat history: **hand
 
 1. The newest files in `docs/handoffs/`: what was delivered, the contract versions, and the next task.
 2. `docs/PRODUCT_VISION.md`: principles, especially *Real or absent* and *Tokens, not literals*.
-3. `docs/IMPLEMENTATION_PLAN.md`: find your milestone (C = Claude in-game, L = launcher (Claude interface + Codex backend), G = Sol). Do **only** that milestone.
+3. `docs/IMPLEMENTATION_PLAN.md`: find your milestone (C = Claude in-game, L = launcher (Claude interface + Sol backend), G = Sol engine). Do **only** that milestone.
 4. `docs/ARCHITECTURE.md` (§19 for the launcher), `docs/TARGET_PLATFORM.md` and `docs/REPOSITORY_STRUCTURE.md`.
 5. The topic docs your milestone references:
    - in game: `DESIGN_SYSTEM.md`, `TYPOGRAPHY.md`, `MOTION_SPEC.md`, `BACKGROUNDS.md`, `COMPONENTS.md`, `SCREENS.md`, `INTERACTION_FLOWS.md`, `PERFORMANCE_AND_ACCESSIBILITY.md`, `TESTING.md`;
@@ -109,13 +108,14 @@ Three agents work in this repository. They do **not** share chat history: **hand
 OOZE_NATIVE_RESOURCES=<abs dir> tools/launch-tests.sh  # full launch matrix + evidence (Linux via xvfb-run; Windows Git Bash adds real-DLL cases)
 ./gradlew :versions:mc1_21_11:runClient -PoozeEngineFault=incompatible   # dev-only: exercise engine diagnostics
 
-# Launcher interface (Claude); until Codex's workspace exists, run inside the crate:
+# Launcher interface (Claude); until it is a member of Sol's launcher workspace, run inside the crate:
 cd launcher/crates/ooze-launcher-ui && cargo fmt --check && cargo clippy --all-targets --features dev-fixtures -- -D warnings && cargo test
 cargo run --features dev-fixtures --bin ooze-launcher-preview -- ready  # developer preview over the simulated backend
+cargo run --bin ooze-launcher                                        # the real launcher (Windows x64; elsewhere it shows "needs Windows")
 ```
 
 - **Rust engine:** Sol defines the commands (`cargo fmt/clippy/test`, `native/tools/build-g0.ps1`) in `docs/bridge/BUILD_AND_TEST.md`.
-- **Launcher backend and packaging:** Codex defines them in `docs/launcher/BUILD_AND_TEST.md`.
+- **Launcher backend and packaging:** Sol defines them in `docs/launcher/BUILD_AND_TEST.md`.
 - **Without `-PoozeNativeResources`** the mod still builds (vanilla-only at runtime); the root build logs that it skipped Sol's DLL checks.
 
 ## Evidence vocabulary (use exactly these words)
@@ -133,7 +133,7 @@ cargo run --features dev-fixtures --bin ooze-launcher-preview -- ready  # develo
 
 ## Handoffs (required at the end of every milestone)
 
-Write `docs/handoffs/<OWNER>-<MILESTONE>.md` (for example `CLAUDE-L0.md`, `CODEX-L0.md`) with:
+Write `docs/handoffs/<OWNER>-<MILESTONE>.md` (for example `CLAUDE-L0.md`, `SOL-L0.md`) with:
 - owner, milestone, base commit and result commit;
 - changed paths;
 - contract versions (JNI ABI, launcher API);

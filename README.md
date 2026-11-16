@@ -10,7 +10,7 @@ Its interface is a glossy, elastic white "ooze" with a crisp ink outline, render
 > - On unsupported platforms it reports a clear "Ooze Client is off" diagnostic, and vanilla stays fully usable.
 > - Windows launch evidence is still pending (C0b).
 >
-> - **Launcher (L0, in progress):** the Rust interface is built and Headless-tested over test-only fixtures. It waits for Codex's backend (sign-in, installer, process) and for the project's Microsoft app registration and Minecraft Services approval. There is no launcher release yet.
+> - **Launcher (L0, in progress):** the Rust interface is integrated with Sol's real backend (Microsoft sign-in, installer, Java and process lifecycle; launcher API 1). It is Headless-tested on Linux, and Sol's CI exercises install and repair on Windows. Still missing: the packaged Windows app with the interface, the project's Microsoft app registration and Minecraft Services access, and a signed-in Windows launch. There is no launcher release yet.
 >
 > See [`docs/handoffs/CLAUDE-L0.md`](docs/handoffs/CLAUDE-L0.md) and [`docs/handoffs/CLAUDE-C0.md`](docs/handoffs/CLAUDE-C0.md) for what is built and tested, and [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for what comes next. Coding agents: start with [`AGENTS.md`](AGENTS.md).
 

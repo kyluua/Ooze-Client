@@ -122,7 +122,7 @@ Unchanged. Verify the COMPONENTS §13 matrix in the dev-only Component Gallery (
 
 ## 10. Definition of Done
 
-1. `./gradlew build` passes. The owning workspace's `cargo fmt`, `clippy -D warnings` and `cargo test` pass for any touched crate (Sol: `native/`; Codex: `launcher/`; Claude: `ooze-ui`, `ooze-launcher-ui`).
+1. `./gradlew build` passes. The owning workspace's `cargo fmt`, `clippy -D warnings` and `cargo test` pass for any touched crate (Sol: `native/`; Sol: `launcher/`; Claude: `ooze-ui`, `ooze-launcher-ui`).
 2. Launch tests (§3) pass for every case the milestone touches. Windows x64 evidence is required from C0b onwards.
 3. No `native` declarations outside bridge-java; no raw GL, Vulkan or NanoVG; no session secrets (`SourceRulesTest` plus Rust lints).
 4. Tokens, not literals. Every user-facing string has an `en_us` key.
@@ -138,6 +138,6 @@ Unchanged. Verify the COMPONENTS §13 matrix in the dev-only Component Gallery (
 | Interface unit | `cargo test` in `ooze-launcher-ui` | Claude | Reducer (stale events, single Play, cancel, close guard, minimise/restore, session expiry), redaction, i18n completeness, token parsing and contrast, motion modes, superellipse geometry |
 | Interface through AccessKit | egui_kittest (headless wgpu; lavapipe on Linux) | Claude | Keyboard-only first run, sign-in guidance and cancel, honest configuration errors, real progress with values and live announcements, double-click Play, crash handling, close prompt, roving focus in radio groups, redacted log and clipboard, "Off" motion has no repaint loop, every interactive node has a name. Optional PNGs via `OOZE_UI_SCREENSHOT_DIR` |
 | Developer preview in a real window | `ooze-launcher-preview` (`dev-fixtures`) under Xvfb or on Windows | Claude | Real event loop, waker thread, X11/Win32 input. Simulated backend, so it is **not** evidence of sign-in, install or launch |
-| Backend unit and contract | Codex's tests | Codex | OAuth/PKCE, XSTS error mapping, entitlement, credential storage, installer checksums, path safety, process lifecycle, redaction |
-| Joint acceptance (Gate L) | Packaged app on Windows x64 | Claude + Codex | `docs/handoffs/CLAUDE-L0-request.md` §4. Game-launched means `OOZE_READY … engine=LOADED` was observed, not just a spawned process |
+| Backend unit and contract | Sol's tests | Sol | OAuth/PKCE, XSTS error mapping, entitlement, credential storage, installer checksums, path safety, process lifecycle, redaction |
+| Joint acceptance (Gate L) | Packaged app on Windows x64 | Claude + Sol | `docs/handoffs/CLAUDE-L0-request.md` §4. Game-launched means `OOZE_READY … engine=LOADED` was observed, not just a spawned process |
 | Screen reader | Narrator (and NVDA) | Claude, with a person | Manually verified only |

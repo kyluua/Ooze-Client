@@ -3,7 +3,7 @@
 Ooze is a **Fabric mod for Minecraft Java Edition 1.21.11**, plus the **Ooze Launcher**, which installs and starts it for you.
 
 > **Status (2026-11-16):**
-> - **Ooze Launcher:** not released yet. The interface is built; the backend (sign-in, installer, game start) and the project's Microsoft app approval are still pending. Use route B until a release with published checksums appears.
+> - **Ooze Launcher:** not released yet. The interface and backend exist and are integrated. Still missing: the packaged Windows app, the project's Microsoft app registration and Minecraft Services access, and a verified signed-in launch. Use route B until a release with published checksums appears.
 > - **Mod features:** there are no player-facing in-game Ooze features yet.
 >   - **Windows x64:** a release JAR bundles the native engine.
 >   - **Other systems:** the game starts as vanilla Minecraft with a toast saying **"Ooze Client is off"**.
@@ -18,15 +18,14 @@ What you need:
 - No Java, Rust or developer tools: the launcher downloads and verifies Java 21 itself, unless you choose your own Java 21.
 
 Steps:
-1. **Download** the Ooze Launcher release and check its SHA-256 against the published checksum.
+1. **Download** the Ooze Launcher release (a folder with `ooze-launcher.exe`, `release.json` and the Ooze mod) and check its SHA-256 sums against the published checksums.
 2. **Run** it.
-3. **Choose an install location.** An existing Ooze folder is checked and kept, never overwritten. Your official `.minecraft` folder is not touched.
+3. **Choose an install location**: an empty folder, or an existing Ooze game folder. Ooze never takes over a folder holding other files, and your official `.minecraft` folder is not touched.
 4. **Press Sign in.** Your web browser opens Microsoft's sign-in page. Sign in there, then come back. Ooze never sees your password.
-5. **Press Install.** The launcher downloads Minecraft 1.21.11, Fabric Loader 0.20.1, Fabric API and Ooze, and verifies every file. You can cancel at any time; downloaded files are reused next time.
-6. **Press Play.**
+5. **Press Play.** The first time, the launcher downloads Minecraft 1.21.11, Fabric Loader 0.20.1, Fabric API, Java 21 and Ooze, verifying every file, and then starts the game. You can cancel before the game starts; downloaded files are reused next time.
 
 Accounts and privacy:
-- Your sign-in is stored with Windows' protected storage on your PC.
+- Your sign-in is stored in Windows Credential Manager on your PC. Launcher data lives in `%LOCALAPPDATA%\OozeLauncher`.
 - The Ooze interface, its logs and exported diagnostics never contain your access tokens.
 - The Ooze mod inside the game sees only your username and UUID.
 - Settings → Account offers **Switch account** and **Sign out**.

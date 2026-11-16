@@ -1,6 +1,6 @@
 # Ooze Launcher — Interface, Product and Accessibility Specification (L0)
 
-> Owner: **Claude** (interface, product, accessibility). The backend contract (`LAUNCHER_API_V1.md`), Microsoft sign-in setup (`AUTH_SETUP.md`) and build/packaging (`BUILD_AND_TEST.md`) in this folder are **Codex's**.
+> Owner: **Claude** (interface, product, accessibility). The backend contract (`LAUNCHER_API_V1.md`), Microsoft sign-in setup (`AUTH_SETUP.md`) and build/packaging (`BUILD_AND_TEST.md`) in this folder are **Sol's**.
 > Owner decision of 2026-11-16: Ooze ships a **fully independent desktop launcher with its own Microsoft sign-in** that installs and directly launches Minecraft Java Edition 1.21.11 with Fabric and Ooze. Sending the player to the official launcher to press Play does not satisfy that decision.
 
 ## 1. Scope of L0
@@ -23,15 +23,33 @@ The launcher has only what is needed to get from a clean PC to a running, signed
 ```
 launcher/
 ├── crates/ooze-launcher-ui/    Claude   egui/eframe window: screens, components, focus, i18n, UI state
-├── crates/ooze-launcher-core/  Codex    auth (browser + PKCE), Xbox/Minecraft services, entitlement,
+├── crates/ooze-launcher-core/  Sol    auth (browser + PKCE), Xbox/Minecraft services, entitlement,
 │                                        credential storage (Windows DPAPI), installer, Java, process lifecycle
-├── crates/ooze-launcher-cli/   Codex    headless driver of the same core
+├── crates/ooze-launcher-cli/   Sol    headless driver of the same core
 └── resources/                  Claude   fonts (+ OFL texts), lang/en_us.json, tokens/launcher.tokens.json
 ```
 
-- The interface talks to the backend only through the versioned Rust API (`LAUNCHER_API_V1`, independent of the in-game JNI ABI). Until Codex publishes it, `ooze-launcher-ui/src/api.rs` holds the interface's **proposed** shape (see `docs/handoffs/CLAUDE-L0-request.md`); it then becomes a thin adapter.
-- **Non-blocking:** `Backend::submit` accepts or rejects immediately; work runs on backend threads; events arrive through `drain_events`, and the backend wakes the window. The window never waits on network, disk, auth or the game.
+- The interface talks to the backend only through Sol's versioned Rust API (`LAUNCHER_API_V1`, API 1, independent of the in-game JNI ABI), via `ooze-launcher-ui/src/core_backend.rs`. The screens and the reducer see the interface's own view (`api.rs`); the adapter translates (§2.1).
+- **Non-blocking:** `Launcher::submit` accepts or rejects immediately and work runs on a backend thread. API 1 has no waker, so the window polls `try_event` every 100 ms while an operation runs and every 250 ms while Minecraft runs. Polling also happens in `App::logic`, so the bounded event queue keeps draining when the window is hidden or minimised. The window never waits on network, disk, auth or the game.
 - **No credentials in the interface.** The API has no token, code or session field. Accounts are `{ username, uuid }`. Errors are typed with a backend-redacted detail string.
+### 2.1 Adapting API 1
+
+| API 1 fact | What the interface does |
+|---|---|
+| One operation at a time; a running game keeps the Launch operation active | `concurrent_operations = false`: while anything runs, only Cancel and Open folder are offered |
+| No install-status query; Launch installs and verifies before spawning | `install_status = false`: when signed in, the primary button is **Play**. The status line says files are installed and verified on Play. It shows "Installed and verified" only after an Install, Repair or a launch that reached Java |
+| `GameStarted` = Java spawned; `GameExited` precedes `Completed` / `Failed{Process}` | The interface ends its Launch at `GameStarted` and follows the game as a session. The backend's terminal event after the exit is absorbed, so a crash is reported **once** |
+| No title-screen event | A game log line containing `OOZE_READY v1` marks "reached its title screen". Log lines are best effort, so if that line is dropped the interface says only "running", never more |
+| No re-open browser, Java check, diagnostics export or OS reduced-motion reading | Those controls are absent. A custom Java path is validated by the backend when you play. "Follow Windows" motion is not offered |
+| Settings: instance directory, Java path, memory (1024–16384 MiB) | Motion, interface size, behaviour while playing and first-run completion are interface-only. They live in `<data_dir>/ui-preferences.json` (atomic write). The backend's `settings.json` is never touched directly |
+| Coarse `ErrorCode`s with a safe `message` | Mapped by operation:<br>• SignIn + Configuration → "Sign-in isn't set up in this build"<br>• Launch + Authentication → "Please sign in again"<br>• ServiceAccess → "Minecraft's services refused this launcher"<br>• Entitlement → "doesn't own"<br>• Integrity → Repair<br>Other codes show a generic title with the backend's message as the body |
+| `Launcher::open` can fail (not Windows x64, second instance on the data folder, unreadable settings) | The `ooze-launcher` binary shows one startup page with the reason and no controls |
+
+The `ooze-launcher` binary resolves configuration exactly like Sol's CLI:
+- data directory `%LOCALAPPDATA%\OozeLauncher`;
+- `release.json` beside the executable;
+- `OOZE_MICROSOFT_CLIENT_ID` at run time, or embedded at build time.
+
 - **Rendering:** the launcher window is ordinary desktop GUI drawn by eframe (wgpu: Direct3D 12 / Vulkan on Windows). The "no raw graphics / Java submits through vanilla pipelines" rule applies to the **in-game** adapter only (ARCHITECTURE §19, ADR-016).
 
 ## 3. Screens
@@ -62,7 +80,7 @@ Derived only from backend state (`state.rs`, `Model::primary`):
 | No account | Sign in | yes | `SignIn` |
 | Not installed / not checked | Install | yes | `Prepare { repair: false }` |
 | Needs repair | Repair | yes | `Prepare { repair: true }` |
-| Ready | Play | yes | `Play` |
+| Ready, or signed in over API 1 (Play installs on demand) | Play | yes | `Play` |
 
 - **Double activation:** the model switches to *Starting…* in the same frame as the submit, so a double click or a held Enter sends one `Play` (unit and UI tests; also checked in a real window).
 - **Stale events:** progress or completion for an operation the interface is not tracking, or already saw finish, is ignored. Game events for an older session are ignored.
@@ -97,7 +115,7 @@ The Ooze mod logs exactly one line when the vanilla title screen first opens, in
 OOZE_READY v1 screen=title engine=<LOADED|MISSING_LIBRARY|UNSUPPORTED_PLATFORM|INCOMPATIBLE|LOAD_FAILED>
 ```
 
-The backend scans each line of the game's stdout for the substring `OOZE_READY v1` (the logger prefix differs between development and production runs, for example `[Render thread/INFO]: OOZE_READY v1 …`) and reports `GameState::Running { title_screen: true }`. The line carries no account, session or path data. It is covered by `LaunchReadinessTest`, and asserted by every launch-test case.
+Today the interface's adapter looks for that substring in API 1's best-effort game `LogLine`s (requested from Sol: a typed backend event). The backend scans each line of the game's stdout for the substring `OOZE_READY v1` (the logger prefix differs between development and production runs, for example `[Render thread/INFO]: OOZE_READY v1 …`) and reports `GameState::Running { title_screen: true }`. The line carries no account, session or path data. It is covered by `LaunchReadinessTest`, and asserted by every launch-test case.
 
 ## 7. Keyboard
 
@@ -134,7 +152,7 @@ The backend scans each line of the game's stdout for the substring `OOZE_READY v
 - **Known limits, recorded for L0:**
   1. The AccessKit tree is built lazily, when an assistive client first asks for it.
   2. Windows high-contrast themes and the OS text-size setting are not followed automatically. Interface size and our contrast-checked tokens partly compensate. A High Contrast theme is future work.
-  3. "Show animations in Windows" is not read by egui. The backend reports it (`system_reduced_motion`) so **Follow Windows** works. Until Codex implements it, Follow Windows means Full.
+  3. "Show animations in Windows" is not read by egui, and API 1 doesn't report it, so **Follow Windows** is not offered (Full, Reduced and Off are). Requested from Sol.
   4. The log view is virtualised. Only visible lines are in the accessibility tree; **Copy log** gives the whole redacted log.
   5. Native folder and file pickers come from `rfd` (the Windows common item dialog), which is accessible by the OS.
 - **Not yet verified:** Narrator and NVDA have **not** been run against the launcher. That needs a Windows session and a person (Manually verified).
@@ -174,6 +192,8 @@ cargo test                                         # unit + egui_kittest (needs 
 OOZE_UI_SCREENSHOT_DIR=/tmp/shots cargo test       # also writes PNGs of 12 states
 cargo check --target x86_64-pc-windows-msvc --all-targets --features dev-fixtures
 cargo run --features dev-fixtures --bin ooze-launcher-preview -- ready   # developer preview (simulated)
+cargo run --bin ooze-launcher                                       # real launcher over Sol's core (Windows x64)
+cargo check --target x86_64-pc-windows-gnu --all-targets --features dev-fixtures   # Windows type-check without MSVC
 ```
 
 Preview scenarios: `first-run`, `signed-out`, `ready`, `auth-not-configured`, `app-not-approved`, `offline`, `crash`.
@@ -182,8 +202,8 @@ Preview scenarios: `first-run`, `signed-out`, `ready`, `auth-not-configured`, `a
 
 | Check | Needs |
 |---|---|
-| Real Microsoft sign-in, cancel in the browser, consent denied, child account, not entitled | Codex's backend, the owned client ID **and** Minecraft Services approval, a real entitled account |
-| Install / verify / repair against Mojang and Fabric servers, network loss mid-download, disk full | Codex's backend on Windows x64 |
-| Play → Fabric 1.21.11 under Java 21 → `OOZE_READY` with the real Ooze DLL (`engine=LOADED`) → exit → relaunch with refreshed credentials | Packaged app on Windows x64 + entitled account |
+| Real Microsoft sign-in, cancel in the browser, consent denied, child account, not entitled | Sol's backend, the owned client ID **and** Minecraft Services approval, a real entitled account |
+| Install / verify / repair against Mojang and Fabric servers, network loss mid-download, disk full | Sol's backend on Windows x64 |
+| Play → Fabric 1.21.11 under Java 21 → `OOZE_READY` with the real Ooze DLL (`engine=LOADED`) → exit → relaunch with refreshed credentials | Packaged app on Windows x64 + entitled account. The mod side alone (`LOADED`, fixture, DLL failures) was Game-launched on Windows x64 by Sol on 2026-11-15; see `docs/handoffs/SOL-L0-CLAUDE-C0-REVIEW.md` |
 | Narrator / NVDA walkthrough, Windows high-contrast check, 125–200% DPI | A person on Windows |
-| Repair keeps `saves/`, `screenshots/`, `resourcepacks/`, `shaderpacks/`, `options.txt` | Codex's installer + a seeded instance |
+| Repair keeps `saves/`, `screenshots/`, `resourcepacks/`, `shaderpacks/`, `options.txt` | Sol's installer + a seeded instance |
