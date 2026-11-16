@@ -2,6 +2,9 @@
 // Owner: Claude (Fabric integration). Engine/UI logic belongs in Rust (native/), reached only
 // through Sol's bridge-java API. See docs/ARCHITECTURE.md §2 and AGENTS.md.
 
+import groovy.json.JsonOutput
+import java.security.MessageDigest
+
 plugins {
     id("net.fabricmc.fabric-loom-remap")
 }
@@ -156,3 +159,66 @@ tasks.register<net.fabricmc.loom.task.prod.ClientProductionRunTask>("runProducti
     mods.from(tasks.named("remapJar"), remapGametestJar, productionRuntimeMods)
     runDir = layout.buildDirectory.dir("run/productionClientGameTest")
 }
+
+// ---------------------------------------------------------------------------------------------
+// Launcher profile manifest (L0): the exact Fabric profile the Ooze Launcher installs. Codex's
+// installer consumes build/dist/ooze-launcher-profile.json together with the mod JAR it lists
+// (docs/handoffs/CLAUDE-L0-request.md). Fabric API is downloaded by the installer from Fabric's
+// Maven and checked against the SHA-256 recorded here; Minecraft itself is never bundled.
+// ---------------------------------------------------------------------------------------------
+val fabricApiArtifact = configurations.detachedConfiguration(
+    dependencies.create("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
+).apply { isTransitive = false }
+
+fun sha256(file: File): String =
+    MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+
+val launcherProfile = tasks.register("launcherProfile") {
+    group = "build"
+    description = "Writes build/dist/ooze-launcher-profile.json (pinned profile + checksums) for the Ooze Launcher installer."
+    val remapJar = tasks.named<net.fabricmc.loom.task.RemapJarTask>("remapJar")
+    dependsOn(remapJar)
+    inputs.files(fabricApiArtifact)
+    inputs.file(remapJar.flatMap { it.archiveFile })
+    val out = rootProject.layout.buildDirectory.file("dist/ooze-launcher-profile.json")
+    outputs.file(out)
+    doLast {
+        val modJar = remapJar.get().archiveFile.get().asFile
+        val apiJar = fabricApiArtifact.singleFile
+        val apiPath = "net/fabricmc/fabric-api/fabric-api/$fabricApiVersion/fabric-api-$fabricApiVersion.jar"
+        val profile = linkedMapOf(
+            "schema" to "oozelauncher.profile/1",
+            "minecraft" to minecraftVersion,
+            "java" to mapOf("major" to 21),
+            "fabric" to linkedMapOf(
+                "loader" to loaderVersion,
+                "profileJson" to "https://meta.fabricmc.net/v2/versions/loader/$minecraftVersion/$loaderVersion/profile/json",
+            ),
+            "mods" to listOf(
+                linkedMapOf(
+                    "id" to "fabric-api",
+                    "version" to fabricApiVersion,
+                    "file" to apiJar.name,
+                    "url" to "https://maven.fabricmc.net/$apiPath",
+                    "size" to apiJar.length(),
+                    "sha256" to sha256(apiJar),
+                ),
+                linkedMapOf(
+                    "id" to "oozeclient",
+                    "version" to project.version.toString(),
+                    "file" to modJar.name,
+                    "bundled" to true,
+                    "size" to modJar.length(),
+                    "sha256" to sha256(modJar),
+                ),
+            ),
+            "readyMarker" to "OOZE_READY v1",
+        )
+        val file = out.get().asFile
+        file.parentFile.mkdirs()
+        file.writeText(JsonOutput.prettyPrint(JsonOutput.toJson(profile)) + "\n")
+        logger.lifecycle("Ooze: wrote ${file.relativeTo(rootProject.projectDir)}")
+    }
+}
+
+collectDist.configure { finalizedBy(launcherProfile) }

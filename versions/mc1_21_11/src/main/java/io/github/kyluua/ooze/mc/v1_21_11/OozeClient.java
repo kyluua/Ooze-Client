@@ -2,6 +2,7 @@ package io.github.kyluua.ooze.mc.v1_21_11;
 
 import io.github.kyluua.ooze.mc.v1_21_11.dev.DeveloperProbe;
 import io.github.kyluua.ooze.mc.v1_21_11.diag.EngineDiagnostics;
+import io.github.kyluua.ooze.mc.v1_21_11.diag.LaunchReadiness;
 import io.github.kyluua.ooze.mc.v1_21_11.diag.UnavailableNotice;
 import io.github.kyluua.ooze.mc.v1_21_11.engine.EngineConnector;
 import io.github.kyluua.ooze.mc.v1_21_11.engine.EngineConnectors;
@@ -66,6 +67,8 @@ public final class OozeClient implements ClientModInitializer {
         if (gate.showUnavailableNotice()) {
             UnavailableNotice.register(status, platform);
         }
+        // Readiness marker for the Ooze Launcher (title screen reached), in every engine state.
+        LaunchReadiness.register(LOG, OozeClient::engineStatus);
         if (gate.developerProbeEnabled()) {
             DeveloperProbe.register(connector, LOG);
         }

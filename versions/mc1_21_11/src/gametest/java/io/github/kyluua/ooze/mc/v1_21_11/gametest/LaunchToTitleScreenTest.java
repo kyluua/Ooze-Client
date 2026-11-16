@@ -3,6 +3,7 @@ package io.github.kyluua.ooze.mc.v1_21_11.gametest;
 import io.github.kyluua.ooze.mc.v1_21_11.OozeClient;
 import io.github.kyluua.ooze.mc.v1_21_11.dev.BridgeDiagnosticScreen;
 import io.github.kyluua.ooze.mc.v1_21_11.dev.DeveloperProbe;
+import io.github.kyluua.ooze.mc.v1_21_11.diag.LaunchReadiness;
 import io.github.kyluua.ooze.mc.v1_21_11.diag.UnavailableNotice;
 import io.github.kyluua.ooze.mc.v1_21_11.engine.EngineConnector;
 import io.github.kyluua.ooze.mc.v1_21_11.engine.EngineStatus;
@@ -50,6 +51,9 @@ public final class LaunchToTitleScreenTest implements FabricClientGameTest {
                 PlatformInfo.current().isSupportedNativePlatform() ? "LOADED" : "UNSUPPORTED_PLATFORM");
         check(status.state().name().equals(expected),
                 "engine state " + status.state() + " != expected " + expected + " (" + status.detail() + ")");
+
+        // The launcher's readiness marker is logged once the title screen opens (any engine state).
+        check(LaunchReadiness.wasLogged(), "the OOZE_READY readiness marker was not logged on the title screen");
 
         // The render-state accessor mixin must apply in dev (named) and production (intermediary) runs.
         check(GuiGraphicsAccessor.class.isAssignableFrom(GuiGraphics.class),

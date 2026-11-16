@@ -84,7 +84,7 @@ for entry in "${CASES[@]}"; do
   fi
   state="$(grep -m1 -oE 'state=[A-Z_]+' "$log" | head -1 | cut -d= -f2 || true)"
   printf '%-28s %-16s state=%s\n' "$name" "$result" "${state:-?}" | tee -a "$summary"
-  grep -E "is OFF|state    :|native engine loaded|Ignoring -D|bootstrap:|bridge probe|bridge fixture|C0 launch test PASSED|AssertionError" "$log" \
+  grep -E "OOZE_READY|is OFF|state    :|native engine loaded|Ignoring -D|bootstrap:|bridge probe|bridge fixture|C0 launch test PASSED|AssertionError" "$log" \
     | sed -E 's/^\[[^]]*\] //' > "$OUT/$name.excerpt.txt" || true
 done
 

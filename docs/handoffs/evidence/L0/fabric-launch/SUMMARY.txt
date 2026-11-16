@@ -1,0 +1,8 @@
+host: Linux x86_64
+native resources: <Sol G0 release resources, DLL sha256 5d8ae250…2df5e>
+dev-default                  PASS             state=UNSUPPORTED_PLATFORM
+dev-missing_library          PASS             state=MISSING_LIBRARY
+dev-incompatible             PASS             state=INCOMPATIBLE
+dev-load_failed              PASS             state=LOAD_FAILED
+prod-default                 PASS             state=UNSUPPORTED_PLATFORM
+prod-fault-ignored           PASS             state=UNSUPPORTED_PLATFORM
