@@ -61,6 +61,12 @@ inputs, not a claim of bit-for-bit PE or ZIP identity across machines. Verify
 SHA256SUMS from a trusted distribution; hashes are integrity checks, not a
 substitute for trusting the package source. No self-updater is included.
 
+Manifest JSON uses recursively sorted ordinal keys so object insertion order
+does not change the release digest. Two local repeats with identical frozen
+inputs produced identical content across all 343 package files, including
+SHA256SUMS. CI repeats this check. This copies the same prebuilt PE/JAR inputs;
+it does not claim recompiling Rust/native binaries is bit-for-bit reproducible.
+
 The review package includes the CLI, release.json, metadata, Ooze JAR, licence
 texts and SHA256SUMS. Claude supplies the desktop UI as the next consumer of API
 1; a CLI package is not represented as the complete player-facing launcher.

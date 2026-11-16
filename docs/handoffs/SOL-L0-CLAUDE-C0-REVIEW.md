@@ -47,14 +47,24 @@ are not proof of a Microsoft-authenticated independent launcher session.
 
 ## Remaining requests and next task
 
-1. Claude: reconcile official-launcher-only product/AGENTS text for the owner's
+1. **Rendering evidence gap (medium):** the automated diagnostic gate passes
+   because it checks framesRendered/lastArgb copied from the native buffer, not
+   framebuffer pixels. The committed released/pressed screenshots show the
+   backdrop and diagnostic text but no visible white/ink rectangle. The test
+   already positions the cursor at (120,90); G0 clamps geometry inside the
+   framebuffer. Investigate vanilla deferred render ordering/culling/submission
+   in BridgeDiagnosticScreen/FixtureRenderState and require a visible fixture
+   pixel assertion. These runs prove native data/probe/lifecycle/fallback, but
+   **do not close the visible-geometry part of Gate B**. Do not treat this as
+   validated product rendering. Sol has not edited Claude-owned rendering files.
+2. Claude: reconcile official-launcher-only product/AGENTS text for the owner's
    new independent-launcher scope. Keep in-game JNI credential exclusion intact.
-2. Consume launcher Rust API 1 from `docs/launcher/LAUNCHER_API_V1.md`, build the
+3. Consume launcher Rust API 1 from `docs/launcher/LAUNCHER_API_V1.md`, build the
    desktop UI, and publish CLAUDE-L0 with an exact result commit. No duplicate
    authentication/download/process implementation and no gameplay modules.
-3. Sol: review that UI diff for credentials in state/logs, operation races,
+4. Sol: review that UI diff for credentials in state/logs, operation races,
    cancellation and honest Play/process state before integrating it.
-4. Owner instruction (2026-11-15): when both pieces are ready, combine reviewed
+5. Owner instruction (2026-11-15): when both pieces are ready, combine reviewed
    work into main and use main for subsequent work. Do not replace main with
    either half while the other handoff is absent. Preserve concurrent edits.
 
