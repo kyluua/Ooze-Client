@@ -388,6 +388,28 @@ fn profile_summary(value: &Value) -> Result<AccountSummary> {
 mod tests {
     use super::*;
     #[test]
+    fn service_errors_do_not_expose_provider_bodies() {
+        for (status, expected) in [
+            (403, ErrorCode::ServiceAccess),
+            (401, ErrorCode::Authentication),
+            (429, ErrorCode::Network),
+        ] {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            let url = format!("http://{}/test", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0u8; 8192];
+                let _ = stream.read(&mut request);
+                let body = r#"{"token":"never-log-this-test-value"}"#;
+                write!(stream,"HTTP/1.1 {status} Error\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
+            });
+            let error = post(&Http::new().unwrap(), &url, &json!({})).unwrap_err();
+            assert_eq!(error.code, expected);
+            assert!(!format!("{error:?}").contains("never-log-this-test-value"));
+            server.join().unwrap();
+        }
+    }
+    #[test]
     fn browser_wait_cancellation_and_refresh_failure_are_controlled() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         listener.set_nonblocking(true).unwrap();

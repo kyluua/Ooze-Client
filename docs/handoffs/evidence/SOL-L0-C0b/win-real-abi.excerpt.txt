@@ -1,0 +1,4 @@
+[18:49:33] [Render thread/WARN] (OozeClient)   state    : INCOMPATIBLE
+[18:49:33] [Render thread/INFO] (OozeClient) Ooze Client bootstrap: 10684 µs total, engine connect 3157 µs, dev=true, state=INCOMPATIBLE
+[18:49:39] [Test thread/INFO] (OozeClient/C0-LaunchTest) C0 launch test PASSED: state=INCOMPATIBLE, title screen reached, vanilla Options round-trip OK
+BUILD SUCCESSFUL in 17s

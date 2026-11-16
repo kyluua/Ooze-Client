@@ -1,0 +1,6 @@
+[18:48:17] [Render thread/INFO] (OozeClient) Ooze Client 0.1.0-alpha.0+mc1.21.11: native engine loaded (bridge 0.1.0-g0 / ABI 1, platform windows-x86_64).
+[18:48:17] [Render thread/INFO] (OozeClient) Ooze Client bootstrap: 30543 µs total, engine connect 16432 µs, dev=true, state=LOADED
+[18:48:23] [Test thread/INFO] (OozeClient/C0-LaunchTest) C0 bridge probe ok=true in 1737 µs: bridge 0.1.0-g0 / ABI 1: fixture top-left=(100,50) argb=FF171923 (expected 100,50 / FF171923)
+[18:48:24] [Test thread/INFO] (OozeClient/C0-LaunchTest) C0 bridge fixture PASSED: 64 frames, press/release colour change observed
+[18:48:24] [Test thread/INFO] (OozeClient/C0-LaunchTest) C0 launch test PASSED: state=LOADED, title screen reached, vanilla Options round-trip OK
+BUILD SUCCESSFUL in 18s

@@ -16,7 +16,6 @@ jobs:
       - name: Rust format, lint and backend tests
         shell: pwsh
         run: |
-          $env:JAVA_HOME_21_X64 = $env:JAVA_HOME_21_X64
           cargo fmt --manifest-path launcher/Cargo.toml --all -- --check
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cargo clippy --manifest-path launcher/Cargo.toml --locked --workspace --all-targets -- -D warnings
@@ -43,6 +42,10 @@ jobs:
           ./launcher/packaging/prepare-release.ps1 -OozeJar './build/dist/ooze-client-0.1.0-alpha.0+mc1.21.11.jar' -CliExe './launcher/target/release/ooze-launcher-cli.exe' -OutputDirectory './launcher/dist/ooze-l0-windows-x64'
           $package = (Resolve-Path './launcher/dist/ooze-l0-windows-x64').Path
           $testData = Join-Path $env:RUNNER_TEMP 'Ooze install with spaces'
+          # Prove the package uses its managed runtime without Cargo/Gradle/JDK on PATH.
+          $env:PATH = "$env:SystemRoot\system32;$env:SystemRoot"
+          Remove-Item Env:JAVA_HOME -ErrorAction SilentlyContinue
+          Remove-Item Env:JAVA_HOME_21_X64 -ErrorAction SilentlyContinue
           & "$package/ooze-launcher-cli.exe" --data-dir $testData install
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           & "$package/ooze-launcher-cli.exe" --data-dir $testData repair

@@ -217,37 +217,45 @@ impl Http {
                 "Download size differs from the pinned manifest.",
             ));
         }
-        let mut output = tempfile::NamedTempFile::new_in(target.parent().ok_or_else(io_error)?)
-            .map_err(|_| io_error())?;
-        let mut size = 0u64;
-        let mut bytes = [0u8; 65536];
-        loop {
-            cancelled()?;
-            let n = response.read(&mut bytes).map_err(|_| network_error())?;
-            if n == 0 {
-                break;
-            }
-            size += n as u64;
-            if size > source.size {
-                return Err(error(
-                    ErrorCode::Integrity,
-                    "Download exceeded its pinned size.",
-                ));
-            }
-            output.write_all(&bytes[..n]).map_err(|_| io_error())?;
+        persist_download(source, target, &mut response, cancelled)
+    }
+}
+fn persist_download(
+    source: &Artifact,
+    target: &Path,
+    response: &mut impl Read,
+    cancelled: &impl Fn() -> Result<()>,
+) -> Result<()> {
+    let mut output = tempfile::NamedTempFile::new_in(target.parent().ok_or_else(io_error)?)
+        .map_err(|_| io_error())?;
+    let mut size = 0u64;
+    let mut bytes = [0u8; 65536];
+    loop {
+        cancelled()?;
+        let n = response.read(&mut bytes).map_err(|_| network_error())?;
+        if n == 0 {
+            break;
         }
-        output.flush().map_err(|_| io_error())?;
-        if !source.verify(output.path())? {
+        size += n as u64;
+        if size > source.size {
             return Err(error(
                 ErrorCode::Integrity,
-                "Download checksum mismatch. Retry on a trusted connection.",
+                "Download exceeded its pinned size.",
             ));
         }
-        output.as_file().sync_all().map_err(|_| io_error())?;
-        util::reject_links(target)?;
-        output.persist(target).map_err(|_| io_error())?;
-        Ok(())
+        output.write_all(&bytes[..n]).map_err(|_| io_error())?;
     }
+    output.flush().map_err(|_| io_error())?;
+    if !source.verify(output.path())? {
+        return Err(error(
+            ErrorCode::Integrity,
+            "Download checksum mismatch. Retry on a trusted connection.",
+        ));
+    }
+    output.as_file().sync_all().map_err(|_| io_error())?;
+    util::reject_links(target)?;
+    output.persist(target).map_err(|_| io_error())?;
+    Ok(())
 }
 pub(crate) fn network_error() -> crate::api::LauncherError {
     error(
@@ -273,6 +281,51 @@ pub(crate) fn decode<T: DeserializeOwned>(response: reqwest::blocking::Response)
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn interrupted_corrupt_and_cancelled_downloads_preserve_existing_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("artifact");
+        fs::write(&target, b"previous").unwrap();
+        let source = Artifact {
+            url: Some("https://libraries.minecraft.net/test".into()),
+            file: None,
+            size: 4,
+            sha256: Some(hex::encode(Sha256::digest(b"good"))),
+            sha1: None,
+        };
+        for body in [b"ba".as_slice(), b"bad!".as_slice(), b"too long".as_slice()] {
+            assert!(
+                persist_download(
+                    &source,
+                    &target,
+                    &mut std::io::Cursor::new(body),
+                    &|| Ok(())
+                )
+                .is_err()
+            );
+            assert_eq!(fs::read(&target).unwrap(), b"previous");
+        }
+        assert_eq!(
+            persist_download(
+                &source,
+                &target,
+                &mut std::io::Cursor::new(b"good"),
+                &|| Err(error(ErrorCode::Cancelled, "cancelled"))
+            )
+            .unwrap_err()
+            .code,
+            ErrorCode::Cancelled
+        );
+        assert_eq!(fs::read(&target).unwrap(), b"previous");
+        persist_download(
+            &source,
+            &target,
+            &mut std::io::Cursor::new(b"good"),
+            &|| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"good");
+    }
     #[test]
     fn rejects_untrusted_redirects_and_hashes() {
         for url in [

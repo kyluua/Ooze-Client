@@ -84,6 +84,7 @@ pub(crate) fn relative(path: &str) -> Result<PathBuf> {
     for part in path.split('/') {
         let stem = part.split('.').next().unwrap_or("").to_ascii_uppercase();
         if part.is_empty()
+            || matches!(part, "." | "..")
             || part.ends_with(['.', ' '])
             || part.contains(['<', '>', '"', '|', '?', '*'])
             || matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
