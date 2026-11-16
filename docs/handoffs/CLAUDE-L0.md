@@ -6,7 +6,7 @@
 | Milestone | L0: usable Windows x64 launcher, sign-in to Play (interface half; Sol owns the backend half) |
 | Base commit | `d4b77b491fc7d259d77d8e42894df5c4829f2489` (end of C0) |
 | Result commit | The commit that adds this file (`git log -1 -- docs/handoffs/CLAUDE-L0.md`), on `main` and `claude/launcher-mvp-ui` |
-| Integrated backend | `sol/launcher-mvp-core` @ `13105a9` (merges `a376b21`, `7138865`), reviewed first (§6) |
+| Integrated backend | `sol/launcher-mvp-core` @ `4cc4a81` (implementation `13105a9`, handoff `SOL-L0.md`; merges `a376b21`, `7138865` and the final merge), reviewed first (§6) |
 | Contracts | **Launcher API 1** (Sol, `docs/launcher/LAUNCHER_API_V1.md`); **JNI ABI 1** unchanged; launch readiness marker `OOZE_READY v1` (new, §3) |
 | Branch policy | Owner, 2026-11-16: everything combined on **`main`**; both agents work there from now on (AGENTS.md §Branches) |
 
@@ -76,7 +76,7 @@ No Sol-owned file was edited. The UI crate carries its own `[workspace]` table u
 | Fabric launch matrix | **Game-launched (Linux x64, Xvfb + Mesa): 6/6 PASS** (dev-default, dev-missing_library, dev-incompatible, dev-load_failed, prod-default, prod-fault-ignored). `OOZE_READY v1 screen=title engine=<state>` was logged in every case | `evidence/L0/fabric-launch/` |
 | **Windows x64 game gate (C0b)** | **Game-launched (Windows x64) by Sol on 2026-11-15**: dev and prod `LOADED`, probe and fixture data press/release, real missing / corrupt / ABI-2 DLL cases. The fixture was **not visible**; fixed and pixel-verified on Linux (§5). A Windows rerun is needed for the visible part | `evidence/SOL-L0-C0b/` |
 | Fixture visibility (shared submit path) | **Game-launched (Linux x64, Xvfb):** probe triangles of both windings read back their exact colours from the screenshot | `evidence/L0/fabric-launch/` |
-| Launcher install/repair on Windows | Sol's CI run 43794161997 (`4841084`) succeeded: package → `install` → `repair` → `status` on `windows-latest`. Claude has not run it | Sol's CI |
+| Launcher install/repair on Windows | Sol's CI [run 43795981631](https://github.com/kyluua/Ooze-Client/actions/runs/43795981631) (`13105a9`) succeeded: 19 backend tests, package, identical pinned repeat, clean managed-JRE install and repair without developer tools. Package artifact 14194567979, SHA-256 `ca1152f7…efb99e7a` (CLI and mod only, no desktop UI). Claude has not run it | `SOL-L0.md` |
 | Real Microsoft sign-in, Play through the launcher, refresh on relaunch | **Not run.** No owned client ID or Minecraft Services access exists yet | §8 |
 | Narrator / NVDA, Windows high contrast, 125–200% DPI | **Not run** (needs a person on Windows) | — |
 | Manually verified | **None** | — |
@@ -163,6 +163,7 @@ None of these leaks credentials or touches player data.
   - Windows high-contrast and OS text size are not followed. Narrator is unverified. AccessKit trees are built lazily.
   - The log view puts only visible lines in the accessibility tree; Copy log gives everything.
   - The crate-local `Cargo.lock` and its own `[workspace]` table stay until A2.
+- **Sol's handoff (`SOL-L0.md`)** lists "Claude UI pending" and "visible fixture unverified" as blockers. This handoff answers both: the UI is integrated on API 1, and the fixture is fixed with a pixel assertion (§5).
 - **Packaging:** Sol's package contains the CLI only. `ooze-launcher.exe` is not packaged or signed (A3). No installer or self-updater exists.
 - **Authentication:** no owned client ID exists, and Minecraft Services access for it is unverified. Sol could not verify the current approval route; developer reports from February 2026 show unapproved apps get HTTP 403 "Invalid app registration". **Nothing here proves a real sign-in.**
 - **Fabric:** this environment builds the mod JAR without the DLL (58 KB, `191bb7cf…`). Packaging needs `-PoozeNativeResources` with Sol's release resources; Sol's `check_native_jar` enforces that.
