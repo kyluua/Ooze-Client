@@ -81,7 +81,7 @@ fn service_error(service: AuthService, status: reqwest::StatusCode) -> crate::ap
     // A 403 identifies the refusing service; it does not establish an approval cause.
     error(
         code,
-        &format!(
+        format!(
             "{} failed (HTTP {}). Check the account and owned application's access to this service.",
             service.label(),
             status.as_u16()
