@@ -53,8 +53,13 @@ live authorization. No access/refresh token, Xbox identity token, provider body 
 token-bearing launch plan is public. The CLI prints the same safe events. OS
 credential storage is required; a plaintext fallback is forbidden. Public OAuth
 client ID is developer configuration (environment/build config); a missing ID is
-Configuration. Access denied by Minecraft Services is ServiceAccess and is not
-bypassed with somebody else's ID or an offline account.
+Configuration. HTTP 403 from Minecraft sign-in/entitlement/profile is
+ServiceAccess; Xbox user/XSTS 401/403 is Authentication. Safe diagnostics include
+the fixed service label and numeric HTTP status, never the response body. A
+status alone does not establish the cause or prove missing app approval. Network
+429/5xx remains Network. This corrects the original implementation's coarse Xbox
+403 classification without adding public types or changing API 1. Access denial
+is not bypassed with somebody else's ID or an offline account.
 
 ## Artifacts and validation boundary
 

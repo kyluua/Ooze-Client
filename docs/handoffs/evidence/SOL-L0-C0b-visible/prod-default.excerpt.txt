@@ -1,0 +1,6 @@
+[22:54:51] [Render thread/INFO]: Ooze Client 0.1.0-alpha.0+mc1.21.11: native engine loaded (bridge 0.1.0-g0 / ABI 1, platform windows-x86_64).
+[22:54:51] [Render thread/INFO]: Ooze Client bootstrap: 15652 µs total, engine connect 10065 µs, dev=false, state=LOADED
+[22:54:54] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED
+[22:54:58] [Test thread/INFO]: C0 fixture pixels: left=FFF8F9FF right=FF171923 (expected FFF8F9FF / FF171923), gui scale 2.0
+[22:54:58] [Test thread/INFO]: C0 launch test PASSED: state=LOADED, title screen reached, vanilla Options round-trip OK
+BUILD SUCCESSFUL in 23s

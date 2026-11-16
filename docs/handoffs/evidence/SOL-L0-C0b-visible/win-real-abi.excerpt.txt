@@ -1,0 +1,6 @@
+[22:55:54] [Render thread/WARN] (OozeClient)   state    : INCOMPATIBLE
+[22:55:54] [Render thread/INFO] (OozeClient) Ooze Client bootstrap: 12642 µs total, engine connect 3055 µs, dev=true, state=INCOMPATIBLE
+[22:55:57] [Render thread/INFO] (OozeClient) OOZE_READY v1 screen=title engine=INCOMPATIBLE
+[22:56:01] [Test thread/INFO] (OozeClient/C0-LaunchTest) C0 fixture pixels: left=FFF8F9FF right=FF171923 (expected FFF8F9FF / FF171923), gui scale 2.0
+[22:56:01] [Test thread/INFO] (OozeClient/C0-LaunchTest) C0 launch test PASSED: state=INCOMPATIBLE, title screen reached, vanilla Options round-trip OK
+BUILD SUCCESSFUL in 20s

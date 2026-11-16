@@ -1,0 +1,6 @@
+[22:55:12] [Render thread/WARN] (OozeClient)   state    : MISSING_LIBRARY
+[22:55:12] [Render thread/INFO] (OozeClient) Ooze Client bootstrap: 27329 µs total, engine connect 9814 µs, dev=true, state=MISSING_LIBRARY
+[22:55:15] [Render thread/INFO] (OozeClient) OOZE_READY v1 screen=title engine=MISSING_LIBRARY
+[22:55:19] [Test thread/INFO] (OozeClient/C0-LaunchTest) C0 fixture pixels: left=FFF8F9FF right=FF171923 (expected FFF8F9FF / FF171923), gui scale 2.0
+[22:55:19] [Test thread/INFO] (OozeClient/C0-LaunchTest) C0 launch test PASSED: state=MISSING_LIBRARY, title screen reached, vanilla Options round-trip OK
+BUILD SUCCESSFUL in 21s

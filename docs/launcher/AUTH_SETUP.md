@@ -11,8 +11,13 @@ On 2026-11-15 the owner supplied public application ID
 `359e0deb-13e8-4616-978f-0fc1f8e273d2` after creating the Microsoft registration.
 It is recorded in `launcher/packaging/public-auth.json`; Windows launcher CI reads
 that file before compiling so the CLI embeds the owned ID. This ID is public
-configuration, not a secret. Consent, the saved portal settings, Minecraft
-Services access and live sign-in remain **unverified**. No external application
+configuration, not a secret. On 2026-11-16 the owner corrected the single-tenant
+registration and its access-token version. A fresh browser sign-in returned to
+Ooze and completed the Microsoft code exchange and protected refresh-token save,
+then a later authentication-service request returned HTTP 403. The old CLI's
+coarse diagnostic cannot identify which service refused it. Full Minecraft
+sign-in, entitlement, profile, refresh and Play remain **unverified**. See
+`SOL-L0-AUTH-SERVICE-DIAGNOSTICS.md` for the follow-up. No external application
 was created or approved by Sol.
 
 ## 1. Register the developer-owned application
@@ -30,6 +35,15 @@ still apply. [Registration guide](https://learn.microsoft.com/en-us/entra/identi
    the consumers authority for Minecraft players' Microsoft accounts.
 4. Create the registration. Copy its **Application (client) ID** from the overview.
    That public GUID is the value Ooze needs, rather than the tenant or object ID.
+
+For an existing single-tenant registration, open **Manifest**, set
+`signInAudience` to `PersonalMicrosoftAccount` and set the existing
+`api.requestedAccessTokenVersion` to integer `2` in the same save. Personal-account
+apps require token version 2; a null value defaults to 1 and prevents that audience
+change from saving. Older manifest formats name the latter field
+`accessTokenAcceptedVersion`. Preserve the rest of the manifest.
+[Account-type settings](https://learn.microsoft.com/en-us/entra/identity-platform/howto-modify-supported-accounts),
+[token-version requirement](https://learn.microsoft.com/en-us/graph/api/resources/apiapplication?view=graph-rest-1.0).
 
 The project developer does this once. Players sign into the resulting app;
 they do not create their own registration. [Supported account types and client ID](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app).
@@ -112,14 +126,16 @@ subcommand. Use `--data-dir <absolute-test-directory>` on every command to keep
 test credentials/settings separate from the normal installation. See
 [build/package instructions](BUILD_AND_TEST.md) for obtaining/verifying the
 package and the observed Windows Application Control execution blocker. These
-commands are documented for later execution; no live login has been run here.
+commands describe the full acceptance path. The live attempt recorded above
+has not yet passed the service exchanges.
 
 | If setup fails | Check |
 |---|---|
 | Ooze reports missing configuration | Set the public ID in the same shell that starts the CLI, or use a build compiled with it |
+| Microsoft reports `unauthorized_client` / not enabled for consumers | Check the exact application ID and that the owned app supports personal Microsoft accounts. Microsoft documents changing `signInAudience` to `PersonalMicrosoftAccount` in the app manifest: [account-type settings](https://learn.microsoft.com/en-us/entra/identity-platform/howto-modify-supported-accounts). Do not treat this pre-login error as a Minecraft entitlement/approval result |
 | Microsoft reports `AADSTS50011` | Match the native registration's `/callback` path and case; see [redirect mismatch guidance](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url) |
 | Authentication asks for a client secret | Recheck the desktop/public platform configuration; do not embed a secret |
-| Microsoft login succeeds but services refuse access | Identify the failing service and confirm account/app access; browser consent alone is insufficient |
+| Microsoft login succeeds but services refuse access | Updated diagnostics identify the fixed service name and HTTP status. Xbox user/XSTS failures use Authentication; only Minecraft HTTP 403 uses ServiceAccess. Neither proves a specific approval cause. Confirm account/app access for that service; browser consent alone is insufficient |
 
 ## 5. Configure the player-facing release
 
@@ -134,8 +150,9 @@ $env:OOZE_MICROSOFT_CLIENT_ID = $publicAuth.microsoft_client_id
 cargo build --manifest-path launcher/Cargo.toml --locked --release -p ooze-launcher-cli
 ```
 
-For the desktop binary, complete Claude/Sol's outstanding UI entrypoint/workspace
-and packaging integration first, and pass the same public ID to LauncherConfig.
+For the desktop binary, Claude's tracked entrypoint/config module now reads the
+same public-auth.json as a fallback after runtime/build overrides (2c96d2b).
+Complete the outstanding workspace, Windows tests and packaging integration.
 Both executables must use the owned configured ID. Final players should receive
 a configured build; they should not need a developer environment variable.
 The ID is public build configuration, not a GitHub Actions secret/token.

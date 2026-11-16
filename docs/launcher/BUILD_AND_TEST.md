@@ -30,7 +30,11 @@ loopback service errors, not another launcher's account/app credentials.
 
 On the development host Windows Application Control blocked locally compiled
 Rust build scripts with error 4551. Its policy was not disabled or changed.
-The downloaded unsigned CI launcher executable was also blocked on this host.
+An earlier downloaded unsigned CI launcher executable was also blocked on this
+host. The later public-ID-configured CLI from commit 48b53f2 ran locally without
+any policy change; its browser sign-in attempt timed out before a callback.
+See SOL-L0-AUTH-CONFIG-RESULT.md for the per-build result. This is not a claim that
+local Rust compilation, every unsigned executable or the desktop UI now runs.
 The Windows GitHub workflow supplies build/test/package evidence separately,
 including installation with developer tools/JDK removed from PATH.
 This limitation is distinct from Java 21, which runs locally and passed the

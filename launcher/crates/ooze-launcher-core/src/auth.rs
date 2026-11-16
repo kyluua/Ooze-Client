@@ -27,10 +27,65 @@ fn auth_error() -> crate::api::LauncherError {
         "Microsoft/Xbox sign-in failed. Sign in again and check your account's Xbox setup.",
     )
 }
-fn access_error() -> crate::api::LauncherError {
+#[derive(Clone, Copy)]
+enum AuthService {
+    XboxUser,
+    Xsts,
+    MinecraftLogin,
+    Entitlements,
+    Profile,
+}
+impl AuthService {
+    fn url(self) -> &'static str {
+        match self {
+            Self::XboxUser => "https://user.auth.xboxlive.com/user/authenticate",
+            Self::Xsts => "https://xsts.auth.xboxlive.com/xsts/authorize",
+            Self::MinecraftLogin => {
+                "https://api.minecraftservices.com/authentication/login_with_xbox"
+            }
+            Self::Entitlements => "https://api.minecraftservices.com/entitlements/mcstore",
+            Self::Profile => "https://api.minecraftservices.com/minecraft/profile",
+        }
+    }
+    fn label(self) -> &'static str {
+        match self {
+            Self::XboxUser => "Xbox user authentication",
+            Self::Xsts => "Xbox XSTS authorization",
+            Self::MinecraftLogin => "Minecraft sign-in",
+            Self::Entitlements => "Minecraft entitlement check",
+            Self::Profile => "Minecraft profile check",
+        }
+    }
+    fn is_minecraft(self) -> bool {
+        matches!(
+            self,
+            Self::MinecraftLogin | Self::Entitlements | Self::Profile
+        )
+    }
+}
+fn service_error(service: AuthService, status: reqwest::StatusCode) -> crate::api::LauncherError {
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+        return net::network_error();
+    }
+    let minecraft_denied = service.is_minecraft() && status == reqwest::StatusCode::FORBIDDEN;
+    let code = if minecraft_denied {
+        ErrorCode::ServiceAccess
+    } else if matches!(service, AuthService::Profile | AuthService::Entitlements)
+        && status == reqwest::StatusCode::NOT_FOUND
+    {
+        ErrorCode::Entitlement
+    } else {
+        ErrorCode::Authentication
+    };
+    // Only our fixed stage label and numeric status enter the public diagnostic.
+    // A 403 identifies the refusing service; it does not establish an approval cause.
     error(
-        ErrorCode::ServiceAccess,
-        "Minecraft Services denied this application. Verify the owned app registration and Minecraft access authorization.",
+        code,
+        &format!(
+            "{} failed (HTTP {}). Check the account and owned application's access to this service.",
+            service.label(),
+            status.as_u16()
+        ),
     )
 }
 fn credential(id: &str) -> Result<keyring::Entry> {
@@ -250,23 +305,18 @@ fn parse_callback(request: &str, port: u16, state: &CsrfToken) -> Result<String>
         .filter(|v| !v.is_empty() && v.len() < 4096)
         .ok_or_else(auth_error)
 }
-fn post(http: &Http, url: &str, body: &Value) -> Result<Value> {
+fn post(http: &Http, service: AuthService, body: &Value) -> Result<Value> {
+    post_at(http, service, service.url(), body)
+}
+fn post_at(http: &Http, service: AuthService, url: &str, body: &Value) -> Result<Value> {
     let response = http
         .client
         .post(url)
         .json(body)
         .send()
         .map_err(|_| net::network_error())?;
-    if response.status() == reqwest::StatusCode::FORBIDDEN {
-        return Err(access_error());
-    }
-    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
-        || response.status().is_server_error()
-    {
-        return Err(net::network_error());
-    }
     if !response.status().is_success() {
-        return Err(auth_error());
+        return Err(service_error(service, response.status()));
     }
     net::decode(response).map_err(|_| auth_error())
 }
@@ -280,13 +330,13 @@ fn required<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
 fn exchange(http: &Http, msa: &str, check: &impl Fn() -> Result<()>) -> Result<Session> {
     let xbox = post(
         http,
-        "https://user.auth.xboxlive.com/user/authenticate",
+        AuthService::XboxUser,
         &json!({"Properties":{"AuthMethod":"RPS","SiteName":"user.auth.xboxlive.com","RpsTicket":format!("d={msa}")},"RelyingParty":"http://auth.xboxlive.com","TokenType":"JWT"}),
     )?;
     check()?;
     let xsts = post(
         http,
-        "https://xsts.auth.xboxlive.com/xsts/authorize",
+        AuthService::Xsts,
         &json!({"Properties":{"SandboxId":"RETAIL","UserTokens":[required(&xbox,"Token")?]},"RelyingParty":"rp://api.minecraftservices.com/","TokenType":"JWT"}),
     )?;
     let user = xsts
@@ -302,22 +352,14 @@ fn exchange(http: &Http, msa: &str, check: &impl Fn() -> Result<()>) -> Result<S
     check()?;
     let minecraft = post(
         http,
-        "https://api.minecraftservices.com/authentication/login_with_xbox",
+        AuthService::MinecraftLogin,
         &json!({"identityToken":format!("XBL3.0 x={uhs};{}",required(&xsts,"Token")?)}),
     )?;
     let token = Zeroizing::new(required(&minecraft, "access_token")?.to_owned());
     check()?;
-    let entitlements = authorized_get(
-        http,
-        "https://api.minecraftservices.com/entitlements/mcstore",
-        &token,
-    )?;
+    let entitlements = authorized_get(http, AuthService::Entitlements, &token)?;
     check_entitlements(&entitlements)?;
-    let profile = authorized_get(
-        http,
-        "https://api.minecraftservices.com/minecraft/profile",
-        &token,
-    )?;
+    let profile = authorized_get(http, AuthService::Profile, &token)?;
     let account = profile_summary(&profile)?;
     check()?;
     Ok(Session {
@@ -326,24 +368,15 @@ fn exchange(http: &Http, msa: &str, check: &impl Fn() -> Result<()>) -> Result<S
         xuid,
     })
 }
-fn authorized_get(http: &Http, url: &str, token: &str) -> Result<Value> {
+fn authorized_get(http: &Http, service: AuthService, token: &str) -> Result<Value> {
     let response = http
         .client
-        .get(url)
+        .get(service.url())
         .bearer_auth(token)
         .send()
         .map_err(|_| net::network_error())?;
-    match response.status().as_u16() {
-        403 => return Err(access_error()),
-        404 => {
-            return Err(error(
-                ErrorCode::Entitlement,
-                "No Java Edition profile was found. Check ownership and create your Minecraft profile.",
-            ));
-        }
-        401 => return Err(auth_error()),
-        429 | 500..=599 => return Err(net::network_error()),
-        _ => {}
+    if !response.status().is_success() {
+        return Err(service_error(service, response.status()));
     }
     net::decode(response).map_err(|_| auth_error())
 }
@@ -403,11 +436,48 @@ mod tests {
                 let body = r#"{"token":"never-log-this-test-value"}"#;
                 write!(stream,"HTTP/1.1 {status} Error\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
             });
-            let error = post(&Http::new().unwrap(), &url, &json!({})).unwrap_err();
+            let error = post_at(
+                &Http::new().unwrap(),
+                AuthService::MinecraftLogin,
+                &url,
+                &json!({}),
+            )
+            .unwrap_err();
             assert_eq!(error.code, expected);
             assert!(!format!("{error:?}").contains("never-log-this-test-value"));
             server.join().unwrap();
         }
+    }
+    #[test]
+    fn forbidden_diagnostics_identify_the_service_without_claiming_an_approval_cause() {
+        for service in [
+            AuthService::XboxUser,
+            AuthService::Xsts,
+            AuthService::MinecraftLogin,
+            AuthService::Entitlements,
+            AuthService::Profile,
+        ] {
+            let err = service_error(service, reqwest::StatusCode::FORBIDDEN);
+            assert_eq!(
+                err.code,
+                if service.is_minecraft() {
+                    ErrorCode::ServiceAccess
+                } else {
+                    ErrorCode::Authentication
+                }
+            );
+            assert!(err.message.contains(service.label()));
+            assert!(err.message.contains("HTTP 403"));
+            assert!(!err.message.contains("approval"));
+        }
+        assert_eq!(
+            service_error(AuthService::Profile, reqwest::StatusCode::NOT_FOUND).code,
+            ErrorCode::Entitlement
+        );
+        assert_eq!(
+            service_error(AuthService::Xsts, reqwest::StatusCode::UNAUTHORIZED).code,
+            ErrorCode::Authentication
+        );
     }
     #[test]
     fn browser_wait_cancellation_and_refresh_failure_are_controlled() {
