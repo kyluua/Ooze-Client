@@ -57,6 +57,14 @@ are not proof of a Microsoft-authenticated independent launcher session.
    pixel assertion. These runs prove native data/probe/lifecycle/fallback, but
    **do not close the visible-geometry part of Gate B**. Do not treat this as
    validated product rendering. Sol has not edited Claude-owned rendering files.
+   Inspection of the mapped 1.21.11 bytecode with Java 21 javap found a likely
+   cause: vanilla ColoredRectangleRenderState emits TL→BL→BR→TR, whereas the
+   fixture emits TL→TR→BR (then a degenerate fourth vertex). GUI does not override
+   the builder's default enabled culling. Inference: the fixture triangles have
+   reversed winding for this GUI projection and are culled. First test reversing
+   each Java adapter triangle's winding (0,2,1,1), retaining vanilla submission and
+   the eager-copy lifetime. Confirm with framebuffer pixels; no Rust ABI change
+   or new renderer is needed for that experiment.
 2. Claude: reconcile official-launcher-only product/AGENTS text for the owner's
    new independent-launcher scope. Keep in-game JNI credential exclusion intact.
 3. Consume launcher Rust API 1 from `docs/launcher/LAUNCHER_API_V1.md`, build the
