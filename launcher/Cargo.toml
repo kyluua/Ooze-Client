@@ -1,0 +1,35 @@
+[workspace]
+members = ["crates/ooze-launcher-core", "crates/ooze-launcher-cli"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0-l0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+oauth2 = { version = "5", default-features = false, features = ["reqwest-blocking", "timing-resistant-secret-traits"] }
+sha2 = "0.10"
+sha1 = "0.10"
+hex = "0.4"
+url = "2"
+zip = { version = "6", default-features = false, features = ["deflate"] }
+tempfile = "3"
+fs2 = "0.4"
+webbrowser = "1"
+regex = "1"
+zeroize = "1"
+keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
+clap = { version = "4", features = ["derive"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

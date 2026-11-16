@@ -1,0 +1,26 @@
+[package]
+name = "ooze-launcher-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+oauth2.workspace = true
+sha2.workspace = true
+sha1.workspace = true
+hex.workspace = true
+url.workspace = true
+zip.workspace = true
+tempfile.workspace = true
+fs2.workspace = true
+webbrowser.workspace = true
+regex.workspace = true
+zeroize.workspace = true
+keyring.workspace = true
+
+[lints]
+workspace = true

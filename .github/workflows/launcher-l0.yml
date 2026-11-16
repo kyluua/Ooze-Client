@@ -1,0 +1,35 @@
+name: Launcher L0
+on:
+  push:
+    paths: ['launcher/**', 'docs/launcher/**', '.github/workflows/launcher-l0.yml']
+  pull_request:
+    paths: ['launcher/**', 'docs/launcher/**', '.github/workflows/launcher-l0.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Rust format, lint and backend tests
+        shell: pwsh
+        run: |
+          cargo fmt --manifest-path launcher/Cargo.toml --all -- --check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo clippy --manifest-path launcher/Cargo.toml --locked --workspace --all-targets -- -D warnings
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo test --manifest-path launcher/Cargo.toml --locked --workspace
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build portable backend executable
+        shell: pwsh
+        run: |
+          cargo build --manifest-path launcher/Cargo.toml --locked --release --workspace
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./launcher/target/release/ooze-launcher-cli.exe --version
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ooze-launcher-l0-cli-windows-x64
+          path: launcher/target/release/ooze-launcher-cli.exe
+          if-no-files-found: error
