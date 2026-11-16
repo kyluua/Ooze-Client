@@ -13,7 +13,8 @@
 | A3 | Build `ooze-launcher.exe` (`--bin ooze-launcher`, release) in CI. Put it in `prepare-release.ps1` beside `release.json`, and run the UI crate's `cargo test` on Windows (kittest needs a wgpu adapter; WARP works) | The player-facing package. The UI tests are Headless-tested on Linux only so far |
 | A4 | Add third-party notices for the interface's dependencies (egui/eframe, wgpu, AccessKit, winit, rfd, regex) and ship `launcher/resources/fonts/**` licence files with the package | Licences |
 | A6 | Rerun `launcher/packaging/test-c0-windows.ps1` on Windows with the production resources. The launch test now also asserts that the native fixture is **visible** (pixel at its centroid) and that `OOZE_READY` is logged | Closes Gate B's visible-geometry part after Claude's winding fix (`299b5ae`) |
-| A5 | Embed the owned public client ID at release build time (`OOZE_MICROSOFT_CLIENT_ID`) once it exists. The UI binary uses the same resolution as the CLI | Real sign-in |
+| A5 | ~~Embed the owned public client ID at release build time~~ The owner provided it (2026-11-16). It is committed in `launcher/resources/auth/microsoft-public-client-id.txt` and the UI binary uses it by default | Real sign-in |
+| A7 | Make the CLI resolve the client ID like `ooze_launcher_ui::config::microsoft_client_id`: env, then build env, then the committed file. Update `AUTH_SETUP.md` §4–5 to name the file. Microsoft currently answers `unauthorized_client` for this ID on the consumers authority (CLAUDE-L0 §11); record the owner's registration fix and re-check before Gate L | One source of truth; honest setup docs |
 
 ## B. Review findings to address (priority order)
 

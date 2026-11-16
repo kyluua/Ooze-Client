@@ -15,6 +15,8 @@ out/
 .project
 .settings/
 bin/
+# ...but the launcher crates' binary entry points are source code.
+!launcher/crates/*/src/bin/
 
 # Rust (Sol's workspace; listed here so a fresh checkout stays clean)
 native/target/

@@ -21,6 +21,7 @@ compile_error!(
 
 pub mod api;
 pub mod app;
+pub mod config;
 pub mod core_backend;
 pub mod i18n;
 pub mod motion;

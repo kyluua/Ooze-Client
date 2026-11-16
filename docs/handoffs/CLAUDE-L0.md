@@ -207,3 +207,27 @@ No player-facing launcher release exists yet.
   - provide or perform the entitled-account Windows run.
 
 No gameplay modules or unrelated milestones were started.
+
+## 11. Update 2026-11-16: owner client ID and registration check
+
+**Configured.** The owner provided the public Application (client) ID `359e0deb-13e8-4616-978f-0fc1f8e273d2`:
+- It is committed in `launcher/resources/auth/microsoft-public-client-id.txt` (public by design; no secret exists).
+- `ooze-launcher` resolves it through `config::microsoft_client_id`: run-time `OOZE_MICROSOFT_CLIENT_ID`, then the same variable at build time, then the committed ID. Non-GUID values are ignored. Two new unit tests cover this; 55/55 UI tests pass.
+- Sol's CLI still reads only the environment variable (request A7).
+
+**Registration check (Headless-tested, Linux x64).** I loaded the real authorize URL in headless Chromium: consumers authority, `http://localhost:<port>/callback`, `XboxLive.signin offline_access`, PKCE S256. The proxy CA was trusted; TLS was not bypassed. Microsoft's personal-account service answered:
+
+> unauthorized_client: The client does not exist or is not enabled for consumers.
+
+- An unregistered GUID gets the identical answer.
+- The ID is not a directory (tenant) ID: tenant metadata returns `AADSTS90002`.
+- So **as of this check, Microsoft does not accept this app for personal Microsoft accounts.** Nobody can sign in until that changes, and the launcher shows nothing that claims otherwise.
+
+Likely causes, in order:
+1. The app's **Supported account types** exclude personal accounts. It needs "Personal Microsoft accounts only" or "Accounts in any organizational directory and personal Microsoft accounts". In the Manifest, `signInAudience` is `PersonalMicrosoftAccount` or `AzureADandPersonalMicrosoftAccount`, which also requires `api.requestedAccessTokenVersion: 2`.
+2. The value copied was the **Object ID** rather than the **Application (client) ID** on the Overview page.
+3. A just-created registration that hasn't propagated to the personal-account service yet.
+
+The redirect (`http://localhost/callback` under **Mobile and desktop applications**) can only be checked once (1)–(3) pass. Minecraft Services access remains a separate, unverified requirement (`AUTH_SETUP.md` §3).
+
+**Also fixed:** `main` did not contain `src/bin/ooze-launcher.rs` or `src/bin/ooze-launcher-preview.rs`. A broad `bin/` rule in `.gitignore` excluded them; Sol found this. The rule now excepts `launcher/crates/*/src/bin/`, both files are tracked, and a fresh worktree of the commit builds the crate (§11 commit).
