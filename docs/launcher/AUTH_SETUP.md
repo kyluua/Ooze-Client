@@ -5,33 +5,149 @@ Ooze never handles credentials still applies to the Fabric adapter/JNI engine,
 not to the standalone launcher's private authentication backend. No token enters
 the public Rust UI API. Minecraft itself receives its required game session.
 
-## Developer prerequisites
+## Current status
 
-Register an application owned by Ooze with Microsoft identity, supporting
-personal Microsoft accounts. Configure it as a native/public desktop client with
-a system-browser loopback redirect of `http://localhost/callback`; the backend
-uses an ephemeral loopback port. Confirm the current redirect/port rules in the
-Microsoft documentation for the actual registration. Never create or embed a
-client secret in this public app. The client ID is public configuration.
+On 2026-11-15 the owner confirmed that there is no client ID yet and requested
+these setup instructions. Registration, consent, service access and live sign-in
+are **pending**. These instructions do not claim that any of them passed.
+They configure the existing backend; no external application was created by Sol.
 
-The backend requests `XboxLive.signin` and `offline_access` using authorization
-code + PKCE S256, random state and the user's system browser. It listens only on
-127.0.0.1 and validates the callback path, Host, state, unique code and bounds.
-Cancellation and a three-minute deadline close the callback operation. OAuth
-requests use a maintained oauth2 implementation and reject HTTP redirects.
+## 1. Register the developer-owned application
 
-Set `OOZE_MICROSOFT_CLIENT_ID` for development. The CLI also accepts a client ID
-embedded at compile time from that environment variable, so final players should
-receive an appropriately configured distribution. The UI creates LauncherConfig
-with the same public ID. Do not ask every player to register their own app.
+Use an identity directory controlled by the Ooze project owner. Microsoft's
+current registration guide lists an Azure account with an active subscription,
+a directory, and permission to register apps as prerequisites. This desktop
+design creates no hosted Azure server; Microsoft account/portal prerequisites
+still apply. [Registration guide](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app).
 
-Microsoft app registration and Minecraft Services application access are distinct
-checks. The Minecraft support application-registration page returned only a
-support shell when inspected on 2026-11-15; its current approval route could not
-be verified here. Do not claim registration alone grants Minecraft access, or
-promise an approval-free route. Confirm access with Microsoft/Minecraft for the
-owned client ID. Do not borrow another launcher's client ID or credentials.
-This implementation does not require an Azure-hosted server or Ooze login backend.
+1. Open the [Microsoft Entra admin center](https://entra.microsoft.com/) and select
+   the directory where the project will own its registration.
+2. Navigate through **Entra ID → App registrations → New registration**.
+3. Name it **Ooze Launcher**. Choose **Personal accounts only**; the backend uses
+   the consumers authority for Minecraft players' Microsoft accounts.
+4. Create the registration. Copy its **Application (client) ID** from the overview.
+   That public GUID is the value Ooze needs, rather than the tenant or object ID.
+
+The project developer does this once. Players sign into the resulting app;
+they do not create their own registration. [Supported account types and client ID](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app).
+
+## 2. Configure the desktop callback
+
+In the app's authentication settings, add a **Mobile and desktop applications**
+platform with this custom redirect URI, then save:
+
+```text
+http://localhost/callback
+```
+
+Keep the path's spelling/case and omit a trailing slash or wildcard. Ooze opens
+an ephemeral port and sends `http://localhost:<port>/callback`; Microsoft ignores
+the port when matching localhost redirects, while the path must match. One
+registration of the URI above covers those ports. Select the native desktop
+platform rather than Web or SPA. [Desktop platform selection and localhost matching](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url#localhost-exceptions).
+
+The listener currently binds IPv4 `127.0.0.1`; the browser URL remains `localhost`.
+Do not change just the registered hostname to `127.0.0.1`, use a different callback
+path, or open a public firewall port. A change in hostname/binding belongs in a
+coordinated code/contract change and browser test. IPv6/browser compatibility is
+a pending review item in [Claude's B5 request](../handoffs/CLAUDE-L0-request.md).
+
+Create **no client secret**. Ooze uses authorization code with PKCE S256 in the
+system browser, not a confidential server or password flow. Its requested scopes
+are `XboxLive.signin` and `offline_access`. The advanced public-client fallback
+toggle is separate from adding the native redirect; this guide does not enable
+device-code/password flows that Ooze does not implement. Follow Microsoft's
+flow-specific guidance if changing that setting. [Public-client guidance](https://learn.microsoft.com/en-us/entra/identity-platform/msal-client-applications),
+[PKCE flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow).
+
+## 3. Confirm Minecraft Services access separately
+
+An Entra client ID is not proof of permission to use Minecraft's services.
+The official [Minecraft application-access support entry](https://help.minecraft.net/hc/en-us/articles/16254801392141)
+returned only a support shell when inspected on 2026-11-15, so the current
+onboarding/approval route could not be verified. No particular form, approval
+timeline or approval-free workaround is promised here.
+
+Use official Minecraft/Microsoft support to confirm which application access
+process applies to this third-party Java launcher. Have the public client ID,
+project repository/contact, desktop/PKCE design and intended Minecraft use ready.
+Record their instructions and any granted access against this exact app ID.
+Never borrow another launcher's ID or read its credentials.
+
+Treat Microsoft consent, Xbox/XSTS authorization and Minecraft entitlement/profile
+requests as separate checks. A successful Microsoft browser login alone does not
+prove the game token is usable. Current coarse `ServiceAccess` errors also cover
+some Xbox failures; a 403 is not conclusive proof of missing approval. Typed
+service/account errors are requested in [Claude's B1 review](../handoffs/CLAUDE-L0-request.md).
+
+## 4. Configure the current CLI for development
+
+Extract a verified backend package, open PowerShell in its directory and replace
+the placeholder below with the public application GUID:
+
+```powershell
+$env:OOZE_MICROSOFT_CLIENT_ID = 'REPLACE_WITH_OWNED_APPLICATION_CLIENT_ID'
+./ooze-launcher-cli.exe status
+./ooze-launcher-cli.exe sign-in
+```
+
+This variable applies to the current shell and child processes. Do not paste a
+secret or token into it. `status` does not prove sign-in; `sign-in` must complete
+Microsoft, Xbox and Minecraft checks before reporting success. After authorized
+sign-in, the remaining CLI flow is:
+
+```powershell
+./ooze-launcher-cli.exe install
+./ooze-launcher-cli.exe play
+# Close Minecraft normally, restart the launcher, then test saved-session refresh:
+./ooze-launcher-cli.exe play
+./ooze-launcher-cli.exe sign-out
+```
+
+If `release.json` is elsewhere, supply `--release <absolute-path>` before the
+subcommand. Use `--data-dir <absolute-test-directory>` on every command to keep
+test credentials/settings separate from the normal installation. See
+[build/package instructions](BUILD_AND_TEST.md) for obtaining/verifying the
+package and the observed Windows Application Control execution blocker. These
+commands are documented for later execution; no live login has been run here.
+
+| If setup fails | Check |
+|---|---|
+| Ooze reports missing configuration | Set the public ID in the same shell that starts the CLI, or use a build compiled with it |
+| Microsoft reports `AADSTS50011` | Match the native registration's `/callback` path and case; see [redirect mismatch guidance](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url) |
+| Authentication asks for a client secret | Recheck the desktop/public platform configuration; do not embed a secret |
+| Microsoft login succeeds but services refuse access | Identify the failing service and confirm account/app access; browser consent alone is insufficient |
+
+## 5. Configure the player-facing release
+
+The current CLI resolves the environment variable first and otherwise uses an ID
+embedded at compile time. A release engineer sets the same public variable
+**before** compiling the release, then packages the resulting executable:
+
+```powershell
+$env:OOZE_MICROSOFT_CLIENT_ID = 'REPLACE_WITH_OWNED_APPLICATION_CLIENT_ID'
+cargo build --manifest-path launcher/Cargo.toml --locked --release -p ooze-launcher-cli
+```
+
+For the desktop binary, complete Claude/Sol's outstanding UI entrypoint/workspace
+and packaging integration first, and pass the same public ID to LauncherConfig.
+Both executables must use the owned configured ID. Final players should receive
+a configured build; they should not need a developer environment variable.
+The ID is public build configuration, not a GitHub Actions secret/token.
+
+## 6. Record the real acceptance result
+
+Once the app ID and service access exist, use an entitled personal Microsoft
+account on Windows x64. Check cancellation and successful sign-in, direct Fabric
+1.21.11 launch on actual Java 21, title-screen readiness, normal exit, restart and
+refresh without another browser login, then sign-out. Verify redacted logs and
+world/options preservation during repair. Record the build/app ID reference,
+platform and outcomes in a new handoff, with no credentials attached. The full
+joint sequence is [Gate L](../handoffs/CLAUDE-L0-request.md#d-joint-windows-acceptance-gate-l).
+
+Only the public client ID is needed for subsequent development coordination.
+Never send passwords, authorization callback URLs, authorization codes, access or
+refresh tokens, browser cookies or a credential-store export.
 
 ## Exchanges and storage
 
