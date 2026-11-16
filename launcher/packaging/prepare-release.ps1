@@ -14,7 +14,21 @@ New-Item -ItemType Directory -Path $outputRoot | Out-Null
 $metadataRoot = Join-Path $outputRoot 'metadata'
 $scratchRoot = Join-Path $outputRoot '.scratch'
 New-Item -ItemType Directory -Path $metadataRoot, $scratchRoot | Out-Null
-function Write-Json($Path, $Value) { [IO.File]::WriteAllText($Path, ($Value | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false)) }
+function Canonical-Value($Value) {
+    if ($Value -is [Collections.IDictionary]) {
+        $ordered=[ordered]@{}
+        [string[]]$keys=@($Value.Keys)
+        [Array]::Sort($keys,[StringComparer]::Ordinal)
+        foreach($key in $keys){ $ordered[$key]=Canonical-Value $Value[$key] }
+        return $ordered
+    }
+    if ($Value -is [Collections.IEnumerable] -and $Value -isnot [string]) {
+        $items=@(foreach($item in $Value){ Canonical-Value $item })
+        return ,$items
+    }
+    return $Value
+}
+function Write-Json($Path, $Value) { [IO.File]::WriteAllText($Path, (ConvertTo-Json -InputObject (Canonical-Value $Value) -Depth 30), [Text.UTF8Encoding]::new($false)) }
 function Local-Artifact($FilePath, $Relative) {
     @{file=$Relative;url=$null;size=(Get-Item -LiteralPath $FilePath).Length;sha256=(Get-FileHash -LiteralPath $FilePath -Algorithm SHA256).Hash.ToLowerInvariant();sha1=$null}
 }
