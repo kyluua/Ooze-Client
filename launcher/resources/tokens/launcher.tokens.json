@@ -1,0 +1,53 @@
+{
+  "schema": "oozelauncher.tokens/1",
+  "theme": "ooze_classic",
+  "notes": [
+    "Colours, radii, outlines, elevation and material values come from docs/tokens/ooze_classic.theme.json (the canonical theme shared with the in-game UI).",
+    "This file holds only what the desktop launcher adds: layout, type roles, control metrics and motion durations.",
+    "Unit: egui points. 1 pt = 1 physical pixel at 100% interface scale; the Interface scale setting multiplies everything.",
+    "Motion durations mirror MOTION_SPEC.md §3.1 (milliseconds at speed 1.0)."
+  ],
+  "space": { "xxs": 2, "xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "xxl": 32, "xxxl": 48 },
+  "type": {
+    "display":   { "family": "display", "size": 44 },
+    "title":     { "family": "display", "size": 30 },
+    "subtitle":  { "family": "strong",  "size": 17 },
+    "section":   { "family": "strong",  "size": 12 },
+    "body":      { "family": "body",    "size": 15 },
+    "bodySmall": { "family": "body",    "size": 13 },
+    "caption":   { "family": "body",    "size": 12 },
+    "label":     { "family": "strong",  "size": 14 },
+    "button":    { "family": "strong",  "size": 15 },
+    "log":       { "family": "body",    "size": 12.5 }
+  },
+  "control": {
+    "height": 38,
+    "heightLarge": 52,
+    "minWidth": 96,
+    "minHit": 32,
+    "padX": 18,
+    "focusRingWidth": 2,
+    "focusRingGap": 2,
+    "progressHeight": 12,
+    "navWidth": 196,
+    "contentMaxWidth": 760,
+    "windowMin": [880, 600],
+    "windowDefault": [1120, 740],
+    "iconSize": 16,
+    "dripPositions": [0.22, 0.71]
+  },
+  "motion": {
+    "dur.micro": 90,
+    "dur.short": 160,
+    "dur.medium": 240,
+    "dur.long": 360,
+    "reduced.fade": 160,
+    "spinner.period": 1400,
+    "progress.sweep": 1600,
+    "drip.period": 6000
+  },
+  "limits": {
+    "logLines": 5000,
+    "memoryStepMib": 512
+  }
+}

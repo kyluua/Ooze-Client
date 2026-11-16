@@ -1,0 +1,528 @@
+//! Headless interface tests through the AccessKit tree (egui_kittest): every query below finds
+//! widgets the way a screen reader or UI Automation client would, by role and name.
+//!
+//! Screenshots: set `OOZE_UI_SCREENSHOT_DIR=<dir>` to save a PNG of each named state (software
+//! rendering through wgpu; appearance evidence only, never evidence of backend behaviour).
+
+use eframe::egui::{Key, accesskit::Role, vec2};
+use egui_kittest::Harness;
+use egui_kittest::kittest::{NodeT, Queryable};
+
+use crate::api::*;
+use crate::app::{AppOptions, LauncherApp};
+use crate::fixtures::{FixtureBackend, FixtureHandle, account, snapshot};
+
+fn harness(
+    mut snap: Snapshot,
+    motion: MotionPreference,
+) -> (Harness<'static, LauncherApp>, FixtureHandle) {
+    snap.settings.motion = motion;
+    let (backend, handle) = FixtureBackend::manual(snap);
+    let app = LauncherApp::new(Box::new(backend), AppOptions::default());
+    let h = Harness::builder()
+        .with_size(vec2(1120.0, 740.0))
+        .with_pixels_per_point(2.0)
+        .build_ui_state(|ui, app: &mut LauncherApp| app.frame(ui), app);
+    let mut h = h;
+    h.set_render_cursor(false);
+    (h, handle)
+}
+
+fn settle(h: &mut Harness<'_, LauncherApp>) {
+    h.run_steps(6);
+}
+
+fn ready() -> Snapshot {
+    let mut s = snapshot();
+    s.account = Some(account());
+    s.install = InstallStatus::Ready;
+    s
+}
+
+fn shot(h: &mut Harness<'_, LauncherApp>, name: &str) {
+    let image = h
+        .render()
+        .expect("software rendering works (lavapipe/llvmpipe or a GPU)");
+    assert!(image.width() > 0);
+    if let Ok(dir) = std::env::var("OOZE_UI_SCREENSHOT_DIR") {
+        std::fs::create_dir_all(&dir).expect("screenshot dir");
+        image.save(format!("{dir}/{name}.png")).expect("save png");
+    }
+}
+
+fn push_all(h: &mut Harness<'_, LauncherApp>, handle: &FixtureHandle, events: Vec<Event>) {
+    for e in events {
+        handle.push(e);
+    }
+    settle(h);
+}
+
+/// Visible text, possibly also echoed by the live status line (so it may appear twice).
+fn shows(h: &Harness<'_, LauncherApp>, text: &str) -> bool {
+    h.query_all_by_label_contains(text).count() >= 1
+}
+
+fn count(handle: &FixtureHandle, pred: impl Fn(&Command) -> bool) -> usize {
+    handle.submitted().iter().filter(|c| pred(c)).count()
+}
+
+#[test]
+fn first_run_is_keyboard_operable_and_submits_the_chosen_folder() {
+    let mut s = snapshot();
+    s.settings.install_root = None;
+    let (mut h, handle) = harness(s, MotionPreference::Off);
+    settle(&mut h);
+    shot(&mut h, "01-first-run");
+    assert!(
+        h.query_by_role_and_label(Role::Tab, "Play").is_none(),
+        "no navigation before setup"
+    );
+    // The path field is labelled and prefilled with the backend's default.
+    let field = h.get_by_role(Role::TextInput);
+    field.focus();
+    h.run_steps(2);
+    h.key_press(Key::Tab); // -> Continue
+    h.run_steps(2);
+    assert!(
+        h.get_by_role_and_label(Role::Button, "Continue")
+            .is_focused()
+    );
+    h.key_press(Key::Enter);
+    settle(&mut h);
+    let submitted = handle.submitted();
+    assert!(
+        matches!(submitted.as_slice(), [Command::SetInstallRoot { path }] if path.to_string_lossy().ends_with(".ooze")),
+        "{submitted:?}"
+    );
+    assert!(
+        h.get_by_role_and_label(Role::Button, "Continue")
+            .accesskit_node()
+            .is_disabled(),
+        "no double submit while checking"
+    );
+}
+
+#[test]
+fn sign_in_shows_browser_guidance_and_cancel_is_acknowledged_by_the_backend() {
+    let (mut h, handle) = harness(snapshot(), MotionPreference::Off);
+    settle(&mut h);
+    shot(&mut h, "02-signed-out");
+    let op = handle.next_op();
+    h.get_by_role_and_label(Role::Button, "Sign in").click();
+    settle(&mut h);
+    assert_eq!(
+        count(&handle, |c| matches!(
+            c,
+            Command::SignIn {
+                switch_account: false
+            }
+        )),
+        1
+    );
+    push_all(
+        &mut h,
+        &handle,
+        vec![
+            Event::Started {
+                op,
+                kind: OperationKind::SignIn,
+            },
+            Event::Progress {
+                op,
+                progress: Progress {
+                    step: Step::WaitingForBrowser,
+                    done: 0,
+                    total: None,
+                    unit: ProgressUnit::Steps,
+                },
+            },
+        ],
+    );
+    assert!(
+        shows(&h, "Continue in your browser"),
+        "Continue in your browser"
+    );
+    h.get_by_role_and_label(Role::Button, "Signing in…");
+    shot(&mut h, "03-sign-in-browser");
+    h.get_by_role_and_label(Role::Button, "Open browser again")
+        .click();
+    settle(&mut h);
+    assert_eq!(
+        count(&handle, |c| matches!(
+            c,
+            Command::ReopenSignInBrowser { .. }
+        )),
+        1
+    );
+    h.get_by_role_and_label(Role::Button, "Cancel").click();
+    settle(&mut h);
+    assert_eq!(count(&handle, |c| *c == Command::Cancel { op }), 1);
+    assert!(
+        h.get_by_role_and_label(Role::Button, "Cancelling…")
+            .accesskit_node()
+            .is_disabled()
+    );
+    push_all(
+        &mut h,
+        &handle,
+        vec![Event::Finished {
+            op,
+            outcome: Outcome::Cancelled,
+        }],
+    );
+    assert!(shows(&h, "Sign-in cancelled"), "Sign-in cancelled");
+    h.get_by_role_and_label(Role::Button, "Sign in");
+}
+
+#[test]
+fn missing_client_id_is_an_honest_configuration_error_without_retry() {
+    let (mut h, handle) = harness(snapshot(), MotionPreference::Off);
+    settle(&mut h);
+    let op = handle.next_op();
+    h.get_by_role_and_label(Role::Button, "Sign in").click();
+    settle(&mut h);
+    push_all(
+        &mut h,
+        &handle,
+        vec![
+            Event::Started {
+                op,
+                kind: OperationKind::SignIn,
+            },
+            Event::Finished {
+                op,
+                outcome: Outcome::Failed(LauncherError {
+                    kind: ErrorKind::AuthNotConfigured,
+                    detail: "no client id".into(),
+                    retryable: false,
+                }),
+            },
+        ],
+    );
+    assert!(
+        h.query_all_by_label_contains("Sign-in isn't set up in this build")
+            .count()
+            >= 1
+    );
+    assert!(
+        h.query_by_role_and_label(Role::Button, "Try again")
+            .is_none(),
+        "a configuration error is not retryable"
+    );
+    assert!(
+        h.query_by_label_contains("FixturePlayer").is_none(),
+        "no account appears without a real sign-in"
+    );
+    shot(&mut h, "04-auth-not-configured");
+    h.get_by_role_and_label(Role::Button, "Details").click();
+    settle(&mut h);
+    assert!(shows(&h, "AuthNotConfigured"), "AuthNotConfigured");
+}
+
+#[test]
+fn install_progress_is_real_cancellable_and_announced() {
+    let mut s = snapshot();
+    s.account = Some(account());
+    let (mut h, handle) = harness(s, MotionPreference::Off);
+    settle(&mut h);
+    let op = handle.next_op();
+    h.get_by_role_and_label(Role::Button, "Install").click();
+    settle(&mut h);
+    push_all(
+        &mut h,
+        &handle,
+        vec![
+            Event::Started {
+                op,
+                kind: OperationKind::Prepare { repair: false },
+            },
+            Event::Progress {
+                op,
+                progress: Progress {
+                    step: Step::DownloadingAssets,
+                    done: 220_200_960,
+                    total: Some(440_401_920),
+                    unit: ProgressUnit::Bytes,
+                },
+            },
+        ],
+    );
+    let bar = h.get_by_role(Role::ProgressIndicator);
+    assert_eq!(bar.accesskit_node().numeric_value(), Some(50.0));
+    assert!(shows(&h, "210.0 of 420.0 MB"), "210.0 of 420.0 MB");
+    let status = h.get_by_role(Role::Status);
+    assert_eq!(
+        status.accesskit_node().label().as_deref(),
+        Some("Downloading game assets")
+    );
+    assert_eq!(
+        status.accesskit_node().live(),
+        eframe::egui::accesskit::Live::Polite
+    );
+    shot(&mut h, "05-installing");
+    // A stale event for another operation changes nothing.
+    push_all(
+        &mut h,
+        &handle,
+        vec![Event::Finished {
+            op: OperationId(999),
+            outcome: Outcome::Succeeded(Payload::None),
+        }],
+    );
+    h.get_by_role(Role::ProgressIndicator);
+    // Network failure keeps a retry path; the retry submits a fresh Prepare.
+    push_all(
+        &mut h,
+        &handle,
+        vec![Event::Finished {
+            op,
+            outcome: Outcome::Failed(LauncherError {
+                kind: ErrorKind::Offline,
+                detail: "dns".into(),
+                retryable: true,
+            }),
+        }],
+    );
+    assert!(
+        shows(&h, "Can't reach the internet"),
+        "Can't reach the internet"
+    );
+    shot(&mut h, "06-offline-error");
+    h.get_by_role_and_label(Role::Button, "Try again").click();
+    settle(&mut h);
+    assert_eq!(
+        count(&handle, |c| *c == Command::Prepare { repair: false }),
+        2
+    );
+}
+
+#[test]
+fn double_clicking_play_starts_one_game_and_states_follow_the_process() {
+    let (mut h, handle) = harness(ready(), MotionPreference::Off);
+    settle(&mut h);
+    shot(&mut h, "07-ready");
+    let play = h.get_by_role_and_label(Role::Button, "Play");
+    play.click();
+    play.click();
+    settle(&mut h);
+    let op = OperationId(1);
+    assert_eq!(
+        count(&handle, |c| *c == Command::Play),
+        1,
+        "double click submits once"
+    );
+    assert!(
+        h.get_by_role_and_label(Role::Button, "Starting…")
+            .accesskit_node()
+            .is_disabled()
+    );
+    push_all(
+        &mut h,
+        &handle,
+        vec![
+            Event::Started {
+                op,
+                kind: OperationKind::Launch,
+            },
+            Event::Finished {
+                op,
+                outcome: Outcome::Succeeded(Payload::None),
+            },
+            Event::Game {
+                session: GameSessionId(1),
+                state: GameState::Starting,
+            },
+            Event::Game {
+                session: GameSessionId(1),
+                state: GameState::Running { title_screen: true },
+            },
+        ],
+    );
+    assert!(
+        shows(&h, "reached its title screen"),
+        "reached its title screen"
+    );
+    assert!(
+        h.get_by_role_and_label(Role::Button, "Playing")
+            .accesskit_node()
+            .is_disabled()
+    );
+    shot(&mut h, "08-running");
+    push_all(
+        &mut h,
+        &handle,
+        vec![Event::Game {
+            session: GameSessionId(1),
+            state: GameState::Crashed {
+                code: Some(-1),
+                crash_report: Some("crash-reports/crash.txt".into()),
+            },
+        }],
+    );
+    assert!(shows(&h, "Minecraft crashed"), "Minecraft crashed");
+    h.get_by_role_and_label(Role::Button, "Play");
+    shot(&mut h, "09-crashed");
+    h.get_by_role_and_label(Role::Button, "View log").click();
+    settle(&mut h);
+    assert_eq!(h.state().page(), crate::app::Page::Diagnostics);
+}
+
+#[test]
+fn closing_while_minecraft_runs_asks_first() {
+    let (mut h, handle) = harness(ready(), MotionPreference::Off);
+    push_all(
+        &mut h,
+        &handle,
+        vec![Event::Game {
+            session: GameSessionId(1),
+            state: GameState::Running {
+                title_screen: false,
+            },
+        }],
+    );
+    assert!(!h.state_mut().on_close_requested(), "close is held back");
+    settle(&mut h);
+    assert!(
+        shows(&h, "Minecraft is still running"),
+        "Minecraft is still running"
+    );
+    shot(&mut h, "10-close-while-running");
+    h.get_by_role_and_label(Role::Button, "Keep open").click();
+    settle(&mut h);
+    assert!(
+        h.query_by_label_contains("Minecraft is still running")
+            .is_none()
+    );
+}
+
+#[test]
+fn settings_radio_groups_use_arrow_keys_and_save_through_the_backend() {
+    let (mut h, handle) = harness(ready(), MotionPreference::FollowSystem);
+    h.run_steps(4);
+    h.get_by_role_and_label(Role::Tab, "Settings").click();
+    h.run_steps(4);
+    let follow = h.get_by_role_and_label(Role::RadioButton, "Follow Windows");
+    follow.focus();
+    h.run_steps(2);
+    h.key_press(Key::ArrowRight); // Full
+    h.run_steps(2);
+    h.key_press(Key::ArrowRight); // Reduced
+    h.run_steps(3);
+    assert!(
+        h.get_by_role_and_label(Role::RadioButton, "Reduced")
+            .is_focused(),
+        "focus follows the selection"
+    );
+    assert!(
+        h.query_by_role_and_label(Role::RadioButton, "Off")
+            .is_some()
+    );
+    shot(&mut h, "11-settings");
+    let save = h.get_by_role_and_label(Role::Button, "Save changes");
+    save.scroll_to_me();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::Button, "Save changes")
+        .click();
+    h.run_steps(4);
+    let saved = handle.submitted().into_iter().find_map(|c| match c {
+        Command::UpdateSettings(s) => Some(s),
+        _ => None,
+    });
+    assert_eq!(saved.map(|s| s.motion), Some(MotionPreference::Reduced));
+}
+
+#[test]
+fn logs_shown_and_copied_are_redacted() {
+    let (mut h, handle) = harness(ready(), MotionPreference::Off);
+    push_all(&mut h, &handle, vec![Event::Log(vec![LogLine {
+        level: LogLevel::Info,
+        source: LogSource::Game,
+        text: "Launching --accessToken eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJlX3ZhbHVl --username Steve".into(),
+    }])]);
+    h.get_by_role_and_label(Role::Tab, "Diagnostics").click();
+    settle(&mut h);
+    assert!(
+        shows(&h, "--accessToken [redacted]"),
+        "--accessToken [redacted]"
+    );
+    assert!(h.query_by_label_contains("eyJhbGci").is_none());
+    shot(&mut h, "12-diagnostics");
+    h.get_by_role_and_label(Role::Button, "Copy log").click();
+    h.step();
+    let copied = h
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            eframe::egui::OutputCommand::CopyText(t) => Some(t.clone()),
+            _ => None,
+        });
+    let copied = copied.unwrap_or_default();
+    assert!(
+        copied.contains("[redacted]") && !copied.contains("eyJ"),
+        "{copied}"
+    );
+}
+
+#[test]
+fn motion_off_settles_without_a_repaint_loop() {
+    let mut s = snapshot();
+    s.account = Some(account());
+    let (mut h, handle) = harness(s, MotionPreference::Off);
+    settle(&mut h);
+    h.get_by_role_and_label(Role::Button, "Install").click();
+    settle(&mut h);
+    push_all(
+        &mut h,
+        &handle,
+        vec![Event::Started {
+            op: OperationId(1),
+            kind: OperationKind::Prepare { repair: false },
+        }],
+    );
+    assert!(
+        h.try_run().is_ok(),
+        "indeterminate progress with motion Off must not animate"
+    );
+}
+
+#[test]
+fn every_interactive_widget_has_a_name() {
+    for snap in [snapshot(), ready()] {
+        let (mut h, _handle) = harness(snap, MotionPreference::Off);
+        settle(&mut h);
+        for role in [
+            Role::Button,
+            Role::Tab,
+            Role::RadioButton,
+            Role::TextInput,
+            Role::Slider,
+        ] {
+            for node in h.query_all_by_role(role) {
+                let n = node.accesskit_node();
+                let named = n.label().is_some_and(|l| !l.trim().is_empty())
+                    || !n.data().labelled_by().is_empty();
+                assert!(named, "{role:?} without a name: {n:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn keyboard_focus_is_visible_and_tab_reaches_the_main_action() {
+    let (mut h, _handle) = harness(ready(), MotionPreference::Off);
+    settle(&mut h);
+    // Tab from the start of the window walks header -> navigation -> page; the main action is reachable.
+    let mut reached = false;
+    for _ in 0..8 {
+        h.key_press(Key::Tab);
+        h.run_steps(2);
+        if h.get_by_role_and_label(Role::Button, "Play").is_focused() {
+            reached = true;
+            break;
+        }
+    }
+    assert!(reached, "Play is reachable with Tab");
+    shot(&mut h, "13-keyboard-focus");
+}

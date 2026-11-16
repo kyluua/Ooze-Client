@@ -1,0 +1,39 @@
+[package]
+name = "ooze-launcher-ui"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+description = "Ooze Launcher desktop interface: screens, components, navigation, focus and product UI state over the launcher backend API"
+
+# Codex owns the shared launcher workspace (launcher/Cargo.toml, Cargo.lock) and registers this
+# crate there; until it exists this crate builds standalone. See docs/handoffs/CLAUDE-L0-request.md.
+
+[features]
+default = []
+# Test/preview-only scripted backend. A release build refuses it (compile_error! in lib.rs).
+dev-fixtures = []
+
+[dependencies]
+eframe = { version = "=0.37.0", default-features = false, features = ["accesskit", "wgpu", "x11", "wayland"] }
+regex = "1.13"
+rfd = "0.18"
+serde_json = "1"
+
+[dev-dependencies]
+egui_kittest = { version = "=0.37.0", features = ["snapshot", "wgpu"] }
+
+[[bin]]
+name = "ooze-launcher-preview"
+path = "src/bin/ooze-launcher-preview.rs"
+required-features = ["dev-fixtures"]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "allow"
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unwrap_used = "warn"

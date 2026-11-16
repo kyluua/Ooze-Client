@@ -1,0 +1,38 @@
+{
+  "schema": "oozelauncher.fonts/1",
+  "note": "Upstream static TTFs, byte-for-byte unmodified (TYPOGRAPHY.md §2). Licence files copied verbatim. Retrieved 2026-11-16.",
+  "families": [
+    {
+      "id": "bubblegum_sans",
+      "name": "Bubblegum Sans",
+      "role": "display (wordmark, page titles)",
+      "license": {
+        "id": "OFL-1.1",
+        "file": "bubblegum_sans/OFL.txt",
+        "copyright": "Copyright (c) 2011 Angel Koziupa (sudtipos@sudtipos.com), Copyright (c) 2011 Alejandro Paul (sudtipos@sudtipos.com), with Reserved Font Name \"Bubblegum Sans\""
+      },
+      "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/bubblegumsans/ (upstream https://github.com/googlefonts/bubblegumsans @ a2d0062318639fe63f2a8ffd78fec793ee8e6248 per METADATA.pb)",
+      "faces": [
+        { "weight": 400, "italic": false, "file": "bubblegum_sans/BubblegumSans-Regular.ttf",
+          "sha256": "db8d1c71c398266ecabe9ae4923c4feb1323441a4f056a9339e41d8f847bd0c0" }
+      ]
+    },
+    {
+      "id": "inter",
+      "name": "Inter",
+      "role": "body, labels, buttons, logs",
+      "license": {
+        "id": "OFL-1.1",
+        "file": "inter/LICENSE.txt",
+        "copyright": "Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)"
+      },
+      "source": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip (sha256 9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e), extras/ttf/",
+      "faces": [
+        { "weight": 400, "italic": false, "file": "inter/Inter-Regular.ttf",
+          "sha256": "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82" },
+        { "weight": 600, "italic": false, "file": "inter/Inter-SemiBold.ttf",
+          "sha256": "78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3" }
+      ]
+    }
+  ]
+}

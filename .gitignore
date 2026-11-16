@@ -18,6 +18,8 @@ bin/
 
 # Rust (Sol's workspace; listed here so a fresh checkout stays clean)
 native/target/
+launcher/target/
+launcher/crates/*/target/
 
 # OS
 .DS_Store
