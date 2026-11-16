@@ -14,11 +14,12 @@ that file before compiling so the CLI embeds the owned ID. This ID is public
 configuration, not a secret. On 2026-11-16 the owner corrected the single-tenant
 registration and its access-token version. A fresh browser sign-in returned to
 Ooze and completed the Microsoft code exchange and protected refresh-token save,
-then a later authentication-service request returned HTTP 403. The old CLI's
-coarse diagnostic cannot identify which service refused it. Full Minecraft
-sign-in, entitlement, profile, refresh and Play remain **unverified**. See
-`SOL-L0-AUTH-SERVICE-DIAGNOSTICS.md` for the follow-up. No external application
-was created or approved by Sol.
+then a later authentication-service request returned HTTP 403. The corrected
+CLI from f254af5 then refreshed the saved Microsoft session and passed Xbox
+user/XSTS authentication, but Minecraft's `/authentication/login_with_xbox`
+returned HTTP 403. Full Minecraft sign-in, entitlement, profile and Play remain
+**unverified**. See `SOL-L0-AUTH-SERVICE-DIAGNOSTICS.md` for the verified artifact
+and follow-up. No external application was created, submitted or approved by Sol.
 
 ## 1. Register the developer-owned application
 
@@ -80,16 +81,32 @@ flow-specific guidance if changing that setting. [Public-client guidance](https:
 ## 3. Confirm Minecraft Services access separately
 
 An Entra client ID is not proof of permission to use Minecraft's services.
-The official [Minecraft application-access support entry](https://help.minecraft.net/hc/en-us/articles/16254801392141)
-returned only a support shell when inspected on 2026-11-15, so the current
-onboarding/approval route could not be verified. No particular form, approval
-timeline or approval-free workaround is promised here.
+On 2026-11-16 Sol followed Microsoft's [AppID Review link](https://aka.ms/mce-reviewappid)
+and read the live Microsoft Forms page titled **AppID Review**. It accepts new
+application approval requests and reports of existing applications. This
+verifies the current request route, not approval of Ooze. The older
+[Minecraft support entry](https://help.minecraft.net/hc/en-us/articles/16254801392141)
+still returned only a support shell.
 
-Use official Minecraft/Microsoft support to confirm which application access
-process applies to this third-party Java launcher. Have the public client ID,
-project repository/contact, desktop/PKCE design and intended Minecraft use ready.
-Record their instructions and any granted access against this exact app ID.
-Never borrow another launcher's ID or read its credentials.
+The owner should select **New AppID for Approval**, use the exact public client
+ID above and application name **Ooze Launcher**, provide the directory/tenant ID
+from Entra Overview, their valid contact email matching the registration, the
+repository URL and a truthful justification. The form requires a personal
+acknowledgment of the EULA/usage guidelines. Sol did not select that acknowledgment,
+enter contact information or submit the form. No approval date or outcome is
+promised; do not submit duplicates. Record a granted review against this exact
+app ID. Never borrow another launcher's ID or read its credentials.
+
+Suggested justification for the owner to review:
+
+> Ooze Launcher is an open-source Rust desktop launcher for Minecraft Java
+> Edition 1.21.11 with Fabric and the Ooze mod. It uses our own public Microsoft
+> client ID and authorization code with PKCE in the system browser, followed by
+> Xbox Live, XSTS and Minecraft Services. We request access to authenticate
+> players and validate their Java Edition entitlement and profile before
+> launching the game. The implementation requires successful authentication and
+> ownership validation and has no offline identity or ownership bypass. Source:
+> https://github.com/kyluua/Ooze-Client
 
 Treat Microsoft consent, Xbox/XSTS authorization and Minecraft entitlement/profile
 requests as separate checks. A successful Microsoft browser login alone does not
@@ -203,12 +220,16 @@ mod log files.
 ## Actual validation boundary
 
 No owned client ID was configured at implementation start; the owner has since
-supplied the public ID above. OAuth callback/state,
-denial, cancellation, refresh-error handling, entitlement parsing and redaction
-have controlled tests; these do not prove Microsoft consent, Minecraft service
-access, a real token refresh or an online launcher game session. SOL-L0 records
-the actual executed checks. ServiceAccess diagnoses an access denial without
-exposing the response body; it does not assert every 403 is an approval problem.
+supplied the public ID above. OAuth callback/state, denial, cancellation,
+refresh-error handling, entitlement parsing and redaction have controlled tests.
+The latest live Windows test additionally proves browser callback, Microsoft
+code exchange, saved-session refresh and Xbox/XSTS success before Minecraft
+sign-in HTTP 403. It does not prove Minecraft service access, entitlement/profile
+or an online launcher game session. SOL-L0 and the later auth handoffs record
+the exact executed checks. ServiceAccess diagnoses the refusing Minecraft stage
+without exposing the response body; it does not assert every 403 is an approval
+problem. Approval being absent is a plausible cause for this new app, not a
+cause conclusively established by the HTTP status alone.
 
 Primary sources inspected:
 
