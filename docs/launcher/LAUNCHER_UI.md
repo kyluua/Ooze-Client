@@ -48,7 +48,7 @@ launcher/
 The `ooze-launcher` binary resolves configuration exactly like Sol's CLI:
 - data directory `%LOCALAPPDATA%\OozeLauncher`;
 - `release.json` beside the executable;
-- the Microsoft public client ID: `OOZE_MICROSOFT_CLIENT_ID` at run time, then at build time, then the project's committed ID in `launcher/resources/auth/microsoft-public-client-id.txt` (`config.rs`).
+- the Microsoft public client ID: `OOZE_MICROSOFT_CLIENT_ID` at run time, then at build time, then the project's committed ID in `launcher/packaging/public-auth.json` (Sol's file, also exported by CI at build time; `config.rs`).
 
 - **Rendering:** the launcher window is ordinary desktop GUI drawn by eframe (wgpu: Direct3D 12 / Vulkan on Windows). The "no raw graphics / Java submits through vanilla pipelines" rule applies to the **in-game** adapter only (ARCHITECTURE §19, ADR-016).
 

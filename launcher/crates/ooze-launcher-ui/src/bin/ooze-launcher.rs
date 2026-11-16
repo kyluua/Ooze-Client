@@ -4,7 +4,7 @@
 //! - data directory: `%LOCALAPPDATA%\OozeLauncher`;
 //! - release manifest: `release.json` beside this executable;
 //! - Microsoft public client ID: `OOZE_MICROSOFT_CLIENT_ID` at run time, else the same variable at
-//!   build time, else the project's committed ID (`launcher/resources/auth/`). See `config.rs`.
+//!   build time, else the project's committed ID (`launcher/packaging/public-auth.json`). See `config.rs`.
 //!
 //! Any startup failure (not Windows x64, another launcher running, unreadable settings) opens the
 //! window with a clear error page instead of exiting silently.

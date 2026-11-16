@@ -211,9 +211,9 @@ No gameplay modules or unrelated milestones were started.
 ## 11. Update 2026-11-16: owner client ID and registration check
 
 **Configured.** The owner provided the public Application (client) ID `359e0deb-13e8-4616-978f-0fc1f8e273d2`:
-- It is committed in `launcher/resources/auth/microsoft-public-client-id.txt` (public by design; no secret exists).
-- `ooze-launcher` resolves it through `config::microsoft_client_id`: run-time `OOZE_MICROSOFT_CLIENT_ID`, then the same variable at build time, then the committed ID. Non-GUID values are ignored. Two new unit tests cover this; 55/55 UI tests pass.
-- Sol's CLI still reads only the environment variable (request A7).
+- Sol committed it at the same time in `launcher/packaging/public-auth.json`, which Sol's CI exports at build time (`SOL-L0-AUTH-CONFIG.md`). It is the single source of truth; my duplicate copy was removed. It is public by design, and no secret exists.
+- `ooze-launcher` resolves it through `config::microsoft_client_id`: run-time `OOZE_MICROSOFT_CLIENT_ID`, then the same variable at build time, then the committed `public-auth.json`. Non-GUID values are ignored. Two new unit tests cover this; 55/55 UI tests pass.
+- Sol's CLI gets it from the CI build environment. A local build without that variable has none (request A7).
 
 **Registration check (Headless-tested, Linux x64).** I loaded the real authorize URL in headless Chromium: consumers authority, `http://localhost:<port>/callback`, `XboxLive.signin offline_access`, PKCE S256. The proxy CA was trusted; TLS was not bypassed. Microsoft's personal-account service answered:
 

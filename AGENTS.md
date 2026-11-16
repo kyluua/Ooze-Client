@@ -70,7 +70,7 @@ Two agents work in this repository. They do **not** share chat history: **handof
 
 **Authentication and identity**
 - **Launcher:**
-  - Microsoft sign-in in the **system browser** with PKCE, using the project's own registered **public client ID** (developer configuration, never per player). The owner-provided ID lives in `launcher/resources/auth/microsoft-public-client-id.txt`; it is public, and no client secret may ever be added.
+  - Microsoft sign-in in the **system browser** with PKCE, using the project's own registered **public client ID** (developer configuration, never per player). The owner-provided ID lives in Sol's `launcher/packaging/public-auth.json`; it is public, and no client secret may ever be added.
   - Never collect Microsoft passwords, embed a client secret, borrow another launcher's client ID or read another launcher's credential store.
   - Credentials live only in the backend's Windows-protected storage.
   - The game receives its session only through the backend's launch interface, and **the raw launch command is never logged**.
