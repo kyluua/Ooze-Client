@@ -139,7 +139,7 @@ fn an_empty_or_archived_library_cannot_play_the_previous_game_directory() {
 #[test]
 fn closing_waits_for_a_library_cancellation_or_committed_operation_to_finish() {
     for committing in [false, true] {
-        let (mut h, _, lh) = harness(Some(fx::snapshot()));
+        let (mut h, handle, lh) = harness(Some(fx::snapshot()));
         let lh = lh.unwrap();
         let op = LibOpId(99);
         h.state_mut()
@@ -160,6 +160,12 @@ fn closing_waits_for_a_library_cancellation_or_committed_operation_to_finish() {
                     total: None,
                     item: None,
                 },
+            });
+            steps(&mut h);
+        } else {
+            handle.push(Event::Game {
+                session: GameSessionId(1),
+                state: GameState::Starting,
             });
             steps(&mut h);
         }
@@ -187,7 +193,14 @@ fn closing_waits_for_a_library_cancellation_or_committed_operation_to_finish() {
             },
         });
         steps(&mut h);
-        assert!(h.state_mut().on_close_requested());
+        if committing {
+            assert!(h.state_mut().on_close_requested());
+        } else {
+            assert!(
+                !h.state_mut().on_close_requested(),
+                "finishing a library operation must still respect the live-game close guard"
+            );
+        }
     }
 }
 

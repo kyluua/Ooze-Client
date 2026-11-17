@@ -401,9 +401,15 @@ impl LauncherApp {
             self.lib_submit(crate::library::LibCommand::ListInstalled { instance, kind });
         }
         if self.close_after_library && !self.lib_busy() {
-            self.close_prompt = None;
-            self.allow_close = true;
-            ctx.send_viewport_cmd(ViewportCommand::Close);
+            self.close_after_library = false;
+            match self.model.close_guard() {
+                CloseGuard::Allow => {
+                    self.close_prompt = None;
+                    self.allow_close = true;
+                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                }
+                guard => self.close_prompt = Some(guard),
+            }
         }
         if self.backend.wants_polling() {
             // The real backend has no waker: poll while an operation or the game is active.
