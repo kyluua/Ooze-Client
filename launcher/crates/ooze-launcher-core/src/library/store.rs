@@ -133,12 +133,22 @@ impl Store {
         preset: Preset,
         mode: Mode,
     ) -> Result<Id> {
+        self.create_filled(name_value, target, preset, mode, |_, _| Ok(()))
+    }
+    fn create_filled(
+        &self,
+        name_value: String,
+        target: Target,
+        preset: Preset,
+        mode: Mode,
+        fill: impl FnOnce(&Path, &mut Instance) -> Result<()>,
+    ) -> Result<Id> {
         name(&name_value)?;
         target.validate()?;
         let mut index = self.index()?;
         if index.ids.len() >= 128 {
             return Err(invalid(
-                "The library supports at most 128 instances, including archived instances.",
+                "The library supports at most 128 instances, including archives.",
             ));
         }
         let id = Id::new();
@@ -149,11 +159,16 @@ impl Store {
                 "Instance identity collision; retry.",
             ));
         }
-        util::mkdir(&directory)?;
-        let game = self.game(&id)?;
+        let stage = tempfile::Builder::new()
+            .prefix(".new-instance-")
+            .tempdir_in(util::join(&self.root, "instances")?)
+            .map_err(|_| io_error())?;
+        let game = util::join(stage.path(), "game")?;
         util::mkdir(&game)?;
-        let _lock = crate::install::claim_instance(&game)?;
-        let value = Instance {
+        {
+            let _lock = crate::install::claim_instance(&game)?;
+        }
+        let mut value = Instance {
             schema: SCHEMA,
             id: id.clone(),
             name: name_value,
@@ -165,7 +180,11 @@ impl Store {
             archived: false,
             content: Vec::new(),
         };
-        util::atomic_json(&util::join(&directory, "instance.json")?, &value)?;
+        fill(&game, &mut value)?;
+        value.validate()?;
+        util::atomic_json(&util::join(stage.path(), "instance.json")?, &value)?;
+        let kept = stage.keep();
+        fs::rename(kept, &directory).map_err(|_| io_error())?;
         index.ids.push(id.clone());
         if index.selected.is_none() {
             index.selected = Some(id.clone());
@@ -189,38 +208,40 @@ impl Store {
         check: &dyn Fn() -> Result<()>,
     ) -> Result<Id> {
         let (original, _source) = self.claim(id)?;
-        name(&name_value)?;
         check()?;
-        let new_id = self.create(
+        self.create_filled(
             name_value,
             original.target.clone(),
             original.profile.preset(),
             Mode::Custom,
-        )?;
-        let (mut copy, _target) = self.claim(&new_id)?;
-        copy.profile = original.profile;
-        copy.theme = original.theme;
-        // World data is never copied implicitly; receipts inside a world are omitted too.
-        for receipt in original
-            .content
-            .into_iter()
-            .filter(|r| r.kind != ContentKind::Datapack)
-        {
-            check()?;
-            let source = util::join(&self.game(id)?, &receipt.path)?;
-            if super::content::hash(&source, check)? != receipt.sha512 {
-                return Err(error(
-                    ErrorCode::Integrity,
-                    "Source content changed; repair it before duplication.",
-                ));
-            }
-            let dest = util::join(&self.game(&new_id)?, &receipt.path)?;
-            util::mkdir(dest.parent().ok_or_else(io_error)?)?;
-            fs::copy(source, dest).map_err(|_| io_error())?;
-            copy.content.push(receipt);
-        }
-        self.save(&mut copy)?;
-        Ok(new_id)
+            |game, copy| {
+                copy.profile = original.profile.clone();
+                copy.theme = original.theme.clone();
+                for receipt in original
+                    .content
+                    .iter()
+                    .filter(|r| r.kind != ContentKind::Datapack)
+                {
+                    check()?;
+                    let source = util::join(&self.game(id)?, &receipt.path)?;
+                    if super::content::hash(&source, check)? != receipt.sha512 {
+                        return Err(error(
+                            ErrorCode::Integrity,
+                            "Source content changed; repair it before duplication.",
+                        ));
+                    }
+                    let dest = util::join(game, &receipt.path)?;
+                    util::mkdir(dest.parent().ok_or_else(io_error)?)?;
+                    fs::copy(source, &dest).map_err(|_| io_error())?;
+                    fs::File::open(dest)
+                        .map_err(|_| io_error())?
+                        .sync_all()
+                        .map_err(|_| io_error())?;
+                    copy.content.push(receipt.clone());
+                }
+                check()
+            },
+        )
     }
     pub fn archive(&self, id: &Id) -> Result<()> {
         let (mut value, _lock) = self.claim(id)?;
@@ -272,6 +293,30 @@ pub(crate) fn for_game(game: &Path) -> Result<Option<Instance>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cancelled_duplicate_is_never_published() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let id = store
+            .create(
+                "Original".into(),
+                Target::fabric(),
+                Preset::Minimal,
+                Mode::Custom,
+            )
+            .unwrap();
+        let calls = std::cell::Cell::new(0);
+        let result = store.duplicate(&id, "Cancelled".into(), &|| {
+            calls.set(calls.get() + 1);
+            if calls.get() >= 2 {
+                Err(error(ErrorCode::Cancelled, "cancelled"))
+            } else {
+                Ok(())
+            }
+        });
+        assert_eq!(result.unwrap_err().code, ErrorCode::Cancelled);
+        assert_eq!(store.snapshot().unwrap().instances.len(), 1);
+    }
     #[test]
     fn isolated_instances_preserve_player_files_and_archive_in_place() {
         let dir = tempfile::tempdir().unwrap();

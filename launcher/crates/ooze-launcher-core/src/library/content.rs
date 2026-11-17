@@ -236,6 +236,32 @@ pub(super) fn recover(store: &Store, id: &Id) -> Result<()> {
         return Err(metadata_error());
     }
     let current = store.instance(id)?;
+    if current.revision == journal.after.revision
+        && serde_json::to_vec(&current).map_err(|_| metadata_error())?
+            != serde_json::to_vec(&journal.after).map_err(|_| metadata_error())?
+    {
+        return Err(error(
+            ErrorCode::Integrity,
+            "Committed transaction manifest differs; preserve it for recovery.",
+        ));
+    }
+    for (index, m) in journal.moves.iter().enumerate() {
+        util::relative(&m.path)?;
+        if !current
+            .content
+            .iter()
+            .chain(journal.after.content.iter())
+            .any(|r| r.path == m.path)
+            || m.new_file
+                .as_ref()
+                .is_some_and(|n| n != &format!("new-{index}"))
+        {
+            return Err(error(
+                ErrorCode::Integrity,
+                "Invalid transaction path; player files were preserved.",
+            ));
+        }
+    }
     if current.revision == journal.after.revision {
         // The manifest's atomic replacement is the commit point. Preserve backups.
         let history = util::join(&store.container(id)?, "history")?;
@@ -657,6 +683,82 @@ pub(super) fn verify(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn interrupted_content_replacement_rolls_back_and_rejects_unrelated_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let id = store
+            .create(
+                "Recovery".into(),
+                Target::fabric(),
+                Preset::Minimal,
+                Mode::Custom,
+            )
+            .unwrap();
+        let game = store.game(&id).unwrap();
+        fs::create_dir(game.join("mods")).unwrap();
+        let target = game.join("mods/a.jar");
+        fs::write(&target, b"original").unwrap();
+        let mut before = store.instance(&id).unwrap();
+        before.content.push(ContentReceipt {
+            project: "A".into(),
+            version: "a".into(),
+            kind: ContentKind::Mod,
+            path: "mods/a.jar".into(),
+            size: 8,
+            sha512: hash(&target, &|| Ok(())).unwrap(),
+            enabled: true,
+            required_projects: Vec::new(),
+            required_versions: BTreeMap::new(),
+        });
+        store.save(&mut before).unwrap();
+        let txn = txn_path(&store, &id).unwrap();
+        fs::create_dir(&txn).unwrap();
+        fs::rename(&target, txn.join("old-0")).unwrap();
+        fs::write(&target, b"new").unwrap();
+        let mut after = before.clone();
+        after.revision += 1;
+        after.content[0].size = 3;
+        after.content[0].sha512 = hash(&target, &|| Ok(())).unwrap();
+        util::atomic_json(
+            &txn.join("journal.json"),
+            &Journal {
+                schema: SCHEMA,
+                before_revision: before.revision,
+                after,
+                moves: vec![Move {
+                    path: "mods/a.jar".into(),
+                    backup: true,
+                    new_file: Some("new-0".into()),
+                }],
+            },
+        )
+        .unwrap();
+        recover(&store, &id).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert_eq!(store.instance(&id).unwrap().revision, before.revision);
+        fs::create_dir(&txn).unwrap();
+        let options = game.join("options.txt");
+        fs::write(&options, b"preserve").unwrap();
+        let mut after = before.clone();
+        after.revision += 1;
+        util::atomic_json(
+            &txn.join("journal.json"),
+            &Journal {
+                schema: SCHEMA,
+                before_revision: before.revision,
+                after,
+                moves: vec![Move {
+                    path: "options.txt".into(),
+                    backup: false,
+                    new_file: Some("new-0".into()),
+                }],
+            },
+        )
+        .unwrap();
+        assert!(recover(&store, &id).is_err());
+        assert_eq!(fs::read(options).unwrap(), b"preserve");
+    }
     #[test]
     fn archives_reject_traversal_and_duplicate_case() {
         let dir = tempfile::tempdir().unwrap();

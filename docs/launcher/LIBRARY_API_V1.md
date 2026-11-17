@@ -11,6 +11,11 @@ contract alone is not execution evidence.
 paint path, beside `Launcher::open`, using the same absolute data directory.
 `snapshot`, `submit`, `cancel`, `try_event` mirror the existing asynchronous
 pattern. One library operation is active at a time; concurrent submit is Busy.
+`capabilities()` advertises the implemented targets/content types and an empty
+runtime_modules list until game hooks are validated. `set_notify` accepts a
+nonblocking repaint notifier. Events are Started and Finished; Finished contains
+Result<Reply, LauncherError>. The queue is bounded to 64 events. The snapshot is
+updated before Finished. Library 1 currently has no byte-progress events.
 IDs are monotonic per facade lifetime, independent of Launcher OperationId.
 Every accepted operation has one terminal result unless its process terminates.
 Callers must keep draining the bounded queue, discard stale IDs, and perform no
@@ -36,25 +41,41 @@ portable versioned data without accounts, credentials, absolute paths or code.
 No silent corrupt-file reset occurs. Recovery uses a separate directory or an
 explicit owner-restored backup.
 
+state.json is an index of IDs and selection. Each instance's authoritative
+configuration is `library/instances/<id>/instance.json`; its game directory is
+the sibling `game/`. The per-instance JSON read limit is 16 MiB (the shared
+reader bound), with 512 content receipts. No absolute path is stored in portable
+profiles/themes. `Snapshot` deliberately includes local game_dir for API 1 use.
+
 Instance configuration records game version, loader/version, Java requirement,
 Ooze availability, preset and overrides, theme, mode, content receipts and
 revision. Internal paths derive from IDs. Duplicate creates a new identity and
 copies configuration/registered content, not worlds, screenshots or options.
-Removal archives the entire instance under the library rather than deleting
-player data. Mutations are rejected while that game instance is active.
+Archive marks its manifest archived, clears selection and preserves all files
+in place. There is no permanent-delete command. Mutations are rejected while
+that game instance is active.
 
 Initial install adapters are pinned Minecraft 1.21.11 / Java 21 for Vanilla and
 Fabric 0.20.1. Ooze is available only for the tested Fabric target. Other loader
 enum values are reserved and rejected until their adapters and validation exist.
 Capabilities, not the existence of an enum value, govern UI exposure.
 
-Preset IDs are fps, pvp and minimal. Presets contain desired module settings and
+Preset IDs are fps, pvp and minimal. Product profiles use Claude's canonical
+`ooze.profile/1` document and pure Rust `ooze-ui::profile` implementation, consumed
+as a path dependency; there is no second set of module defaults. `Profile` wraps
+that document and serializes directly to its JSON object. ImportProfile returns
+Imported warnings for skipped unknown/invalid entries; persisted invalid profile
+entries fail instead of being silently discarded. Presets contain desired module settings and
 HUD layouts; they do not install performance mods or promise an FPS gain. A
 desired enabled flag does not prove that the game build implements that module.
 Module IDs/settings are explicitly bounded and validated; gameplay hooks and
 actual capability negotiation are a separate Claude/native milestone.
 
-Theme data includes bounded RGBA tokens, scale, motion and approved font IDs.
+Theme data is the explicitly smaller `ooze.launcher.theme/1` token subset:
+name (1–96 bytes), opaque background/foreground RGBA, accent RGBA, scale 1–2,
+font inter or bubblegum_sans, and motion Full/Reduced/Off. Text/background contrast
+must be at least 4.5:1. It does not pretend to implement the complete in-game
+`oozeclient.theme/1` studio format; that schema must be extended jointly later.
 Imports contain no arbitrary paths, scripts, URLs or plugin code. Contrast and
 numeric validation runs before persistence. UI token consumption remains Claude's.
 
@@ -81,7 +102,12 @@ SHA-512, and are downloaded to staging. ZIP/JAR entries are validated for path
 traversal, links, duplicate case-insensitive names and expansion limits without
 executing or extracting them into game files. Commit records the exact stable
 project/version IDs, relative path, hashes, dependency edges and enabled state.
-An interrupted transaction is recovered before subsequent instance use.
+An interrupted transaction is recovered before subsequent instance use. Plans
+are backend-held, single-use, expire after 600 seconds and are limited to eight
+per Library lifetime. The dependency graph has at most 64 projects/depth 32.
+Apply checks revision and performs download, archive validation and staged commit.
+RepairContent explicitly restores recorded hashes, retaining modified originals
+under the instance container's history directory. History is not pruned yet.
 
 Mods go in mods, resource packs in resourcepacks, shaders in shaderpacks.
 Shader installation requires a compatible installed shader-loader dependency;

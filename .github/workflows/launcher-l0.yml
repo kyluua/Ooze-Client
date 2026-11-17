@@ -73,6 +73,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           & "$package/ooze-launcher-cli.exe" --data-dir $testData status
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./launcher/packaging/test-targets.ps1 -PackageDirectory $package -DataDirectory $testData
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ooze-launcher-windows-x64
