@@ -250,8 +250,8 @@ impl Library {
                 {
                     *inner.state.lock().unwrap_or_else(|e| e.into_inner()) = snapshot;
                 }
-                inner.emit(Event::Finished { id, result });
                 *inner.active.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                inner.emit(Event::Finished { id, result });
                 inner.wake();
             })
             .is_err()

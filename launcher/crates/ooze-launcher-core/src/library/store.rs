@@ -233,7 +233,9 @@ impl Store {
                     let dest = util::join(game, &receipt.path)?;
                     util::mkdir(dest.parent().ok_or_else(io_error)?)?;
                     fs::copy(source, &dest).map_err(|_| io_error())?;
-                    fs::File::open(dest)
+                    fs::OpenOptions::new()
+                        .write(true)
+                        .open(dest)
                         .map_err(|_| io_error())?
                         .sync_all()
                         .map_err(|_| io_error())?;

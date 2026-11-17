@@ -371,7 +371,9 @@ fn commit_with_repair(
         let new_file = if let Some(source) = source {
             let name = format!("new-{index}");
             fs::copy(source, util::join(stage.path(), &name)?).map_err(|_| io_error())?;
-            fs::File::open(util::join(stage.path(), &name)?)
+            fs::OpenOptions::new()
+                .write(true)
+                .open(util::join(stage.path(), &name)?)
                 .map_err(|_| io_error())?
                 .sync_all()
                 .map_err(|_| io_error())?;
@@ -707,6 +709,48 @@ pub(super) fn verify(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn successful_commit_and_duplicate_sync_writable_handles_on_windows() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let id = store
+            .create(
+                "Install".into(),
+                Target::fabric(),
+                Preset::Minimal,
+                Mode::Custom,
+            )
+            .unwrap();
+        let before = store.instance(&id).unwrap();
+        let source = dir.path().join("source.jar");
+        fs::write(&source, b"verified").unwrap();
+        let mut after = before.clone();
+        after.content.push(ContentReceipt {
+            project: "A".into(),
+            version: "a".into(),
+            kind: ContentKind::Mod,
+            path: "mods/a.jar".into(),
+            size: 8,
+            sha512: hash(&source, &|| Ok(())).unwrap(),
+            enabled: true,
+            required_projects: Vec::new(),
+            required_versions: BTreeMap::new(),
+        });
+        commit(
+            &store,
+            &before,
+            after,
+            BTreeMap::from([("mods/a.jar".into(), Some(source))]),
+            &|| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(store.instance(&id).unwrap().content.len(), 1);
+        let copy = store.duplicate(&id, "Copy".into(), &|| Ok(())).unwrap();
+        assert_eq!(
+            fs::read(store.game(&copy).unwrap().join("mods/a.jar")).unwrap(),
+            b"verified"
+        );
+    }
     #[test]
     fn interrupted_content_replacement_rolls_back_and_rejects_unrelated_paths() {
         let dir = tempfile::tempdir().unwrap();
