@@ -223,14 +223,21 @@ impl Source for Modrinth {
     ) -> Result<Vec<Version>> {
         identifier(project)?;
         target.validate()?;
-        self.get(
-            &format!("project/{project}/version"),
-            &[(
-                "game_versions",
-                serde_json::to_string(&[&target.minecraft]).map_err(|_| metadata_error())?,
-            )],
-            check,
-        )
+        let mut query = vec![(
+            "game_versions",
+            serde_json::to_string(&[&target.minecraft]).map_err(|_| metadata_error())?,
+        )];
+        let details = self.project(project, check)?;
+        if details.project_type == ContentKind::Mod {
+            let loader = target
+                .modrinth_loader()
+                .ok_or_else(|| invalid("Vanilla does not support mod versions."))?;
+            query.push((
+                "loaders",
+                serde_json::to_string(&[loader]).map_err(|_| metadata_error())?,
+            ));
+        }
+        self.get(&format!("project/{project}/version"), &query, check)
     }
     fn version(&self, id: &str, check: &dyn Fn() -> Result<()>) -> Result<Version> {
         identifier(id)?;
@@ -517,6 +524,49 @@ pub(super) fn cdn_url(raw: &str) -> Result<url::Url> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn version_requests_filter_game_and_fabric_loader_upstream() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let worker = std::thread::spawn(move || {
+            for index in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut buffer = [0; 8192];
+                let n = stream.read(&mut buffer).unwrap();
+                let request = String::from_utf8_lossy(&buffer[..n]);
+                if index == 1 {
+                    assert!(request.contains("game_versions="));
+                    assert!(request.contains("loaders="));
+                    assert!(request.contains("fabric"));
+                }
+                let body = if index == 0 {
+                    r#"{"id":"A","slug":"a","title":"A","description":"A","project_type":"mod","client_side":"required","license":{"id":"MIT","name":"MIT","url":null}}"#
+                } else {
+                    "[]"
+                };
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .unwrap();
+            }
+        });
+        let mut client = Modrinth::new().unwrap();
+        client.base = url::Url::parse(&format!("http://{address}/v2/")).unwrap();
+        assert!(
+            client
+                .versions("A", &Target::fabric(), &|| Ok(()))
+                .unwrap()
+                .is_empty()
+        );
+        worker.join().unwrap();
+    }
     struct Fixture(BTreeMap<String, Version>);
     impl Source for Fixture {
         fn project(&self, id: &str, _: &dyn Fn() -> Result<()>) -> Result<Project> {

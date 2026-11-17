@@ -1,0 +1,53 @@
+{
+  "unmeasured": [
+    "GUI frame time",
+    "JNI/copy/serialization cost",
+    "Java allocation",
+    "native allocator retained/peak bytes",
+    "GPU residency",
+    "Java baseline comparison"
+  ],
+  "cli_sha256": "0f66d319e7fbbabec05e6771a58ec78db22888ca0de467020c547758fc1e76ac",
+  "architecture": "X64",
+  "samples": [
+    {
+      "observed_peak_working_set_bytes": 3215360,
+      "sample": 0,
+      "elapsed_ms": 39.581,
+      "scenario": "startup-list"
+    },
+    {
+      "observed_peak_working_set_bytes": 10006528,
+      "sample": 1,
+      "elapsed_ms": 37.428,
+      "scenario": "startup-list"
+    },
+    {
+      "observed_peak_working_set_bytes": 9031680,
+      "sample": 2,
+      "elapsed_ms": 29.848,
+      "scenario": "startup-list"
+    },
+    {
+      "observed_peak_working_set_bytes": 10272768,
+      "sample": 0,
+      "elapsed_ms": 62.594,
+      "scenario": "startup-verify"
+    },
+    {
+      "observed_peak_working_set_bytes": 10264576,
+      "sample": 1,
+      "elapsed_ms": 60.682,
+      "scenario": "startup-verify"
+    },
+    {
+      "observed_peak_working_set_bytes": 10293248,
+      "sample": 2,
+      "elapsed_ms": 60.022,
+      "scenario": "startup-verify"
+    }
+  ],
+  "schema": 1,
+  "conditions": "Fresh CLI process each sample; existing isolated test library; OS file cache not flushed; process working set sampled at 5 ms, not allocator heap accounting.",
+  "os": "Microsoft Windows 10.0.26300"
+}
