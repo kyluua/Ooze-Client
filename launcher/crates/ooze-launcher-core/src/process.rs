@@ -233,12 +233,14 @@ pub(crate) fn launch(
     let mut cmd = command(&java);
     cmd.arg(format!("@{}", argfile.display()))
         .args(jvm)
-        .arg(format!("-Xmx{}M", settings.memory_mib))
-        .arg(format!(
+        .arg(format!("-Xmx{}M", settings.memory_mib));
+    if install.main_class == "net.fabricmc.loader.impl.launch.knot.KnotClient" {
+        cmd.arg(format!(
             "-Dfabric.addMods={}",
             util::join(root, "mods")?.display()
-        ))
-        .arg(&install.main_class)
+        ));
+    }
+    cmd.arg(&install.main_class)
         .args(game_args)
         .current_dir(&settings.instance_dir)
         .stdin(Stdio::null())

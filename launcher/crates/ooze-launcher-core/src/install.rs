@@ -71,6 +71,15 @@ pub(crate) fn prepare(
     progress(Stage::Resolving, 0, None);
     let release: Release = util::read_json(manifest_path)?;
     release.validate()?;
+    let target = crate::library::store::for_game(&settings.instance_dir)?
+        .map(|i| i.target)
+        .unwrap_or_else(crate::library::Target::fabric);
+    let is_fabric = target.loader == crate::library::Loader::Fabric;
+    let expected_version = if is_fabric {
+        format!("fabric-loader-{}-{}", release.loader, release.minecraft)
+    } else {
+        release.minecraft.clone()
+    };
     let release_hash = util::sha256(manifest_path)?;
     let managed = util::join(&settings.instance_dir, ".ooze-launcher")?;
     util::mkdir(&managed)?;
@@ -81,6 +90,12 @@ pub(crate) fn prepare(
             && !current.files.is_empty()
             && current.files.len() <= 100000
             && current.release_sha256 == release_hash
+            && current.version_name == expected_version
+            && current
+                .files
+                .iter()
+                .any(|f| f.path == "mods/ooze-client.jar")
+                == target.ooze
             && (settings.java_path.is_some() || current.managed_java.is_some())
         {
             let root = util::join(&managed, &current.directory)?;
@@ -131,7 +146,7 @@ pub(crate) fn prepare(
     if fabric.libraries.len() != release.fabric_libraries.len() {
         return Err(metadata_error());
     }
-    for lib in &fabric.libraries {
+    for lib in fabric.libraries.iter().filter(|_| is_fabric) {
         let pin = release
             .fabric_libraries
             .iter()
@@ -207,8 +222,10 @@ pub(crate) fn prepare(
             ));
         }
     }
-    specs.push(("mods/fabric-api.jar".into(), release.fabric_api.clone()));
-    specs.push(("mods/ooze-client.jar".into(), release.ooze.clone()));
+    if target.ooze {
+        specs.push(("mods/fabric-api.jar".into(), release.fabric_api.clone()));
+        specs.push(("mods/ooze-client.jar".into(), release.ooze.clone()));
+    }
     if specs.len() > 100000 {
         return Err(metadata_error());
     }
@@ -239,7 +256,9 @@ pub(crate) fn prepare(
             sha256: util::sha256(&target)?,
         });
     }
-    check_native_jar(&util::join(root, "mods/ooze-client.jar")?)?;
+    if target.ooze {
+        check_native_jar(&util::join(root, "mods/ooze-client.jar")?)?;
+    }
     let managed_java = if settings.java_path.is_none() {
         progress(Stage::Extracting, 0, None);
         let archive = http.artifact(&release.java.archive, package, &cache, check)?;
@@ -259,9 +278,13 @@ pub(crate) fn prepare(
     crate::process::validate_java(&java)?;
     util::mkdir(&util::join(root, "natives")?)?;
     let mut jvm_args = metadata::arguments(&minecraft.arguments.jvm)?;
-    jvm_args.extend(metadata::arguments(&fabric.arguments.jvm)?);
+    if is_fabric {
+        jvm_args.extend(metadata::arguments(&fabric.arguments.jvm)?);
+    }
     let mut game_args = metadata::arguments(&minecraft.arguments.game)?;
-    game_args.extend(metadata::arguments(&fabric.arguments.game)?);
+    if is_fabric {
+        game_args.extend(metadata::arguments(&fabric.arguments.game)?);
+    }
     let generation = root
         .file_name()
         .and_then(|v| v.to_str())
@@ -273,12 +296,16 @@ pub(crate) fn prepare(
         directory: format!("installs/{generation}"),
         files,
         classpath,
-        main_class: fabric.main_class,
+        main_class: if is_fabric {
+            fabric.main_class
+        } else {
+            minecraft.main_class
+        },
         jvm_args,
         game_args,
         asset_index: minecraft.asset_index.id,
         managed_java,
-        version_name: fabric.id,
+        version_name: expected_version,
     };
     check()?;
     let root = stage.keep();

@@ -4,6 +4,7 @@ mod auth;
 mod backend;
 mod game_guard;
 mod install;
+pub mod library;
 mod metadata;
 mod net;
 mod process;

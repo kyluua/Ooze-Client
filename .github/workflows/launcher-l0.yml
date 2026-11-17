@@ -47,6 +47,10 @@ jobs:
           $env:JAVA_HOME = $env:JAVA_HOME_21_X64
           ./gradlew.bat build buildAll --no-daemon --console=plain
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Exercise real library and Modrinth dependency installation
+        shell: pwsh
+        run: |
+          ./launcher/packaging/test-library.ps1 -CliExe './launcher/target/release/ooze-launcher-cli.exe' -DataDirectory (Join-Path $env:RUNNER_TEMP 'Ooze library with spaces')
       - name: Prepare portable review package and exercise install/repair
         shell: pwsh
         run: |
