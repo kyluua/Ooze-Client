@@ -1,9 +1,9 @@
-name: Launcher L0
+name: Ooze Launcher
 on:
   push:
-    paths: ['launcher/**', 'docs/launcher/**', '.github/workflows/launcher-l0.yml']
+    paths: ['launcher/**', 'native/crates/ooze-ui/**', 'docs/tokens/**', 'rust-toolchain.toml', 'docs/launcher/**', '.github/workflows/launcher-l0.yml']
   pull_request:
-    paths: ['launcher/**', 'docs/launcher/**', '.github/workflows/launcher-l0.yml']
+    paths: ['launcher/**', 'native/crates/ooze-ui/**', 'docs/tokens/**', 'rust-toolchain.toml', 'docs/launcher/**', '.github/workflows/launcher-l0.yml']
   workflow_dispatch:
 permissions:
   contents: read

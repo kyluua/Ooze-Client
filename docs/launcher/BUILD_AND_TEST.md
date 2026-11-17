@@ -1,10 +1,16 @@
-# Building and testing the L0 backend
+# Building and testing the launcher and L1 library
 
 Owner: Sol. Windows x64 only. Rust is pinned by the repository's
 `rust-toolchain.toml` (1.99.1); Cargo.lock pins launcher dependencies independently
 of the existing native workspace. Java runtime and adapter target remain 21.
 The standalone launcher does not call JNI; it installs the real remapped Ooze
 mod containing bridge ABI 1 and the production Windows x64 native library.
+The shared launcher workspace includes the desktop GUI and consumes the pure
+Rust product model from native/crates/ooze-ui. Changes to that model, its base
+tokens and the pinned Rust toolchain also trigger launcher CI.
+
+L1 adds Library API 1 alongside unchanged Launcher API 1. It implements instance
+and content infrastructure, not live in-game modules or additional loader ports.
 
 ## Developer checks
 
@@ -41,6 +47,10 @@ This limitation is distinct from Java 21, which runs locally and passed the
 existing bridge harness and Fabric build. Use SOL-L0 for exact run references.
 
 ## Build the real game mod and package
+
+The release build above produces both `ooze-launcher.exe` (desktop interface)
+and `ooze-launcher-cli.exe`. The package requires both and includes workspace
+dependency notices and unmodified font/OFL files. It is an unsigned review build.
 
 ```powershell
 ./native/tools/build-g0.ps1 -JavaHome $env:JAVA_HOME_21_X64
@@ -121,3 +131,59 @@ DLL case skips the module's build-time file-existence check so the actual loader
 can see the missing resource. These are Fabric gametests using test credentials;
 they are not proof of independent-launcher authentication. They open real game
 windows on the Windows machine. No human verification is inferred from automation.
+
+## Exercise Library API 1 without signing in
+
+Use a new, dedicated absolute data directory. Library commands do not access
+Microsoft credentials. In a verified package directory:
+
+```powershell
+$data = 'C:\Ooze test libraries\L1'
+$created = ./ooze-launcher-cli.exe --data-dir $data library create 'PvP' --preset pvp | ConvertFrom-Json
+$instance = $created.Instance
+./ooze-launcher-cli.exe --data-dir $data library list
+./ooze-launcher-cli.exe --data-dir $data library search mod iris
+./ooze-launcher-cli.exe --data-dir $data library search resourcepack
+./ooze-launcher-cli.exe --data-dir $data library search datapack
+./ooze-launcher-cli.exe --data-dir $data library search shader
+./ooze-launcher-cli.exe --data-dir $data library versions iris
+./ooze-launcher-cli.exe --data-dir $data library install $instance YL57xq9U ka9PDlsN
+./ooze-launcher-cli.exe --data-dir $data library verify $instance
+./ooze-launcher-cli.exe --data-dir $data library disable $instance YL57xq9U
+./ooze-launcher-cli.exe --data-dir $data library enable $instance YL57xq9U
+./ooze-launcher-cli.exe --data-dir $data library repair $instance YL57xq9U
+./ooze-launcher-cli.exe --data-dir $data library export-profile $instance
+./ooze-launcher-cli.exe --data-dir $data library appearance
+./ooze-launcher-cli.exe --data-dir $data library worlds $instance
+./ooze-launcher-cli.exe --data-dir $data instance $instance install
+```
+
+The exact Iris version above is the integration fixture, not a permanent latest
+recommendation. Resolve a compatible version when selecting other content.
+It requires Sodium, which is resolved/verified as a dependency. These Custom
+content downloads are not bundled in the review package. See UPSTREAM_CONTENT.md
+for provenance and license metadata. Installing is distinct from enabling a pack
+in game; the launcher does not assert a shader is rendering from a saved ZIP.
+
+The dedicated `test-library.ps1` exercises the real executable and API, including
+modified-file repair and managed extra-mod detection. `test-targets.ps1` tests
+actual managed Java 21 installation/repair for the pinned Vanilla and Fabric
+1.21.11 targets, preserving a seeded options.txt. Neither starts Minecraft or
+performs Microsoft authentication.
+
+For local baseline timing/process working-set samples:
+
+```powershell
+./launcher/packaging/measure-library.ps1 -CliExe '<package>\ooze-launcher-cli.exe' `
+  -DataDirectory $data -InstanceId $instance -OutputJson '<new-output-path>.json'
+```
+
+Each sample launches a fresh CLI. OS file caches are not flushed. The sampled
+process working set is not native allocator accounting or a measurement of GUI,
+Java, JNI, GPU or game frame time. The committed example records its actual CLI
+hash and conditions; it makes no comparative FPS claim.
+
+The desktop currently consumes its implemented library capabilities; Claude's
+SOL-L1 review requests identify remaining UI mappings and selection sequencing.
+Module switches remain hidden until actual game hooks are available. Minecraft
+sign-in/Play is still a separate acceptance gate after the owner's AppID review.
