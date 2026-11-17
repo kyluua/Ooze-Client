@@ -43,11 +43,12 @@ Two agents work in this repository. They do **not** share chat history: **handof
 
 1. The newest files in `docs/handoffs/`: what was delivered, the contract versions, and the next task.
 2. `docs/PRODUCT_VISION.md`: principles, especially *Real or absent* and *Tokens, not literals*.
-3. `docs/IMPLEMENTATION_PLAN.md`: find your milestone (C = Claude in-game, L = launcher (Claude interface + Sol backend), G = Sol engine). Do **only** that milestone.
+3. `docs/IMPLEMENTATION_PLAN.md`: find your milestone (C = Claude in-game, M = in-game modules, P = product, L = launcher (Claude interface + Sol backend), G = Sol engine). Do **only** that milestone.
 4. `docs/ARCHITECTURE.md` (§19 for the launcher), `docs/TARGET_PLATFORM.md` and `docs/REPOSITORY_STRUCTURE.md`.
 5. The topic docs your milestone references:
    - in game: `DESIGN_SYSTEM.md`, `TYPOGRAPHY.md`, `MOTION_SPEC.md`, `BACKGROUNDS.md`, `COMPONENTS.md`, `SCREENS.md`, `INTERACTION_FLOWS.md`, `PERFORMANCE_AND_ACCESSIBILITY.md`, `TESTING.md`;
-   - launcher: `docs/launcher/*.md`.
+   - launcher: `docs/launcher/*.md` (Sol's `LAUNCHER_API_V1.md` and `LIBRARY_API_V1.md`; Claude's `LAUNCHER_UI.md` and `LIBRARY_UI.md`);
+   - modules: `docs/MODULES.md`, `FEATURE_BACKLOG.md`.
 
 ## Hard rules
 
@@ -95,7 +96,13 @@ Two agents work in this repository. They do **not** share chat history: **handof
   - launcher: `launcher/resources/lang/en_us.json`.
 - **Keyboard access, visible focus and narration** (Minecraft's narrator in game; UI Automation via AccessKit in the launcher) are required for every interactive element.
 - **Fonts:** ship upstream static TTFs **unmodified**, together with their `OFL.txt`.
-- **No gameplay modules** beyond `docs/FEATURE_BACKLOG.md` entries that have reached their milestone. Samples are not a finished client.
+- **Modules** come only from `docs/MODULES.md`, each through its milestone (M0–M3), with a fair-play class. `GAMEPLAY` modules stay blocked until a server-policy design exists. The permanently excluded list (input automation, aim assistance, reach, ESP, X-ray, movement exploits) never ships. Never claim a mode is cheat-proof or server-approved.
+- **Instances, profiles and themes are distinct:**
+  - an instance is the game version, loader, runtime, files and content;
+  - a profile is the module, HUD and visual configuration;
+  - a theme is the interface appearance.
+
+  The launcher exposes only the version/loader combinations and content actions that Sol's library reports as supported.
 - **Optional features fail soft.** Use `require = 0` mixins plus a runtime check, never a crash.
 - **Never bundle proprietary Minecraft files** (client JAR, libraries, assets) in any release.
 

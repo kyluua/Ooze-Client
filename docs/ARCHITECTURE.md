@@ -244,12 +244,23 @@ The model is split across the bridge:
 
 | Part | Owner and language | Responsibility |
 |---|---|---|
-| Module metadata, settings and state | Rust (engine algorithms; product definitions in `ooze-ui` or a product crate agreed with Sol) | id, name key, category, tags, sample flag, `FairPlay`, required capabilities, settings, enabled state, persistence |
+| Module metadata, settings and state | Rust. The catalog, typed settings, presets, profile layering and HUD geometry live in `native/crates/ooze-ui` (Claude, standard library only). Persistence and algorithms belong to Sol's engine | id, name key, category, tags, sample flag, `FairPlay`, required capabilities, settings, enabled state, persistence |
 | **Game-facing hooks and actions** | **Java** (Claude) | Anything that reads or changes the game: snapshot providers (for example FPS and time for HUD widgets), vanilla actions, mixin-backed hooks |
 
 - Rust asks Java to act through **platform commands**, and Java feeds data back through **snapshots**.
 - `FairPlay` is mandatory metadata: `COSMETIC`, `INFORMATIONAL`, `QUALITY_OF_LIFE` or `GAMEPLAY`.
-- Real modules come only from `docs/FEATURE_BACKLOG.md`, one milestone at a time.
+- Real modules come only from `docs/MODULES.md` (sourced matrix and fair-play policy), one milestone at a time (M0–M3). GAMEPLAY-class modules are blocked; the permanently excluded list never ships.
+- **One catalog, two consumers** (ADR-018):
+  - the game reads the catalog from `ooze-ui` through the engine;
+  - Sol's launcher library validates profile documents with the same crate.
+
+  No second module list exists in Java or the launcher.
+
+### 8.1a Profiles (2026-11-17)
+
+- A **profile** is module enablement, module settings, HUD placements and visual settings. It is distinct from an instance and from a theme (ADR-017).
+- **Resolution:** catalog defaults → preset (`fps`, `pvp`, `minimal`; `ooze.preset/1`) → user overrides (`ooze.profile/1`). Only overrides are stored, so a preset can change in an update without erasing the player's choices.
+- **Operations:** reset (one path or all), duplicate, export and import. Imports are untrusted; every value is validated against its `SettingDef`, and unknown modules or settings are dropped with a warning.
 
 ### 8.2 Registry and lifecycle
 
@@ -323,7 +334,7 @@ A snapshot larger than **8 MiB (8,388,608 bytes)** is skipped with a diagnostic.
 - **Java** registers one HUD element through Fabric API's HUD element registry (verify the name in C9), supplies HUD snapshots and submits the output.
 - The HUD is skipped when the GUI is hidden (F1) or the HUD editor is open.
 - Budget: ≤ 0.25 ms in total (Java + Rust) for 3 widgets.
-- Sample widgets (FPS, Clock, Watermark) carry the Sample badge.
+- Widgets are the HUD modules in `MODULES.md` (M1/M2). Placement is `ooze-ui::hud::Placement` (anchor, offset, scale 0.5–2.0), clamped on screen. The editor snaps to edges, centre lines and other widgets, and supports a keyboard nudge.
 
 ## 11. Platform commands, snapshots and adapters (Java)
 
@@ -443,12 +454,14 @@ See TARGET_PLATFORM §4.
 | 014 | **Single target Minecraft 1.21.11**; 26.1/26.2 removed | New (owner decision 2026-11-09) |
 | 015 | **Independent Ooze Launcher with its own Microsoft sign-in** (system browser + PKCE, owned public client ID, DPAPI storage) that installs and directly launches 1.21.11 + Fabric + Ooze. No Ooze account system or server | New (owner decision 2026-11-16) |
 | 016 | **Launcher UI in Rust with egui/eframe + AccessKit** (Windows UI Automation); the in-game "no custom renderer" rule (ADR-002) does not apply to the separate desktop window | New (2026-11-16) |
+| 017 | **Instance, profile and theme are separate concepts.** An instance is version + loader + runtime + files + content (Sol's library). A profile is module/HUD/visual configuration (`ooze-ui`). A theme is interface appearance (tokens). The launcher talks to the library only through the versioned **Library API 1** | New (owner scope expansion 2026-11-17) |
+| 018 | **Real modules from one Rust catalog** (`ooze-ui`) with mandatory fair-play classes. Server-sensitive modules carry a notice; GAMEPLAY is blocked; an excluded list never ships. Managed Fair Play and Custom integrity modes describe the installation, never server approval | New (owner scope expansion 2026-11-17) |
 
 ---
 
 ## 19. Ooze Launcher (desktop)
 
-Details: `docs/launcher/LAUNCHER_UI.md` (interface, Claude); `docs/launcher/LAUNCHER_API_V1.md`, `AUTH_SETUP.md`, `BUILD_AND_TEST.md` (backend, Sol).
+Details: `docs/launcher/LAUNCHER_UI.md` and `LIBRARY_UI.md` (interface, Claude); `docs/launcher/LAUNCHER_API_V1.md`, `LIBRARY_API_V1.md`, `AUTH_SETUP.md`, `BUILD_AND_TEST.md` (backend, Sol).
 
 ```
 ┌──────────────────────── ooze-launcher.exe (Windows x64) ─────────────────────────┐
@@ -479,3 +492,16 @@ Details: `docs/launcher/LAUNCHER_UI.md` (interface, Claude); `docs/launcher/LAUN
   - closing while Minecraft runs asks first, and the game keeps running.
 - **Player data:** install and repair never touch `saves/`, `screenshots/`, `resourcepacks/`, `shaderpacks/` or `options.txt`. Changing the install location never moves or deletes the old one.
 - **Fixtures:** the interface's scripted backends exist only for tests and the developer preview (`dev-fixtures`, refused by release builds).
+
+### 19.1 Library (instances, profiles, themes, content, integrity; 2026-11-17)
+
+- **Library API 1** (Sol, `LIBRARY_API_V1.md`) is a second facade next to Launcher API 1, with the same submit/cancel/event shape. It owns:
+  - instance directories and persistence;
+  - Modrinth requests (identifying User-Agent, rate limits);
+  - dependency plans, downloads with hash checks, and installed-content records;
+  - theme and profile persistence;
+  - integrity verification.
+- **The interface** (`LIBRARY_UI.md`) only renders library snapshots and submits typed commands. It never computes dependency plans, paths or hashes, and never decides whether a version is compatible; it shows the backend's answer.
+- **Capabilities gate the release UI.** A screen or action appears only when the backend reports that capability. Until Library API 1 is implemented, release builds show the existing single-instance launcher and nothing else.
+- **Play** still goes through Launcher API 1: the selected instance is saved with `SaveSettings`, then `Launch`. The readiness rule (`OOZE_READY`) is unchanged.
+- **Mod scope:** the Ooze mod and its modules exist only in Fabric 1.21.11 instances. Other instances show "Ooze modules are not available for this instance" and play as plain instances.

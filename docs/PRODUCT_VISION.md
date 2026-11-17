@@ -71,9 +71,17 @@ Loud     ○○○○○○○●●●  Quiet        (quiet surfaces, expressiv
 - The **Ooze Launcher** (owner decision 2026-11-16): a Windows x64 desktop launcher with its own Microsoft sign-in that installs, verifies and directly starts 1.21.11 + Fabric + Ooze. Its first milestone, L0, is only the path from sign-in to Play ([docs/launcher/LAUNCHER_UI.md](launcher/LAUNCHER_UI.md)). The mod also stays installable by hand into the official launcher.
 - The native engine runs on **Windows x64** first. Other platforms run vanilla with a clear diagnostic until their artifacts and launch tests exist (TARGET_PLATFORM §2).
 
+**Owner scope expansion (2026-11-17).** Now in scope, in reviewable milestones (IMPLEMENTATION_PLAN L1–L3, M0–M3):
+- **Real client modules:** FPS and frame time, coordinates, armour, effects, keystrokes and CPS, ping, hold-to-zoom, custom crosshair, and a HUD editor (`MODULES.md`). Each has a fair-play class; GAMEPLAY stays blocked.
+- **FPS, PvP and Minimal profiles** that show what they change and keep user overrides.
+- **Multiple isolated instances** with exact game and loader compatibility.
+- **Modrinth browsing and installation** of mods, resource packs, data packs and shader packs, through Sol's library.
+- **Customisable themes** that keep White Ooze / Ink Gel as the default.
+- **Managed Fair Play and Custom integrity modes**, worded honestly: never "cheat-proof" or "server-approved".
+
 **Out of scope for v0.1.** These are deliberate non-goals:
 
-- Gameplay modules beyond the labelled samples.
+- Modules outside `MODULES.md`, GAMEPLAY-class modules (until a server-policy design exists) and everything on its permanently excluded list.
 - Online services of our own: Ooze accounts, cosmetics servers, friends, telemetry, analytics, remote news feeds. (The launcher talks only to Microsoft, Xbox, Minecraft, Mojang and Fabric services, for sign-in and installation.)
 - Custom UI sound assets. v0.1 uses the vanilla UI click with Ooze pitch and volume tuning.
 - Features that give an unfair advantage on servers. When modules arrive, the module metadata includes fair-play classification ([ARCHITECTURE.md §8](ARCHITECTURE.md)).

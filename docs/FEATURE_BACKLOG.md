@@ -1,8 +1,8 @@
 # Ooze Client — Feature Backlog (real modules)
 
-> The framework samples (Settings Showcase, Notification Playground, the FPS, Clock and Watermark widgets) prove the framework. **They are not a finished client.** Real modules come from this backlog, **one entry per milestone (F-xx)**, after C5 (modules framework) is complete.
+> **2026-11-17: the owner authorised real modules.** The product list, sources, fair-play policy and status now live in [`MODULES.md`](MODULES.md). This file keeps the per-entry engineering notes (hooks, protocol needs). Entries map to modules as F-01 → M-08, F-02 → M-02, F-03 → M-03, F-04 → M-04, F-05 → M-05/M-06, F-06 → M-07, F-08 → M-09. They ship in milestones M2/M3 (IMPLEMENTATION_PLAN).
 >
-> Every entry is **not started** until its milestone handoff says otherwise.
+> Every entry is **not started in game** until its milestone handoff says otherwise. The settings, presets and HUD-layout model already exists in `native/crates/ooze-ui`.
 
 ## Rules for every entry
 

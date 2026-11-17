@@ -26,6 +26,16 @@
 - Bump them only in a dedicated change that re-runs the launch tests (TESTING §3) and records the result in a handoff.
 - Never use SNAPSHOT or `+` versions.
 
+**Instances (owner scope expansion 2026-11-17).** The launcher can manage several isolated instances through Sol's Library API 1. What the launcher may offer:
+
+| Instance kind | Offered | Ooze mod and modules |
+|---|---|---|
+| Fabric Loader 0.20.1 on Minecraft 1.21.11 (Java 21) | Yes, once the library implements it | **Yes** (the only Ooze target) |
+| Vanilla 1.21.11 | Yes, if Sol's adapter reports it supported | No, plays as plain Minecraft |
+| Other versions or loaders (Quilt, Forge, NeoForge, older or newer Minecraft) | **Only** when the library reports the combination supported, after an install adapter and a Windows x64 launch test exist (L3) | No |
+
+The mod target above does not change: one Fabric JAR for 1.21.11.
+
 **Not targets** (removed from scope): 26.1.x, 26.2.x, multi-JAR builds, any OpenGL/Vulkan backend switch. Code must not copy 26.x APIs or names that differ from 1.21.11.
 
 ## 2. Native platforms

@@ -152,7 +152,7 @@ Integration code is complete (C0). What remains is evidence, plus follow-ups to 
 
 ### C5 — Modules, settings, keybinds, shell, search (Claude)
 
-**Depends on:** C4, G4.
+**Depends on:** C4, G4. *(2026-11-17: the module runtime moved to M0 and real modules to M2/M3; C5 keeps the shell, palette and ClickGUI. The sample modules are dropped now that real modules are authorised.)*
 
 - [ ] Shell (S03) with sidebar, cards, inspector and filters.
 - [ ] Command palette (S11).
@@ -189,6 +189,8 @@ Integration code is complete (C0). What remains is evidence, plus follow-ups to 
 - **Gate:** F6 passes; the governor demotes and promotes with hysteresis in the benchmark scene.
 
 ### C9 — HUD and HUD editor (Claude)
+
+**Superseded by M1 (2026-11-17).** Kept for reference.
 
 **Depends on:** C5 and C1. It no longer waits for the typography or motion pages.
 
@@ -235,9 +237,71 @@ Integration code is complete (C0). What remains is evidence, plus follow-ups to 
 - a legitimately entitled Microsoft account;
 - a Windows x64 machine.
 
-#### L1+ (not planned in detail)
+#### Owner scope expansion (2026-11-17)
 
-Only after L0 is accepted. Candidates come from the product owner, not from this plan.
+The owner authorised real client modules, FPS/PvP/Minimal profiles, multiple isolated instances, Modrinth content (mods, resource packs, data packs, shader packs), customisable themes and managed-installation integrity. The milestones below replace "L1+ (not planned in detail)".
+
+- **Backend contract:** Sol's `docs/launcher/LIBRARY_API_V1.md` (Library API 1, alongside Launcher API 1).
+- **Product definitions:** `docs/MODULES.md` and `docs/launcher/LIBRARY_UI.md`.
+
+#### P0 — Product reconciliation, module model, contract alignment (Claude) ✓ in progress 2026-11-17
+
+- Sourced module matrix and fair-play policy (`docs/MODULES.md`).
+- `native/crates/ooze-ui`: module catalog, typed settings, presets, profile layering and diff, HUD layout, CPS and frame statistics. Headless-tested.
+- Specs reconciled; library UI specified; contract alignment requests to Sol (`CLAUDE-P0-request.md`).
+- Launcher screens for instances, profiles, themes, content and integrity. These are built and Headless-tested over test fixtures, and **hidden in release until the library reports each capability**.
+
+#### L1 — First library integration (Sol backend + Claude UI)
+
+**Depends on:** Library API 1 implementation (Sol), P0.
+
+- The packaged launcher lists, creates, renames and duplicates **isolated Fabric 1.21.11 instances** (Vanilla 1.21.11 too, if Sol's adapter is verified).
+  - Selecting an instance for Play goes through API 1 `SaveSettings` + `Launch`.
+- FPS / PvP / Minimal profiles per instance: what each changes, user overrides, reset, duplicate, export and import. Persisted by the library and validated with `ooze-ui`'s catalog.
+- A persisted, validated theme with live preview, reset, import and export.
+- Real Modrinth search, details and versions for the selected instance.
+- **One complete content flow:** a Fabric 1.21.11 mod with required dependencies → dependency review → install with progress and cancellation → installed-content list.
+- **Gate:**
+  - Built and Headless-tested (Linux and Windows CI);
+  - Game-launched (Windows x64): the installed mod loads in the selected instance and `OOZE_READY` is logged;
+  - Manually verified: Narrator over the new screens.
+
+#### L2 — Content types, installed content, integrity modes (Sol + Claude)
+
+**Depends on:** L1.
+
+- Resource packs.
+- Data packs, with an explicitly selected existing local world; refused while the game runs.
+- Shader packs, with the compatible shader loader checked; installed ≠ enabled.
+- Updates, disable and removal of recorded files only.
+- Managed Fair Play vs Custom with concrete integrity failures and safe repair, never automatic deletion.
+- **Gate:** Game-launched per content type on Windows x64. Integrity-failure scenarios are Headless-tested.
+
+#### L3 — More versions and loaders (Sol + Claude)
+
+**Depends on:** L2.
+
+- Only combinations whose install adapter and launch test exist on Windows x64 are exposed.
+- Each instance shows whether Ooze modules are available. They are available only on Fabric 1.21.11 until the mod targets more versions.
+
+### In-game module milestones (revised dependencies, 2026-11-17)
+
+The module framework work formerly in C5 and C9 is split so modules land in reviewable steps. The P0 model crate already holds the catalog, settings, profiles and HUD geometry.
+
+| Milestone | Delivers | Depends on |
+|---|---|---|
+| **M0** module runtime | Module registry and enable state from the instance profile; settings persistence through Sol's G4 store; module keybinds from the input batch (only with no screen open); fair-play gate (no GAMEPLAY); per-module failure isolation | C2 (input, snapshots), G1 (frame protocol), G4 (config store), P0 |
+| **M1** HUD and HUD editor | Java HUD hook (Fabric HUD element registry); Rust composition from `ooze-ui::hud`; editor with anchors, snapping, scaling, keyboard nudge, reset; ≤ 0.25 ms for three widgets | C1 (render adapter), C3 (components), M0 |
+| **M2** information modules | M-01 FPS and frame time, M-02 coordinates and facing, M-03 armour (needs the vanilla item-icon command in the protocol), M-04 effects (effect-icon command), M-05 keystrokes, M-06 CPS, M-07 ping | M1; Sol: snapshot fields and icon commands |
+| **M3** zoom and crosshair | M-08 hold-to-zoom (FOV hook, `require = 0`), M-09 custom crosshair (Fabric HUD replacement) | M1 |
+
+Every M milestone gate:
+- Game-launched on Windows x64 and Linux;
+- settings persist;
+- keyboard and narration;
+- reduced motion and Off;
+- vanilla unchanged when the module is off;
+- no allocation in steady-state HUD frames.
 
 ### Feature backlog milestones (F-xx)
 
