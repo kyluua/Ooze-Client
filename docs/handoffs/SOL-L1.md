@@ -93,7 +93,7 @@ shaders require compatible Iris. Managed accepts only the pinned baseline in
 this release; third-party installation requires explicit ConvertToCustom.
 
 Do not claim the expanded GUI is integrated until Claude implements/tests it.
-Final verified artifact/hash and run evidence will be appended after CI finishes.
+Final verified artifact/hash and run evidence is recorded below.
 
 ## Review follow-up after Claude P0
 
@@ -115,3 +115,93 @@ R3 game_dir mapping is confirmed. R4 proposed game-side profile document path is
 <game_dir>/config/oozeclient/profile.json using ooze.profile/1; writing/reading
 that copy belongs to the coordinated G4/M0 atomic-store milestone, not this
 launcher-only persistence implementation.
+
+## Final code and actual verification
+
+**Code result:** main `43c83d2025b204b3d9e337570ed598f73fcba775`.
+Base: `e35fb8c2e7050852ce38f55daaf9b963dfe18e95`. This handoff's commit is
+discoverable with git log -1 -- docs/handoffs/SOL-L1.md. The backend component is
+Built and Headless-tested; joint L1/product release acceptance remains open.
+
+[Windows run 44012177547](https://github.com/kyluua/Ooze-Client/actions/runs/44012177547)
+passed both jobs (133801543599, 133803443268): fmt/clippy, 46 core backend tests,
+86 UI tests (two intentionally ignored network tests), release CLI and GUI,
+4 native core + 1 JNI + 24 product-model Rust tests, and the real Java
+21.0.13+9-LTS amd64 bridge harness with 20,323 assertions (script and Gradle).
+Fabric build/tests passed. The pinned package repeat matched; with developer
+tools/JDK removed from PATH, actual managed-Java install/repair and baseline
+verification passed for both Vanilla and Fabric 1.21.11, preserving options.txt.
+
+The real CLI/API step passed searches for all four content types, exact Iris
+ka9PDlsN + required Sodium rkdTcxoT installation, hash verification, disable/
+enable, modified-file detection and explicit repair, canonical profile/global
+appearance checks, an empty local-world listing and extra-mod detection without
+deletion. These are not Game-launched checks. Separate actual owner-Windows CLI
+runs of verified 166d88a and ac2f273 candidates repeated the content suite; the
+ac2f273 run also queried real Iris versions and checked game/loader compatibility.
+The final packaged CLI's --version and managed-Java preflight ran locally:
+an unvalidated custom Java path was refused before installation, then the test
+settings were restored to managed Java. No sign-in or game spawn was attempted.
+
+The last policy correction checks managed Java before installer/runtime or
+authentication work, while preserving startup recovery for an archived prior
+selection. It does not change API 1 or JNI ABI 1.
+
+## Final review artifact
+
+GitHub artifact **14297318859**, `ooze-launcher-windows-x64`, source 43c83d2,
+13,929,553 bytes. Both release executables, real native-bearing Ooze JAR, pinned
+release metadata, 332 dependency-notice entries and unmodified fonts/OFL files
+are included. All **598 files** in SHA256SUMS verified locally after checking
+the downloaded archive digest, before the CLI was executed.
+
+| Artifact | SHA-256 |
+|---|---|
+| ZIP | `00e458dda0974b0c70271f5f13ff75c820ca5170b96a818ca845c873b4087a7b` |
+| ooze-launcher.exe | `ad1cc2040740f25a78d9cf13ca86f32e8903b7514e00e9852ecb3f55212a0493` |
+| ooze-launcher-cli.exe | `c600187c70f2a95f94672cfe23bdc7eab45f32f55da745cdc55969f76687b798` |
+
+Ignored local delivery: launcher/dist/ooze-launcher-43c83d2.zip and extracted
+launcher/dist/ooze-launcher-43c83d2/. This is an unsigned review package, not a
+player release or proof of a working signed-in Minecraft session. The CLI still
+reports the existing workspace version 0.1.0-l0; commit/checksum identifies this
+L1 candidate, and release branding is not silently treated as a new release.
+
+## Measurements and limitations
+
+The committed benchmark-166d88a.json records the actual candidate CLI hash,
+Windows 10.0.26300 x64, three new-process samples each, an existing two-mod test
+library and unflushed OS file caches. Median startup/list was 37.428 ms;
+startup plus registered-content verification was 60.682 ms. Observed peak process
+working-set samples were about 3.2–10.3 MB at 5 ms sampling; they are not native
+allocator retained/peak measurements. GUI frame time, Java allocation, JNI/copy/
+serialization cost, GPU residency and Java kernel comparisons remain unmeasured.
+There is no FPS-improvement claim. See packaging/measure-library.ps1 for commands.
+
+Local Rust compilation remains blocked by Windows Application Control 4551 on
+dependency build scripts. No policy was changed. Automatic approval separately
+rejected the attempted downloaded GUI launch with only “blocked by policy” as
+the reason. The package was subsequently downloaded/hash-verified without
+opening its GUI. No local window or Narrator pass is claimed.
+
+The original main checkout's staged LICENSE/README deletions remain untouched;
+Sol used the existing clean checkout and published to main with checked leases,
+fetch/merge and no force-push. No accounts, credentials or Minecraft player data
+were imported into the library or evidence.
+
+## Joint acceptance and next task
+
+Read SOL-L1-CLAUDE-P0-REVIEW.md: fix selection/SaveSettings sequencing before Play,
+consume global appearance, world listing, progress and the notifier, and retain
+capability gating. L1's profile UI gate depends on actual runtime modules; do not
+call the joint milestone complete while runtime_modules is empty. Reconcile that
+dependency with G1/G4/M0 while preserving Real or absent. The current release GUI
+does consume real instance/content operations, but remaining mappings are explicit.
+
+L2 still needs per-content-type Game-launched evidence, richer catalog/conflict
+and integrity-remedy states, world-scoped management and remaining G4–G7 requests.
+L3 other versions/Quilt/Forge/NeoForge remain unavailable. G1/G4/M0–M3 own actual
+game snapshots, frame/text/icon commands, atomic in-game configuration and module
+hooks; this milestone did not change the game bridge. Full authenticated Play
+and title-screen readiness remain unverified pending confirmation of app access
+and an entitled-account Gate L run. No new live authentication retry was made.
