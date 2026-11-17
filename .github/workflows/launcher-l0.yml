@@ -8,7 +8,35 @@ on:
 permissions:
   contents: read
 jobs:
+  library-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Check and build the library CLI
+        shell: pwsh
+        run: |
+          cargo fmt --manifest-path launcher/Cargo.toml --all -- --check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo clippy --manifest-path launcher/Cargo.toml --locked -p ooze-launcher-core -p ooze-launcher-cli --all-targets -- -D warnings
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo test --manifest-path launcher/Cargo.toml --locked -p ooze-launcher-core -p ooze-launcher-cli
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo build --manifest-path launcher/Cargo.toml --locked --release -p ooze-launcher-cli
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $cli='./launcher/target/release/ooze-launcher-cli.exe'
+          ((Get-FileHash -LiteralPath $cli).Hash.ToLowerInvariant()+'  ooze-launcher-cli.exe') | Set-Content './launcher/target/release/CLI-SHA256SUMS' -Encoding utf8NoBOM
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ooze-library-cli-candidate-windows-x64
+          path: |
+            launcher/target/release/ooze-launcher-cli.exe
+            launcher/target/release/CLI-SHA256SUMS
+      - name: Real Modrinth and transactional content check
+        shell: pwsh
+        run: ./launcher/packaging/test-library.ps1 -CliExe './launcher/target/release/ooze-launcher-cli.exe' -DataDirectory (Join-Path $env:RUNNER_TEMP 'Ooze library with spaces')
   windows-x64:
+    needs: library-windows
     runs-on: windows-latest
     timeout-minutes: 60
     env:

@@ -156,7 +156,24 @@ fn download(
             "Downloaded content does not match its declared hash/size.",
         ));
     }
+    drop(output);
     validate_archive(path, check)
+}
+fn context(stage: &str, mut e: crate::api::LauncherError) -> crate::api::LauncherError {
+    if e.code == ErrorCode::Io && !e.message.starts_with("Content operation") {
+        e.message =
+            format!("Content operation failed while {stage}. Check disk space and permissions.");
+    }
+    e
+}
+fn io_context(stage: &str, cause: &std::io::Error) -> crate::api::LauncherError {
+    error(
+        ErrorCode::Io,
+        format!(
+            "Content operation failed while {stage} (OS code {}).",
+            cause.raw_os_error().unwrap_or(0)
+        ),
+    )
 }
 pub(super) fn validate_archive(path: &Path, check: &dyn Fn() -> Result<()>) -> Result<()> {
     let input = fs::File::open(path).map_err(|_| io_error())?;
@@ -173,7 +190,9 @@ pub(super) fn validate_archive(path: &Path, check: &dyn Fn() -> Result<()>) -> R
         let path = entry.name().trim_end_matches('/');
         util::relative(path)?;
         if !seen.insert(path.to_ascii_lowercase())
-            || entry.unix_mode().is_some_and(|m| m & 0o170000 == 0o120000)
+            || entry
+                .unix_mode()
+                .is_some_and(|m| m & 0o170000 != 0 && !matches!(m & 0o170000, 0o100000 | 0o040000))
             || entry.size() > 512 * 1024 * 1024
         {
             return Err(metadata_error());
@@ -267,7 +286,8 @@ pub(super) fn recover(store: &Store, id: &Id) -> Result<()> {
         let history = util::join(&store.container(id)?, "history")?;
         util::mkdir(&history)?;
         let destination = util::join(&history, &Id::new().0)?;
-        fs::rename(&dir, destination).map_err(|_| io_error())?;
+        fs::rename(&dir, destination)
+            .map_err(|e| io_context("retaining committed recovery history", &e))?;
         return Ok(());
     }
     if current.revision != journal.before_revision {
@@ -378,7 +398,7 @@ fn commit_with_repair(
     )?;
     check()?;
     let kept = stage.keep();
-    fs::rename(&kept, &dir).map_err(|_| io_error())?;
+    fs::rename(&kept, &dir).map_err(|e| io_context("activating a staged transaction", &e))?;
     let work = (|| {
         let journal: Journal = util::read_json(&util::join(&dir, "journal.json")?)?;
         for (index, m) in journal.moves.iter().enumerate() {
@@ -386,10 +406,11 @@ fn commit_with_repair(
             let target = util::join(&game, &m.path)?;
             if m.backup {
                 fs::rename(&target, util::join(&dir, &format!("old-{index}"))?)
-                    .map_err(|_| io_error())?;
+                    .map_err(|e| io_context("backing up registered content", &e))?;
             }
             if let Some(new) = &m.new_file {
-                fs::rename(util::join(&dir, new)?, target).map_err(|_| io_error())?;
+                fs::rename(util::join(&dir, new)?, target)
+                    .map_err(|e| io_context("activating verified content", &e))?;
             }
         }
         check()?;
@@ -397,6 +418,7 @@ fn commit_with_repair(
             &util::join(&store.container(&before.id)?, "instance.json")?,
             &after,
         )
+        .map_err(|e| context("saving the instance receipt", e))
     })();
     let recovery = recover(store, &before.id);
     work?;
@@ -456,7 +478,8 @@ pub(super) fn apply(
             return Err(invalid("Multiple content files use the same destination."));
         }
         let staged = util::join(download_dir.path(), &i.to_string())?;
-        download(http, file, &staged, check)?;
+        download(http, file, &staged, check)
+            .map_err(|e| context("downloading and validating a file", e))?;
         let world_prefix = if resolved.kind == ContentKind::Datapack {
             path.rsplit_once('/').map(|(p, _)| p.to_owned())
         } else {
@@ -495,6 +518,7 @@ pub(super) fn apply(
         });
     }
     commit(store, &before, after, changes, check)
+        .map_err(|e| context("committing staged files or retaining recovery history", e))
 }
 
 pub(super) fn change(
