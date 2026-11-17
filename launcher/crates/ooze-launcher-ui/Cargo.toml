@@ -7,11 +7,6 @@ license = "MIT"
 publish = false
 description = "Ooze Launcher desktop interface: screens, components, navigation, focus and product UI state over the launcher backend API"
 
-# Sol owns the shared launcher workspace (launcher/Cargo.toml, Cargo.lock). Until Sol adds this
-# crate to its members (requested in docs/handoffs/CLAUDE-L0.md), it is its own workspace root so
-# both build without editing Sol's manifest. Remove this table once it is a member.
-[workspace]
-
 [features]
 default = []
 # Test/preview-only scripted backend. A release build refuses it (compile_error! in lib.rs).

@@ -10,7 +10,9 @@ permissions:
 jobs:
   windows-x64:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
+    env:
+      WGPU_BACKEND: dx12
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Configure the owned public Microsoft application
@@ -22,7 +24,7 @@ jobs:
             throw 'Invalid public OAuth build configuration'
           }
           [IO.File]::AppendAllText($env:GITHUB_ENV, "OOZE_MICROSOFT_CLIENT_ID=$($publicClientGuid.ToString('D'))`n", [Text.UTF8Encoding]::new($false))
-      - name: Rust format, lint and backend tests
+      - name: Rust format, lint and workspace tests (real Windows GUI adapter)
         shell: pwsh
         run: |
           cargo fmt --manifest-path launcher/Cargo.toml --all -- --check
@@ -31,7 +33,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cargo test --manifest-path launcher/Cargo.toml --locked --workspace
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Build portable backend executable
+      - name: Build portable backend and desktop executables
         shell: pwsh
         run: |
           cargo build --manifest-path launcher/Cargo.toml --locked --release --workspace
@@ -48,9 +50,9 @@ jobs:
       - name: Prepare portable review package and exercise install/repair
         shell: pwsh
         run: |
-          ./launcher/packaging/prepare-release.ps1 -OozeJar './build/dist/ooze-client-0.1.0-alpha.0+mc1.21.11.jar' -CliExe './launcher/target/release/ooze-launcher-cli.exe' -OutputDirectory './launcher/dist/ooze-l0-windows-x64'
+          ./launcher/packaging/prepare-release.ps1 -OozeJar './build/dist/ooze-client-0.1.0-alpha.0+mc1.21.11.jar' -CliExe './launcher/target/release/ooze-launcher-cli.exe' -GuiExe './launcher/target/release/ooze-launcher.exe' -OutputDirectory './launcher/dist/ooze-l0-windows-x64'
           $package = (Resolve-Path './launcher/dist/ooze-l0-windows-x64').Path
-          ./launcher/packaging/prepare-release.ps1 -OozeJar './build/dist/ooze-client-0.1.0-alpha.0+mc1.21.11.jar' -CliExe './launcher/target/release/ooze-launcher-cli.exe' -OutputDirectory './launcher/dist/pinned-repeat' -PinnedPackageDirectory $package
+          ./launcher/packaging/prepare-release.ps1 -OozeJar './build/dist/ooze-client-0.1.0-alpha.0+mc1.21.11.jar' -CliExe './launcher/target/release/ooze-launcher-cli.exe' -GuiExe './launcher/target/release/ooze-launcher.exe' -OutputDirectory './launcher/dist/pinned-repeat' -PinnedPackageDirectory $package
           foreach ($file in (Get-ChildItem -LiteralPath $package -File -Recurse)) {
             $relative = [IO.Path]::GetRelativePath($package,$file.FullName)
             $repeat = Join-Path './launcher/dist/pinned-repeat' $relative
@@ -69,6 +71,6 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ooze-launcher-l0-backend-windows-x64
+          name: ooze-launcher-windows-x64
           path: launcher/dist/ooze-l0-windows-x64/
           if-no-files-found: error

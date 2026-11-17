@@ -7,6 +7,10 @@ the public Rust UI API. Minecraft itself receives its required game session.
 
 ## Current status
 
+Owner update, 2026-11-16: the owner reports submitting the AppID Review request.
+Approval and Minecraft Services access remain unconfirmed. Do not submit a
+duplicate request or repeatedly retry real sign-in while awaiting the result.
+
 On 2026-11-15 the owner supplied public application ID
 `359e0deb-13e8-4616-978f-0fc1f8e273d2` after creating the Microsoft registration.
 It is recorded in `launcher/packaging/public-auth.json`; Windows launcher CI reads
