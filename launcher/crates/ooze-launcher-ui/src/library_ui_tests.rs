@@ -357,7 +357,7 @@ fn create_offers_only_reported_combinations_and_submits_the_exact_target() {
         .collect();
     assert_eq!(options.len(), 1, "{options:?}");
     assert!(options[0].contains("Fabric 0.20.1") && options[0].contains("1.21.11"));
-    assert!(options[0].contains("Ooze modules available"));
+    assert!(options[0].contains("Ooze Client included"));
     shot(&mut h, "instances-create");
     click(&mut h, Role::Button, "Create instance");
     assert_eq!(
