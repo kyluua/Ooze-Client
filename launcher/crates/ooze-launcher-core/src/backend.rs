@@ -325,6 +325,10 @@ impl Context {
             None
         };
         let _instance_lock = install::claim_instance(&settings.instance_dir)?;
+        crate::library::recover_game(&settings.instance_dir)?;
+        if session.is_some() {
+            crate::library::before_launch(&settings.instance_dir, &|| self.check())?;
+        }
         let prepared = install::prepare(
             &settings,
             &self.inner.config.release_manifest,
@@ -334,6 +338,7 @@ impl Context {
             &|stage, n, total| self.progress(stage, n, total),
         )?;
         if let Some(session) = session {
+            crate::library::verify_prepared(&settings, &prepared, &|| self.check())?;
             self.progress(Stage::StartingGame, 0, None);
             {
                 let mut state = self.inner.state.lock().map_err(|_| io_error())?;

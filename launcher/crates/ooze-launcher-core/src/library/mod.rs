@@ -1,0 +1,575 @@
+//! Additive library API 1. Credentials and Minecraft objects never enter this facade.
+mod content;
+mod model;
+mod modrinth;
+pub(crate) mod store;
+use crate::{
+    api::{ErrorCode, LauncherError},
+    util::{self, Result, error, io_error},
+};
+pub use model::*;
+use modrinth::Source;
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        mpsc::{self, Receiver, SyncSender},
+    },
+};
+
+#[derive(Clone, Debug)]
+pub enum Command {
+    Create {
+        name: String,
+        target: Target,
+        preset: Preset,
+        mode: Mode,
+    },
+    Select(Id),
+    Rename {
+        instance: Id,
+        name: String,
+    },
+    Duplicate {
+        instance: Id,
+        name: String,
+    },
+    Archive(Id),
+    SaveProfile {
+        instance: Id,
+        profile: Profile,
+    },
+    SaveTheme {
+        instance: Id,
+        theme: Theme,
+    },
+    ImportProfile {
+        instance: Id,
+        json: String,
+    },
+    ImportTheme {
+        instance: Id,
+        json: String,
+    },
+    ExportProfile(Id),
+    ExportTheme(Id),
+    ConvertToCustom(Id),
+    Search(Search),
+    Project(String),
+    Versions {
+        project: String,
+        target: Target,
+    },
+    Plan {
+        instance: Id,
+        project: String,
+        version: String,
+        world: Option<String>,
+    },
+    Apply(Id),
+    SetEnabled {
+        instance: Id,
+        project: String,
+        enabled: bool,
+    },
+    RemoveContent {
+        instance: Id,
+        project: String,
+    },
+    Verify(Id),
+}
+#[derive(Clone, Debug, serde::Serialize)]
+pub enum Reply {
+    None,
+    Instance(Id),
+    Search(SearchPage),
+    Project(Project),
+    Versions(Vec<VersionSummary>),
+    Plan(PlanSummary),
+    Integrity(IntegrityReport),
+    Export(String),
+    Imported { warnings: Vec<String> },
+}
+#[derive(Clone, Debug)]
+pub enum Event {
+    Started {
+        id: u64,
+    },
+    Finished {
+        id: u64,
+        result: std::result::Result<Reply, LauncherError>,
+    },
+}
+struct Active {
+    id: u64,
+    cancel: Arc<AtomicBool>,
+}
+type Notify = Arc<dyn Fn() + Send + Sync>;
+struct Inner {
+    data: PathBuf,
+    state: Mutex<Snapshot>,
+    active: Mutex<Option<Active>>,
+    next: AtomicU64,
+    events: SyncSender<Event>,
+    http: modrinth::Modrinth,
+    plans: Mutex<BTreeMap<Id, content::Plan>>,
+    notify: Mutex<Option<Notify>>,
+    _lock: fs::File,
+}
+pub struct Library {
+    inner: Arc<Inner>,
+    events: Receiver<Event>,
+}
+impl Library {
+    pub fn open(data_dir: impl AsRef<Path>) -> Result<Self> {
+        let data = data_dir.as_ref().to_owned();
+        util::absolute(&data)?;
+        let root = util::join(&data, "library")?;
+        util::mkdir(&root)?;
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(util::join(&root, "library.lock")?)
+            .map_err(|_| io_error())?;
+        fs2::FileExt::try_lock_exclusive(&lock).map_err(|_| {
+            error(
+                ErrorCode::Busy,
+                "Another Ooze library is using this data directory.",
+            )
+        })?;
+        let store = store::Store::open(&data)?;
+        let state = store.snapshot()?;
+        let (events, receiver) = mpsc::sync_channel(64);
+        Ok(Self {
+            inner: Arc::new(Inner {
+                data,
+                state: Mutex::new(state),
+                active: Mutex::new(None),
+                next: AtomicU64::new(1),
+                events,
+                http: modrinth::Modrinth::new()?,
+                plans: Mutex::new(BTreeMap::new()),
+                notify: Mutex::new(None),
+                _lock: lock,
+            }),
+            events: receiver,
+        })
+    }
+    pub fn snapshot(&self) -> Snapshot {
+        let mut snapshot = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        snapshot.active_operation = self
+            .inner
+            .active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|a| a.id);
+        snapshot
+    }
+    pub fn try_event(&self) -> Option<Event> {
+        self.events.try_recv().ok()
+    }
+    /// A non-blocking notification hook. It must only schedule a UI repaint.
+    pub fn set_notify(&self, notify: impl Fn() + Send + Sync + 'static) {
+        *self.inner.notify.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(notify));
+    }
+    pub fn submit(&self, command: Command) -> Result<u64> {
+        let mut active = self.inner.active.lock().map_err(|_| io_error())?;
+        if active.is_some() {
+            return Err(error(
+                ErrorCode::Busy,
+                "A library operation is already running.",
+            ));
+        }
+        let id = self
+            .inner
+            .next
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
+            .map_err(|_| {
+                error(
+                    ErrorCode::Internal,
+                    "Library operation identities exhausted.",
+                )
+            })?;
+        let cancel = Arc::new(AtomicBool::new(false));
+        *active = Some(Active {
+            id,
+            cancel: cancel.clone(),
+        });
+        drop(active);
+        let inner = self.inner.clone();
+        if std::thread::Builder::new()
+            .name("ooze-library-operation".into())
+            .spawn(move || {
+                inner.emit(Event::Started { id });
+                let check = || {
+                    if cancel.load(Ordering::Acquire) {
+                        Err(error(ErrorCode::Cancelled, "Library operation cancelled."))
+                    } else {
+                        Ok(())
+                    }
+                };
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    inner.execute(command, &check)
+                }))
+                .unwrap_or_else(|_| {
+                    Err(error(
+                        ErrorCode::Internal,
+                        "A library operation failed internally; restart Ooze.",
+                    ))
+                });
+                if let Ok(store) = store::Store::open(&inner.data)
+                    && let Ok(snapshot) = store.snapshot()
+                {
+                    *inner.state.lock().unwrap_or_else(|e| e.into_inner()) = snapshot;
+                }
+                inner.emit(Event::Finished { id, result });
+                *inner.active.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                inner.wake();
+            })
+            .is_err()
+        {
+            *self.inner.active.lock().map_err(|_| io_error())? = None;
+            return Err(error(
+                ErrorCode::Internal,
+                "Could not start the library worker.",
+            ));
+        }
+        Ok(id)
+    }
+    pub fn cancel(&self, id: u64) -> bool {
+        if let Some(active) = self
+            .inner
+            .active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            && active.id == id
+        {
+            active.cancel.store(true, Ordering::Release);
+            return true;
+        }
+        false
+    }
+}
+impl Drop for Library {
+    fn drop(&mut self) {
+        if let Some(active) = self
+            .inner
+            .active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
+            active.cancel.store(true, Ordering::Release);
+        }
+    }
+}
+impl Inner {
+    fn wake(&self) {
+        let notify = self
+            .notify
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        if let Some(notify) = notify {
+            notify();
+        }
+    }
+    fn emit(&self, event: Event) {
+        let _ = self.events.send(event);
+        self.wake();
+    }
+    fn execute(&self, command: Command, check: &dyn Fn() -> Result<()>) -> Result<Reply> {
+        check()?;
+        let store = store::Store::open(&self.data)?;
+        match command {
+            Command::Create {
+                name,
+                target,
+                preset,
+                mode,
+            } => Ok(Reply::Instance(store.create(name, target, preset, mode)?)),
+            Command::Select(id) => {
+                store.select(&id)?;
+                Ok(Reply::None)
+            }
+            Command::Duplicate { instance, name } => {
+                Ok(Reply::Instance(store.duplicate(&instance, name, check)?))
+            }
+            Command::Archive(id) => {
+                store.archive(&id)?;
+                Ok(Reply::None)
+            }
+            Command::Rename {
+                instance,
+                name: name_value,
+            } => {
+                name(&name_value)?;
+                let (mut value, _lock) = store.claim(&instance)?;
+                value.name = name_value;
+                store.save(&mut value)?;
+                Ok(Reply::None)
+            }
+            Command::SaveProfile { instance, profile } => {
+                profile.validate()?;
+                let (mut value, _lock) = store.claim(&instance)?;
+                value.profile = profile;
+                store.save(&mut value)?;
+                Ok(Reply::None)
+            }
+            Command::SaveTheme { instance, theme } => {
+                theme.validate()?;
+                let (mut value, _lock) = store.claim(&instance)?;
+                value.theme = theme;
+                store.save(&mut value)?;
+                Ok(Reply::None)
+            }
+            Command::ImportProfile { instance, json } => {
+                let (profile, warnings) = Profile::from_json(&json)?;
+                self.execute(Command::SaveProfile { instance, profile }, check)?;
+                Ok(Reply::Imported { warnings })
+            }
+            Command::ImportTheme { instance, json } => {
+                let theme = import::<Theme>(&json)?;
+                self.execute(Command::SaveTheme { instance, theme }, check)
+            }
+            Command::ExportProfile(id) => Ok(Reply::Export(store.instance(&id)?.profile.to_json())),
+            Command::ExportTheme(id) => Ok(Reply::Export(
+                serde_json::to_string_pretty(&store.instance(&id)?.theme)
+                    .map_err(|_| io_error())?,
+            )),
+            Command::ConvertToCustom(id) => {
+                let (mut value, _lock) = store.claim(&id)?;
+                value.mode = Mode::Custom;
+                store.save(&mut value)?;
+                Ok(Reply::None)
+            }
+            Command::Search(request) => Ok(Reply::Search(self.http.search(&request, check)?)),
+            Command::Project(project) => Ok(Reply::Project(self.http.project(&project, check)?)),
+            Command::Versions { project, target } => {
+                let project = self.http.project(&project, check)?;
+                Ok(Reply::Versions(
+                    self.http
+                        .versions(&project.id, &target, check)?
+                        .into_iter()
+                        .filter(|v| modrinth::compatible(&project, v, &target))
+                        .map(|v| v.summary)
+                        .collect(),
+                ))
+            }
+            Command::Plan {
+                instance,
+                project,
+                version,
+                world,
+            } => {
+                let (value, _lock) = store.claim(&instance)?;
+                if value.mode == Mode::Managed {
+                    return Err(invalid(
+                        "Convert to Custom to install third-party content; this managed release has no extra-content approvals.",
+                    ));
+                }
+                let resolution = modrinth::resolve(&self.http, &value, &project, &version, check)?;
+                for file in &resolution.files {
+                    content::destination(
+                        &store.game(&instance)?,
+                        file.kind,
+                        &file.file.filename,
+                        world.as_deref(),
+                    )?;
+                }
+                let plan = content::Plan {
+                    id: Id::new(),
+                    instance,
+                    revision: value.revision,
+                    created: std::time::Instant::now(),
+                    resolution,
+                    world,
+                };
+                let summary = plan.summary();
+                let mut plans = self.plans.lock().map_err(|_| io_error())?;
+                plans.retain(|_, p| p.created.elapsed() < std::time::Duration::from_secs(600));
+                if plans.len() >= 8 {
+                    return Err(error(
+                        ErrorCode::Busy,
+                        "Too many pending content plans. Apply one or wait for expiry.",
+                    ));
+                }
+                plans.insert(plan.id.clone(), plan);
+                Ok(Reply::Plan(summary))
+            }
+            Command::Apply(id) => {
+                id.validate()?;
+                let plan = self
+                    .plans
+                    .lock()
+                    .map_err(|_| io_error())?
+                    .remove(&id)
+                    .ok_or_else(|| invalid("Unknown or consumed content plan."))?;
+                content::apply(&store, &self.http, &plan, check)?;
+                Ok(Reply::None)
+            }
+            Command::SetEnabled {
+                instance,
+                project,
+                enabled,
+            } => {
+                content::change(&store, &instance, &project, Some(enabled), check)?;
+                Ok(Reply::None)
+            }
+            Command::RemoveContent { instance, project } => {
+                content::change(&store, &instance, &project, None, check)?;
+                Ok(Reply::None)
+            }
+            Command::Verify(id) => {
+                let (value, _lock) = store.claim(&id)?;
+                Ok(Reply::Integrity(content::verify(
+                    &value,
+                    &store.game(&id)?,
+                    check,
+                )?))
+            }
+        }
+    }
+}
+fn import<T: serde::de::DeserializeOwned>(json: &str) -> Result<T> {
+    if json.len() > 65536 {
+        return Err(invalid("Imported configuration exceeds 64 KiB."));
+    }
+    serde_json::from_str(json).map_err(|_| {
+        invalid("Invalid or unsupported imported configuration; existing settings were preserved.")
+    })
+}
+
+pub(crate) fn before_launch(game: &Path, check: &dyn Fn() -> Result<()>) -> Result<()> {
+    if let Some(instance) = store::for_game(game)? {
+        let report = content::verify(&instance, game, check)?;
+        if !report.issues.is_empty() {
+            return Err(error(
+                ErrorCode::Integrity,
+                "Instance content integrity check failed. Inspect Library Verify and repair, or explicitly convert a managed instance to Custom.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn recover_game(game: &Path) -> Result<()> {
+    if let Some(instance) = store::for_game(game)? {
+        let data = game.ancestors().nth(4).ok_or_else(io_error)?;
+        let store = store::Store::open(data)?;
+        if store.game(&instance.id)? != game {
+            return Err(invalid("Library game path does not match its identity."));
+        }
+        content::recover(&store, &instance.id)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn verify_prepared(
+    settings: &crate::api::Settings,
+    prepared: &crate::install::Prepared,
+    check: &dyn Fn() -> Result<()>,
+) -> Result<()> {
+    if let Some(instance) = store::for_game(&settings.instance_dir)?
+        && instance.mode == Mode::Managed
+    {
+        if settings.java_path.is_some() {
+            return Err(invalid(
+                "Managed mode requires the release's verified managed Java runtime. Use Custom for a user-supplied runtime.",
+            ));
+        }
+        let mods = util::join(&prepared.root, "mods")?;
+        let approved: std::collections::BTreeSet<_> = prepared
+            .installation
+            .files
+            .iter()
+            .filter_map(|f| f.path.strip_prefix("mods/"))
+            .collect();
+        if mods.exists() {
+            for entry in fs::read_dir(mods).map_err(|_| io_error())? {
+                check()?;
+                let entry = entry.map_err(|_| io_error())?;
+                util::reject_links(&entry.path())?;
+                let name = entry.file_name();
+                let name = name.to_str().ok_or_else(io_error)?;
+                if !approved.contains(name) {
+                    return Err(error(
+                        ErrorCode::Integrity,
+                        "Unexpected executable content in the managed baseline; repair or convert to Custom.",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn wait(library: &Library, id: u64) -> Result<Reply> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            if let Some(Event::Finished { id: event, result }) = library.try_event()
+                && event == id
+            {
+                while library.snapshot().active_operation.is_some() {
+                    std::thread::yield_now();
+                }
+                return result;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("worker timed out");
+    }
+    #[test]
+    fn real_facade_persists_profiles_without_credentials() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = Library::open(dir.path()).unwrap();
+        let id = library
+            .submit(Command::Create {
+                name: "PvP".into(),
+                target: Target::fabric(),
+                preset: Preset::Pvp,
+                mode: Mode::Custom,
+            })
+            .unwrap();
+        let Reply::Instance(instance) = wait(&library, id).unwrap() else {
+            panic!()
+        };
+        let id = library.submit(Command::ExportProfile(instance)).unwrap();
+        let Reply::Export(json) = wait(&library, id).unwrap() else {
+            panic!()
+        };
+        assert!(json.contains("pvp"));
+        assert!(!json.contains("account"));
+        assert!(!json.contains("token"));
+        drop(library);
+        assert_eq!(
+            Library::open(dir.path())
+                .unwrap()
+                .snapshot()
+                .instances
+                .len(),
+            1
+        );
+    }
+    #[test]
+    fn separate_facades_cannot_mutate_one_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let _first = Library::open(dir.path()).unwrap();
+        assert!(matches!(Library::open(dir.path()),Err(e)if e.code==ErrorCode::Busy));
+    }
+}

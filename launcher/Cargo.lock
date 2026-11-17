@@ -2790,6 +2790,7 @@ dependencies = [
  "hex",
  "keyring",
  "oauth2",
+ "ooze-ui",
  "regex",
  "reqwest",
  "serde",
@@ -2799,6 +2800,7 @@ dependencies = [
  "sysinfo",
  "tempfile",
  "url",
+ "uuid",
  "webbrowser",
  "zeroize",
  "zip",
@@ -2816,6 +2818,10 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "ooze-ui"
+version = "0.1.0"
 
 [[package]]
 name = "open"
@@ -4278,6 +4284,7 @@ version = "1.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c14b15dffa2f4bd712103e857140aa04a4f2ff6e955c77d7eb8e53ee02a3b64"
 dependencies = [
+ "getrandom 0.4.3",
  "js-sys",
  "serde_core",
  "wasm-bindgen",

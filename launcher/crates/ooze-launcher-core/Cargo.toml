@@ -22,6 +22,8 @@ regex.workspace = true
 zeroize.workspace = true
 sysinfo.workspace = true
 keyring.workspace = true
+uuid = { version = "1", features = ["v4"] }
+ooze-ui = { path = "../../../native/crates/ooze-ui" }
 
 [lints]
 workspace = true
