@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)][string]$OozeJar,
     [Parameter(Mandatory)][string]$CliExe,
+    [Parameter(Mandatory)][string]$GuiExe,
     [Parameter(Mandatory)][string]$OutputDirectory,
     [string]$PinnedPackageDirectory
 )
@@ -9,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $outputRoot = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $outputRoot) { throw 'Use a new empty output path. Existing packages are never overwritten.' }
-foreach ($inputPath in @($OozeJar, $CliExe)) { if (-not (Test-Path -LiteralPath $inputPath -PathType Leaf)) { throw "Missing build input: $inputPath" } }
+foreach ($inputPath in @($OozeJar, $CliExe, $GuiExe)) { if (-not (Test-Path -LiteralPath $inputPath -PathType Leaf)) { throw "Missing build input: $inputPath" } }
 New-Item -ItemType Directory -Path $outputRoot | Out-Null
 $metadataRoot = Join-Path $outputRoot 'metadata'
 $scratchRoot = Join-Path $outputRoot '.scratch'
@@ -87,6 +88,7 @@ if ($PinnedPackageDirectory) {
 }
 Copy-Item -LiteralPath $OozeJar -Destination (Join-Path $outputRoot 'ooze-client.jar')
 Copy-Item -LiteralPath $CliExe -Destination (Join-Path $outputRoot 'ooze-launcher-cli.exe')
+Copy-Item -LiteralPath $GuiExe -Destination (Join-Path $outputRoot 'ooze-launcher.exe')
 $release.ooze = Local-Artifact (Join-Path $outputRoot 'ooze-client.jar') 'ooze-client.jar'
 Write-Json (Join-Path $outputRoot 'release.json') $release
 Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $outputRoot 'LICENSE')
@@ -106,8 +108,10 @@ foreach ($dependency in @($cargoMetadata.packages | Where-Object source)) {
 }
 Write-Json (Join-Path $licenseRoot 'dependencies.json') $notices
 foreach ($license in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'native\licenses') -File)) { Copy-Item -LiteralPath $license.FullName -Destination (Join-Path $licenseRoot ('rust-'+$license.Name)) }
+$fontsRoot = Join-Path $repoRoot 'launcher\resources\fonts'
+Copy-Item -LiteralPath $fontsRoot -Destination (Join-Path $licenseRoot 'fonts') -Recurse
 @'
-Ooze L0 backend review package — Windows x64. Desktop UI is supplied separately by Claude.
+Ooze Launcher review package — Windows x64. Start ooze-launcher.exe for the desktop interface.
 Microsoft sign-in requires Ooze's owned public OAuth client ID and valid Minecraft Services access.
 Set OOZE_MICROSOFT_CLIENT_ID in developer builds; players should receive a configured final build.
 Run: ooze-launcher-cli.exe status
@@ -116,6 +120,7 @@ Then: ooze-launcher-cli.exe sign-in
 Then: ooze-launcher-cli.exe play
 Optional: ooze-launcher-cli.exe settings --java "C:\path\to\Java21\bin\java.exe"
 Default storage: %LOCALAPPDATA%\OozeLauncher. Minecraft files and Java download at install.
+The CLI is also included for diagnostics. This is an unsigned review build.
 This package proves no live sign-in or title-screen launch until acceptance evidence says so.
 '@ | Set-Content -LiteralPath (Join-Path $outputRoot 'README.txt') -Encoding utf8NoBOM
 # Remove only the scratch directory created above, after verifying its resolved absolute confinement.

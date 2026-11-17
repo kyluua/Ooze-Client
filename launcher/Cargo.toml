@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/ooze-launcher-core", "crates/ooze-launcher-cli"]
+members = ["crates/ooze-launcher-core", "crates/ooze-launcher-cli", "crates/ooze-launcher-ui"]
 resolver = "2"
 
 [workspace.package]
