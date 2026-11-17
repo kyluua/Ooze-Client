@@ -85,6 +85,13 @@ pub enum Command {
         instance: Id,
         project: String,
     },
+    /// One exact installed receipt (opaque record identity from the snapshot).
+    /// None removes; Some toggles. Unlike project commands, never spans worlds.
+    ChangeContent {
+        instance: Id,
+        record_id: String,
+        enabled: Option<bool>,
+    },
     Verify(Id),
     RepairContent {
         instance: Id,
@@ -542,7 +549,7 @@ impl Inner {
                 content::change_reported(
                     &store,
                     &instance,
-                    &project,
+                    content::Selection::Project(&project),
                     Some(enabled),
                     check,
                     report,
@@ -550,7 +557,29 @@ impl Inner {
                 Ok(Reply::None)
             }
             Command::RemoveContent { instance, project } => {
-                content::change_reported(&store, &instance, &project, None, check, report)?;
+                content::change_reported(
+                    &store,
+                    &instance,
+                    content::Selection::Project(&project),
+                    None,
+                    check,
+                    report,
+                )?;
+                Ok(Reply::None)
+            }
+            Command::ChangeContent {
+                instance,
+                record_id,
+                enabled,
+            } => {
+                content::change_reported(
+                    &store,
+                    &instance,
+                    content::Selection::Record(&record_id),
+                    enabled,
+                    check,
+                    report,
+                )?;
                 Ok(Reply::None)
             }
             Command::RepairContent { instance, project } => {

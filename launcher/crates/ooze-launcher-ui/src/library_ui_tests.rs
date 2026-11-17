@@ -8,7 +8,9 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use ooze_ui::profile::{PresetId, Profile};
 use ooze_ui::theme_doc::{BaseColors, ThemeDoc};
 
-use crate::api::{Command, InstallStatus, MotionPreference};
+use crate::api::{
+    Command, Event, GameSessionId, GameState, InstallStatus, MotionPreference, Outcome,
+};
 use crate::app::{AppOptions, LauncherApp, Page};
 use crate::appearance::rgb;
 use crate::fixtures::{FixtureBackend, FixtureHandle, account, snapshot};
@@ -22,6 +24,9 @@ fn harness(lib: Option<LibrarySnapshot>) -> (H, FixtureHandle, Option<LibFixture
     snap.account = Some(account());
     snap.install = InstallStatus::Ready;
     snap.settings.motion = MotionPreference::Off;
+    if let Some(selected) = lib.as_ref().and_then(LibrarySnapshot::selected) {
+        snap.settings.install_root = Some(selected.game_dir.clone());
+    }
     let (backend, handle) = FixtureBackend::manual(snap);
     let mut app = LauncherApp::new(Box::new(backend), AppOptions::default());
     let mut lib_handle = None;
@@ -202,10 +207,90 @@ fn selecting_an_instance_points_play_at_its_game_directory() {
     );
     let dir = fx::snapshot().instances[1].game_dir.clone();
     assert!(
+        !handle
+            .submitted()
+            .iter()
+            .any(|c| matches!(c, Command::UpdateSettings(_))),
+        "Select must succeed first"
+    );
+    let mut changed = fx::snapshot();
+    changed.selected = Some(fx::vanilla_id());
+    lh.push(LibEvent::Changed(changed));
+    finish(&mut h, &lh, LibPayload::Done);
+    assert!(
         handle.submitted().iter().any(
             |c| matches!(c, Command::UpdateSettings(s) if s.install_root.as_ref() == Some(&dir))
         )
     );
+}
+
+#[test]
+fn failed_selection_does_not_change_the_play_directory() {
+    let (mut h, handle, lh) = harness(Some(fx::snapshot()));
+    let lh = lh.unwrap();
+    go(&mut h, "Instances");
+    click(&mut h, Role::Button, "Select for Play");
+    lh.push(LibEvent::Finished {
+        op: lh.last_op(),
+        result: Err(LibError::new(LibErrorKind::Config)),
+    });
+    steps(&mut h);
+    assert!(handle.submitted().is_empty());
+    assert_eq!(
+        h.state().library_model().unwrap().snap.selected,
+        Some(fx::fabric_id())
+    );
+}
+
+#[test]
+fn failed_directory_save_blocks_play_and_selection_can_be_retried() {
+    let (mut h, handle, lh) = harness(Some(fx::snapshot()));
+    let lh = lh.unwrap();
+    go(&mut h, "Instances");
+    click(&mut h, Role::Button, "Select for Play");
+    let settings_op = handle.next_op();
+    let mut changed = fx::snapshot();
+    changed.selected = Some(fx::vanilla_id());
+    lh.push(LibEvent::Changed(changed));
+    finish(&mut h, &lh, LibPayload::Done);
+    handle.push(Event::Finished {
+        op: settings_op,
+        outcome: Outcome::Failed(crate::api::LauncherError {
+            kind: crate::api::ErrorKind::Configuration,
+            detail: "Cannot save settings".into(),
+            retryable: true,
+        }),
+    });
+    steps(&mut h);
+    go(&mut h, "Play");
+    assert!(!enabled(&h, "Play"));
+    assert!(has_button(&h, "Select for Play"));
+    assert!(
+        !handle
+            .submitted()
+            .iter()
+            .any(|c| matches!(c, Command::Play))
+    );
+}
+
+#[test]
+fn instance_selection_is_disabled_while_the_game_is_live_and_recovers_on_exit() {
+    let (mut h, handle, lh) = harness(Some(fx::snapshot()));
+    let lh = lh.unwrap();
+    handle.push(Event::Game {
+        session: GameSessionId(1),
+        state: GameState::Starting,
+    });
+    steps(&mut h);
+    go(&mut h, "Instances");
+    assert!(!enabled(&h, "Select for Play"));
+    assert!(lh.submitted().is_empty());
+    handle.push(Event::Game {
+        session: GameSessionId(1),
+        state: GameState::Exited { code: 0 },
+    });
+    steps(&mut h);
+    assert!(enabled(&h, "Select for Play"));
 }
 
 #[test]
@@ -701,10 +786,11 @@ fn appearance_guards_contrast_previews_live_and_persists_through_the_library() {
     assert_eq!(doc.accent, Some(mint));
     assert_eq!(doc.ui_scale, 125);
     assert!(
-        handle
+        !handle
             .submitted()
             .iter()
-            .any(|c| matches!(c, Command::UpdateSettings(s) if s.ui_scale_percent == 125))
+            .any(|c| matches!(c, Command::UpdateSettings(_))),
+        "Appearance has one atomic library store; legacy UI preferences cannot override it"
     );
     // Export / import round trip uses the strict shared validator.
     assert_eq!(ThemeDoc::from_json(&doc.to_json(), &guard), Ok(doc));
@@ -860,8 +946,15 @@ fn live_window_shows_real_modrinth_results_for_a_fabric_instance() {
     h.run_steps(6);
     assert_eq!(
         tabs(&h),
-        ["Play", "Instances", "Content", "Settings", "Diagnostics"],
-        "Profile waits for runtime modules; Appearance for ooze.theme/1"
+        [
+            "Play",
+            "Instances",
+            "Content",
+            "Appearance",
+            "Settings",
+            "Diagnostics"
+        ],
+        "Profile waits for runtime modules"
     );
     go(&mut h, "Content");
     search(&mut h, "sodium");

@@ -60,7 +60,7 @@ pub(super) struct LibUi {
     theme_import_error: Option<String>,
 }
 
-fn target_text(kit: &Kit<'_>, t: &GameTarget) -> String {
+pub(super) fn target_text(kit: &Kit<'_>, t: &GameTarget) -> String {
     let loader = kit.t(t.loader.key());
     match &t.loader_version {
         Some(v) => kit.tr.fmt(
@@ -182,12 +182,25 @@ impl LauncherApp {
         }
     }
 
-    fn lib_busy(&self) -> bool {
+    pub(super) fn lib_busy(&self) -> bool {
         self.lib.as_ref().is_some_and(|m| m.busy())
     }
 
-    fn selected_instance(&self) -> Option<InstanceSummary> {
+    pub(super) fn selected_instance(&self) -> Option<InstanceSummary> {
         self.lib.as_ref().and_then(|m| m.snap.selected().cloned())
+    }
+
+    pub(super) fn selection_ready(&self) -> bool {
+        self.pending_selection.is_none()
+            && !self.lib_busy()
+            && self.selected_instance().is_none_or(|i| {
+                !self.model.busy()
+                    && self
+                        .model
+                        .settings
+                        .as_ref()
+                        .is_some_and(|s| s.install_root.as_ref() == Some(&i.game_dir))
+            })
     }
 
     /// Which library pages are available now (navigation and routing both use this).
@@ -541,9 +554,19 @@ impl LauncherApp {
         }
         let free = !busy && !inst.running;
         ui.horizontal_wrapped(|ui| {
-            if !selected
+            if (!selected
+                || self
+                    .model
+                    .settings
+                    .as_ref()
+                    .is_none_or(|s| s.install_root.as_ref() != Some(&inst.game_dir)))
                 && kit
-                    .button(ui, kit.t("instances.select"), ButtonKind::Primary, !busy)
+                    .button(
+                        ui,
+                        kit.t("instances.select"),
+                        ButtonKind::Primary,
+                        !busy && !self.model.busy(),
+                    )
                     .clicked()
             {
                 self.select_instance(inst);
@@ -604,7 +627,9 @@ impl LauncherApp {
     }
 
     pub(super) fn select_instance(&mut self, inst: &InstanceSummary) {
-        self.lib_abandon();
+        if self.model.busy() || self.lib_busy() || inst.running {
+            return;
+        }
         if let Some(m) = self.lib.as_mut() {
             m.clear_instance_views();
         }
@@ -612,14 +637,11 @@ impl LauncherApp {
         self.lib_ui.kind = None;
         self.lib_ui.world = None;
         self.lib_submit(LibCommand::Select(inst.id.clone()));
-        // Play uses API 1: point the launcher at this instance's game directory.
-        if let Some(mut settings) = self.model.settings.clone()
-            && settings.install_root.as_ref() != Some(&inst.game_dir)
-            && !self.model.game_live()
-        {
-            settings.install_root = Some(inst.game_dir.clone());
-            self.submit(Command::UpdateSettings(settings));
-        }
+        self.pending_selection = self
+            .lib
+            .as_ref()
+            .and_then(|m| m.active())
+            .map(|(op, _)| (op, inst.id.clone()));
     }
 
     fn instance_confirm(&mut self, ui: &mut Ui, kit: &Kit<'_>, inst: &InstanceSummary) {
@@ -2168,12 +2190,7 @@ impl LauncherApp {
     }
 
     fn saved_theme_doc(&self, m: &crate::library_model::LibraryModel) -> ThemeDoc {
-        let mut doc = m.snap.theme.clone();
-        if let Some(s) = &self.model.settings {
-            doc.motion = appearance::motion_doc(s.motion);
-            doc.ui_scale = s.ui_scale_percent;
-        }
-        doc
+        m.snap.theme.clone()
     }
 
     pub(super) fn appearance_page(&mut self, ui: &mut Ui, kit: &Kit<'_>) {
@@ -2384,14 +2401,6 @@ impl LauncherApp {
                 && doc.validate(&guard).is_ok()
             {
                 self.lib_submit(LibCommand::SaveTheme(doc.clone()));
-                if let Some(mut s) = self.model.settings.clone() {
-                    let motion = appearance::motion_pref(doc.motion);
-                    if s.motion != motion || s.ui_scale_percent != doc.ui_scale {
-                        s.motion = motion;
-                        s.ui_scale_percent = doc.ui_scale;
-                        self.submit(Command::UpdateSettings(s));
-                    }
-                }
             }
             if kit
                 .button(ui, kit.t("appearance.revert"), ButtonKind::Secondary, dirty)

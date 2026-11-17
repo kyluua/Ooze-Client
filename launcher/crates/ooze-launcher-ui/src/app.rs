@@ -93,6 +93,8 @@ pub struct LauncherApp {
     /// The contrast guard's base colours (shared validator in `ooze-ui`).
     guard: Option<ooze_ui::theme_doc::BaseColors>,
     applied_doc: Option<ooze_ui::theme_doc::ThemeDoc>,
+    /// Select must finish successfully before API 1 may change the Play directory.
+    pending_selection: Option<(crate::library::LibOpId, crate::library::InstanceId)>,
 }
 
 impl LauncherApp {
@@ -127,6 +129,7 @@ impl LauncherApp {
             base_theme: theme,
             guard: ooze_ui::theme_doc::BaseColors::classic(),
             applied_doc: None,
+            pending_selection: None,
         }
     }
 
@@ -279,10 +282,22 @@ impl LauncherApp {
         let repaint = ctx.clone();
         self.backend
             .set_waker(Box::new(move || repaint.request_repaint()));
+        if let Some(library) = self.library.as_mut() {
+            let repaint = ctx.clone();
+            library.set_waker(Box::new(move || repaint.request_repaint()));
+        }
         self.initialised = true;
     }
 
     fn submit(&mut self, command: Command) {
+        if matches!(command, Command::Play | Command::Prepare { .. }) && !self.selection_ready() {
+            return;
+        }
+        if self.pending_selection.is_some()
+            && !matches!(command, Command::Cancel { .. } | Command::OpenFolder(_))
+        {
+            return;
+        }
         if !self.model.may_submit(&command) {
             return;
         }
@@ -292,10 +307,10 @@ impl LauncherApp {
 
     fn motion(&self) -> MotionMode {
         let pref = self
-            .model
-            .settings
-            .as_ref()
-            .map_or(MotionPreference::FollowSystem, |s| s.motion);
+            .shown_theme_doc()
+            .map(|d| crate::appearance::motion_pref(d.motion))
+            .or_else(|| self.model.settings.as_ref().map(|s| s.motion))
+            .unwrap_or(MotionPreference::FollowSystem);
         MotionMode::resolve(
             pref,
             self.model
@@ -312,14 +327,34 @@ impl LauncherApp {
         for event in self.events.drain(..) {
             self.model.apply(event);
         }
+        let mut selected = None;
         if let (Some(library), Some(model)) = (self.library.as_mut(), self.lib.as_mut()) {
             library.drain_events(&mut self.lib_events);
             for event in self.lib_events.drain(..) {
+                if let LibEvent::Finished { op, result } = &event
+                    && self
+                        .pending_selection
+                        .as_ref()
+                        .is_some_and(|(pending, _)| pending == op)
+                {
+                    if result.is_ok() {
+                        selected = self.pending_selection.as_ref().map(|(_, id)| id.clone());
+                    }
+                    self.pending_selection = None;
+                }
                 model.apply(event);
             }
             if library.wants_polling() && model.busy() {
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
             }
+        }
+        if let Some(id) = selected
+            && let Some(instance) = self.lib.as_ref().and_then(|m| m.snap.instance(&id))
+            && let Some(mut settings) = self.model.settings.clone()
+            && settings.install_root.as_ref() != Some(&instance.game_dir)
+        {
+            settings.install_root = Some(instance.game_dir.clone());
+            self.submit(Command::UpdateSettings(settings));
         }
         if self.backend.wants_polling() {
             // The real backend has no waker: poll while an operation or the game is active.
@@ -359,9 +394,7 @@ impl LauncherApp {
         self.sync_library();
         // A draft appearance previews its interface scale live; otherwise the saved setting.
         let scale = self
-            .lib_ui
-            .appearance
-            .as_ref()
+            .shown_theme_doc()
             .map(|d| d.ui_scale)
             .or_else(|| self.model.settings.as_ref().map(|s| s.ui_scale_percent))
             .unwrap_or(100) as f32
@@ -812,7 +845,10 @@ impl LauncherApp {
 
     fn play_card(&mut self, ui: &mut Ui, kit: &Kit<'_>) {
         let th = kit.theme;
-        if let Some(profile) = self.model.profile.clone() {
+        if let Some(instance) = self.selected_instance() {
+            kit.text(ui, th.text.display, th.c.text_primary, &instance.name);
+            kit.caption(ui, &library_pages::target_text(kit, &instance.target));
+        } else if let Some(profile) = self.model.profile.clone() {
             kit.text(
                 ui,
                 th.text.display,
@@ -877,11 +913,25 @@ impl LauncherApp {
             Primary::Playing => "play.action.playing",
         };
         if kit
-            .button_large(ui, kit.t(label), primary.actionable())
+            .button_large(
+                ui,
+                kit.t(label),
+                primary.actionable() && self.selection_ready(),
+            )
             .clicked()
             && let Some(cmd) = self.model.primary_command()
         {
             self.submit(cmd);
+        }
+        if !self.selection_ready() && !self.lib_busy() && !self.model.busy() {
+            kit.secondary(ui, kit.t("play.instance_mismatch"));
+            if kit
+                .button(ui, kit.t("instances.select"), ButtonKind::Secondary, true)
+                .clicked()
+                && let Some(instance) = self.selected_instance()
+            {
+                self.select_instance(&instance);
+            }
         }
         ui.add_space(th.space.lg);
 
@@ -1245,6 +1295,15 @@ impl LauncherApp {
         ui.add_space(th.space.lg);
         kit.card(ui, Surface::Card, |ui| {
             kit.section(ui, kit.t("settings.a11y.section"));
+            if self.lib.as_ref().is_some_and(|m| m.caps().themes) {
+                if kit
+                    .button(ui, kit.t("nav.appearance"), ButtonKind::Secondary, true)
+                    .clicked()
+                {
+                    self.page = Page::Appearance;
+                }
+                return;
+            }
             // "Follow Windows" only when the backend can actually read the Windows setting.
             let follow = self
                 .model
@@ -1400,7 +1459,8 @@ impl LauncherApp {
         ui.add_space(th.space.sm);
         let busy = self.model.prepare_op().is_some()
             || self.model.launch_op().is_some()
-            || self.model.game_live();
+            || self.model.game_live()
+            || self.selected_instance().is_some();
         ui.horizontal_wrapped(|ui| {
             if self.model.capabilities().open_folders
                 && kit

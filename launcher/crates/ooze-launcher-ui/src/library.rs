@@ -571,6 +571,8 @@ pub trait LibraryBackend {
     /// Cooperative; returns whether the operation was still cancellable.
     fn cancel(&mut self, op: LibOpId) -> bool;
     fn drain_events(&mut self, out: &mut Vec<LibEvent>);
+    /// Repaint notification only; called on a backend worker thread.
+    fn set_waker(&mut self, _waker: crate::api::Waker) {}
     fn wants_polling(&self) -> bool {
         false
     }

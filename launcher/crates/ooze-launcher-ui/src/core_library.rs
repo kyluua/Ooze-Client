@@ -7,8 +7,7 @@
 //! hidden in the interface:
 //! - profiles (module switches): off until the library reports runtime modules (the game can't
 //!   run any before M0; Real or absent);
-//! - themes: off until the library persists `ooze.theme/1` (CLAUDE-P0-request G1);
-//! - data packs: off until the library lists an instance's worlds;
+//! - themes and local data packs use the library's persisted appearance and opaque world keys;
 //! - search sort and categories: off;
 //! - switching to Managed Fair Play: off (the library offers only conversion to Custom).
 
@@ -17,7 +16,6 @@ use std::path::Path;
 
 use ooze_launcher_core::api::{ErrorCode, LauncherError as CoreError};
 use ooze_launcher_core::library as sl;
-use ooze_ui::theme_doc::ThemeDoc;
 
 use crate::library::*;
 
@@ -196,6 +194,18 @@ impl CoreLibrary {
                     id: id.clone(),
                     profile: s.instance.profile.document.clone(),
                     revision: s.instance.revision,
+                }
+            }
+            (LibCommand::ListWorlds(_), sl::Reply::Worlds { instance, worlds }) => {
+                LibPayload::Worlds {
+                    instance: InstanceId(instance.0),
+                    worlds: worlds
+                        .into_iter()
+                        .map(|w| World {
+                            key: w.key,
+                            name: w.name,
+                        })
+                        .collect(),
                 }
             }
             (LibCommand::Search(query), sl::Reply::Search(page)) => {
@@ -408,10 +418,10 @@ impl LibraryBackend for CoreLibrary {
                 record_id,
                 enabled,
             } => self.start(
-                sl::Command::SetEnabled {
+                sl::Command::ChangeContent {
                     instance: id(instance),
-                    project: record_id.clone(),
-                    enabled: *enabled,
+                    record_id: record_id.clone(),
+                    enabled: Some(*enabled),
                 },
                 plain(&c),
             ),
@@ -419,19 +429,25 @@ impl LibraryBackend for CoreLibrary {
                 instance,
                 record_id,
             } => self.start(
-                sl::Command::RemoveContent {
+                sl::Command::ChangeContent {
                     instance: id(instance),
-                    project: record_id.clone(),
+                    record_id: record_id.clone(),
+                    enabled: None,
                 },
                 plain(&c),
             ),
             LibCommand::CheckIntegrity(i) => self.start(sl::Command::Verify(id(i)), plain(&c)),
+            LibCommand::SaveTheme(document) => self.start(
+                sl::Command::SaveAppearance(sl::Appearance {
+                    document: document.clone(),
+                }),
+                plain(&c),
+            ),
+            LibCommand::ListWorlds(i) => self.start(sl::Command::ListWorlds(id(i)), plain(&c)),
             // Not offered by this library: the interface never shows these (capabilities and
             // per-instance actions exclude them), so reaching here is a programming error.
             LibCommand::SetMode { .. }
             | LibCommand::Install(_)
-            | LibCommand::SaveTheme(_)
-            | LibCommand::ListWorlds(_)
             | LibCommand::Update { .. }
             | LibCommand::Resolve { .. } => Err(LibError::new(LibErrorKind::Invalid)),
         }
@@ -446,15 +462,42 @@ impl LibraryBackend for CoreLibrary {
 
     fn drain_events(&mut self, out: &mut Vec<LibEvent>) {
         while let Some(event) = self.lib.try_event() {
-            if let sl::Event::Finished { id, result } = event {
-                self.on_finished(id, result);
+            match event {
+                sl::Event::Finished { id, result } => self.on_finished(id, result),
+                sl::Event::Progress {
+                    id,
+                    stage,
+                    done,
+                    total,
+                    item,
+                } => {
+                    if let Some((pending_id, op, _)) = &self.pending
+                        && *pending_id == id
+                    {
+                        self.out.push_back(LibEvent::Progress {
+                            op: *op,
+                            progress: LibProgress {
+                                step: match stage {
+                                    sl::ProgressStage::Contacting => LibStep::Contacting,
+                                    sl::ProgressStage::Downloading => LibStep::Downloading,
+                                    sl::ProgressStage::Verifying => LibStep::Verifying,
+                                    sl::ProgressStage::Committing => LibStep::Committing,
+                                },
+                                done,
+                                total,
+                                item,
+                            },
+                        });
+                    }
+                }
+                sl::Event::Started { .. } => {}
             }
         }
         out.extend(self.out.drain(..));
     }
 
-    fn wants_polling(&self) -> bool {
-        true
+    fn set_waker(&mut self, waker: crate::api::Waker) {
+        self.lib.set_notify(waker);
     }
 }
 
@@ -575,7 +618,7 @@ fn offered_kinds(caps: &sl::Capabilities) -> Vec<ContentKind> {
     caps.content_kinds
         .iter()
         .map(|k| from_core_kind(*k))
-        .filter(|k| *k != ContentKind::DataPack)
+        .filter(|k| *k != ContentKind::DataPack || caps.world_listing)
         .collect()
 }
 
@@ -638,14 +681,14 @@ pub fn map_snapshot(raw: &sl::Snapshot, caps: &sl::Capabilities) -> LibrarySnaps
             // Real or absent: module switches appear only once the game can run modules
             // (`runtime_modules` from the library; empty until M0).
             profiles: !caps.runtime_modules.is_empty(),
-            themes: false,
+            themes: caps.appearance,
             content: offered,
             managed_mode: false,
             sort: false,
         },
         instances,
         selected: raw.selected.as_ref().map(|i| InstanceId(i.0.clone())),
-        theme: ThemeDoc::default(),
+        theme: raw.appearance.document.clone(),
     }
 }
 
@@ -737,7 +780,7 @@ fn installed_items(receipts: &[sl::ContentReceipt], kind: ContentKind) -> Vec<In
                 .and_then(|rest| rest.split('/').next())
                 .map(str::to_owned);
             InstalledItem {
-                record_id: r.project.clone(),
+                record_id: r.path.clone(),
                 kind,
                 title: file.clone(),
                 version_number: r.version.clone(),
@@ -783,6 +826,59 @@ fn map_integrity(r: &sl::IntegrityReport) -> IntegrityReport {
 mod tests {
     use super::*;
 
+    #[test]
+    fn global_appearance_and_opaque_local_worlds_use_the_real_library() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        let dir = temp_dir("appearance-worlds");
+        let mut lib = CoreLibrary::open(&dir).unwrap();
+        let woke = Arc::new(AtomicBool::new(false));
+        let worker_woke = Arc::clone(&woke);
+        lib.set_waker(Box::new(move || {
+            worker_woke.store(true, Ordering::Release);
+        }));
+        let mut doc = ooze_ui::theme_doc::ThemeDoc::default();
+        doc.motion = ooze_ui::theme_doc::Motion::Off;
+        doc.ui_scale = 125;
+        let op = lib.submit(LibCommand::SaveTheme(doc.clone())).unwrap();
+        assert_eq!(wait(&mut lib, op), Ok(LibPayload::Done));
+        assert!(woke.load(Ordering::Acquire));
+        assert_eq!(lib.snapshot().theme, doc);
+        let op = lib
+            .submit(LibCommand::Create {
+                name: "World test".into(),
+                target: from_core_target(&sl::Target::vanilla()),
+            })
+            .unwrap();
+        let Ok(LibPayload::Created(id)) = wait(&mut lib, op) else {
+            panic!("created")
+        };
+        let game = lib.snapshot().instance(&id).unwrap().game_dir.clone();
+        let world = game.join("saves").join("Local world");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::write(world.join("level.dat"), b"fixture").unwrap();
+        let op = lib.submit(LibCommand::ListWorlds(id.clone())).unwrap();
+        let Ok(LibPayload::Worlds { instance, worlds }) = wait(&mut lib, op) else {
+            panic!("worlds")
+        };
+        assert_eq!(instance, id);
+        assert_eq!(worlds.len(), 1);
+        assert_eq!(worlds[0].name, "Local world");
+        assert!(worlds[0].key.starts_with("world:"));
+        assert!(!worlds[0].key.contains("Local world"));
+        drop(lib);
+        let lib = CoreLibrary::open(&dir).unwrap();
+        assert_eq!(
+            lib.snapshot().theme,
+            doc,
+            "persisted independently of instances and legacy prefs"
+        );
+        drop(lib);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     fn temp_dir(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "ooze-ui-lib-{tag}-{}-{}",
@@ -823,14 +919,8 @@ mod tests {
             !caps.profiles,
             "no module switches before the game can run modules"
         );
-        assert!(
-            !caps.themes,
-            "hidden until the library persists ooze.theme/1"
-        );
-        assert!(
-            !caps.content.contains(&ContentKind::DataPack),
-            "no world list yet"
-        );
+        assert!(caps.themes);
+        assert!(caps.content.contains(&ContentKind::DataPack));
         assert_eq!(caps.create.len(), 2);
 
         let fabric = caps.create[0].clone();

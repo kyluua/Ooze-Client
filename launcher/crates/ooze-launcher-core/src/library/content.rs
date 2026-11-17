@@ -621,17 +621,52 @@ fn change(
     enabled: Option<bool>,
     check: &dyn Fn() -> Result<()>,
 ) -> Result<()> {
-    change_reported(store, id, project, enabled, check, &|_, _, _, _| Ok(()))
+    change_reported(
+        store,
+        id,
+        Selection::Project(project),
+        enabled,
+        check,
+        &|_, _, _, _| Ok(()),
+    )
 }
+pub(super) enum Selection<'a> {
+    Project(&'a str),
+    Record(&'a str),
+}
+impl Selection<'_> {
+    fn matches(&self, receipt: &ContentReceipt) -> bool {
+        match self {
+            Self::Project(project) => receipt.project == *project,
+            Self::Record(path) => receipt.path == *path,
+        }
+    }
+}
+
+fn same_scope(a: &ContentReceipt, b: &ContentReceipt) -> bool {
+    match (a.kind, b.kind) {
+        (ContentKind::Datapack, ContentKind::Datapack) => {
+            a.path.rsplit_once('/').map(|p| p.0) == b.path.rsplit_once('/').map(|p| p.0)
+        }
+        (ContentKind::Datapack, _) | (_, ContentKind::Datapack) => false,
+        _ => true,
+    }
+}
+
 pub(super) fn change_reported(
     store: &Store,
     id: &Id,
-    project: &str,
+    selection: Selection<'_>,
     enabled: Option<bool>,
     check: &dyn Fn() -> Result<()>,
     report: Reporter<'_>,
 ) -> Result<()> {
-    modrinth::identifier(project)?;
+    match &selection {
+        Selection::Project(project) => modrinth::identifier(project)?,
+        Selection::Record(path) => {
+            util::relative(path)?;
+        }
+    }
     let (before, _lock) = store.claim(id)?;
     if before.mode == Mode::Managed {
         return Err(invalid(
@@ -639,9 +674,18 @@ pub(super) fn change_reported(
         ));
     }
     if enabled != Some(true)
-        && before.content.iter().any(|r| {
-            r.enabled && r.project != project && r.required_projects.iter().any(|p| p == project)
-        })
+        && before
+            .content
+            .iter()
+            .filter(|r| selection.matches(r))
+            .any(|target| {
+                before.content.iter().any(|r| {
+                    r.enabled
+                        && r.project != target.project
+                        && same_scope(r, target)
+                        && r.required_projects.iter().any(|p| p == &target.project)
+                })
+            })
     {
         return Err(invalid(
             "Other enabled content requires this project. Disable or remove those dependents first.",
@@ -653,7 +697,7 @@ pub(super) fn change_reported(
     let selected: Vec<_> = before
         .content
         .iter()
-        .filter(|r| r.project == project)
+        .filter(|r| selection.matches(r))
         .cloned()
         .collect();
     if selected.is_empty() {
@@ -667,7 +711,10 @@ pub(super) fn change_reported(
             if enable
                 && receipt.required_projects.iter().any(|p| {
                     !(before.target.ooze && p == "P7dR8mSH")
-                        && !before.content.iter().any(|r| r.enabled && &r.project == p)
+                        && !before
+                            .content
+                            .iter()
+                            .any(|r| r.enabled && &r.project == p && same_scope(r, &receipt))
                 })
             {
                 return Err(invalid("Enable required dependencies first."));
@@ -893,6 +940,78 @@ mod tests {
         change(&store, &id, "A", None, &|| Ok(())).unwrap();
         assert!(!store.game(&id).unwrap().join("mods/a.jar").exists());
         assert!(store.game(&copy).unwrap().join("mods/a.jar").exists());
+    }
+    #[test]
+    fn one_data_pack_record_cannot_toggle_or_remove_another_worlds_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let id = store
+            .create(
+                "World scope".into(),
+                Target::vanilla(),
+                Preset::Minimal,
+                Mode::Custom,
+            )
+            .unwrap();
+        let game = store.game(&id).unwrap();
+        let mut instance = store.instance(&id).unwrap();
+        for name in ["one", "two"] {
+            let relative = format!("saves/{name}/datapacks/a.zip");
+            let file = game.join(&relative);
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::write(&file, b"verified").unwrap();
+            fs::write(game.join(format!("saves/{name}/level.dat")), b"preserve").unwrap();
+            instance.content.push(ContentReceipt {
+                project: "A".into(),
+                version: "a".into(),
+                kind: ContentKind::Datapack,
+                path: relative,
+                size: 8,
+                sha512: hash(&file, &|| Ok(())).unwrap(),
+                enabled: true,
+                required_projects: Vec::new(),
+                required_versions: BTreeMap::new(),
+            });
+        }
+        store.save(&mut instance).unwrap();
+        let report = |_, _, _, _: Option<&str>| Ok(());
+        change_reported(
+            &store,
+            &id,
+            Selection::Record("saves/one/datapacks/a.zip"),
+            Some(false),
+            &|| Ok(()),
+            &report,
+        )
+        .unwrap();
+        assert!(game.join("saves/one/datapacks/a.zip.disabled").is_file());
+        assert!(game.join("saves/two/datapacks/a.zip").is_file());
+        assert!(
+            change_reported(
+                &store,
+                &id,
+                Selection::Record("saves/one/level.dat"),
+                None,
+                &|| Ok(()),
+                &report
+            )
+            .is_err()
+        );
+        change_reported(
+            &store,
+            &id,
+            Selection::Record("saves/one/datapacks/a.zip.disabled"),
+            None,
+            &|| Ok(()),
+            &report,
+        )
+        .unwrap();
+        assert_eq!(store.instance(&id).unwrap().content.len(), 1);
+        assert!(game.join("saves/two/datapacks/a.zip").is_file());
+        assert_eq!(
+            fs::read(game.join("saves/one/level.dat")).unwrap(),
+            b"preserve"
+        );
     }
     #[test]
     fn interrupted_content_replacement_rolls_back_and_rejects_unrelated_paths() {

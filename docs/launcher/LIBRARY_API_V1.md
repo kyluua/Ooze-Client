@@ -5,6 +5,27 @@ Owner: Sol. This additive Rust source API is exposed as
 The implementation and verification status is recorded in SOL-L1.md; this
 contract alone is not execution evidence.
 
+## Launcher integration continuation (2026-11-16)
+
+The desktop adapter now maps global `SaveAppearance`, `ListWorlds`, all four
+progress stages and `set_notify` to the window. Global `ooze.theme/1` is the
+authority for appearance, including motion and scale; the old UI-preferences
+motion/scale fields remain only for running without the library.
+
+`Command::ChangeContent { instance, record_id, enabled: Option<bool> }` edits
+one exact recorded receipt. `Some` enables/disables it, `None` removes it.
+Its opaque record identity currently equals the receipt's instance-relative
+path, and must match an existing receipt exactly. Arbitrary filesystem paths
+are never adopted. A toggle changes the path/identity (`.disabled`); refresh
+the installed list before another action. The older project-based CLI commands
+retain their documented all-records scope. Data-pack dependencies are scoped to
+the same local world. UI controls use the new single-record command.
+
+Selection is confirmed by the library before API 1 settings are submitted. Play
+and installation are gated on the selected game directory matching the completed
+API 1 settings; failed saves require an explicit retry. Selection is unavailable
+while API 1 is busy or a game is live. See SOL-L1-END-TO-END.md for actual checks.
+
 ## Facade and ownership
 
 `Library::open(data_dir)` performs bounded local startup I/O. Call it off the

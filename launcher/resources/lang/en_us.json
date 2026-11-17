@@ -36,6 +36,7 @@
   "play.action.install": "Install",
   "play.action.repair": "Repair",
   "play.action.play": "Play",
+  "play.instance_mismatch": "Select this instance for Play to save its game directory before installing or launching.",
   "play.action.signing_in": "Signing in…",
   "play.action.preparing": "Installing…",
   "play.action.launching": "Starting…",
