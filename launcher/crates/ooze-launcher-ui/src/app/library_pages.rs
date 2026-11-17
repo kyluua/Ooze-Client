@@ -2362,18 +2362,34 @@ impl LauncherApp {
             ],
             &mut doc.background,
         );
-        kit.segmented(
+        let follow_system = self
+            .model
+            .system
+            .as_ref()
+            .is_some_and(|s| s.system_reduced_motion.is_some());
+        let mut motion_options = Vec::with_capacity(4);
+        if follow_system {
+            motion_options.push((Motion::System, kit.t("settings.a11y.motion.system")));
+        }
+        motion_options.extend([
+            (Motion::Full, kit.t("settings.a11y.motion.full")),
+            (Motion::Reduced, kit.t("settings.a11y.motion.reduced")),
+            (Motion::Off, kit.t("settings.a11y.motion.off")),
+        ]);
+        let mut shown_motion = if doc.motion == Motion::System && !follow_system {
+            Motion::Full
+        } else {
+            doc.motion
+        };
+        if kit.segmented(
             ui,
             "appearance-motion",
             kit.t("appearance.motion"),
-            &[
-                (Motion::System, kit.t("settings.a11y.motion.system")),
-                (Motion::Full, kit.t("settings.a11y.motion.full")),
-                (Motion::Reduced, kit.t("settings.a11y.motion.reduced")),
-                (Motion::Off, kit.t("settings.a11y.motion.off")),
-            ],
-            &mut doc.motion,
-        );
+            &motion_options,
+            &mut shown_motion,
+        ) {
+            doc.motion = shown_motion;
+        }
         ui.add_space(th.space.md);
 
         // Live preview: the whole window already shows the draft; this card gathers the parts.

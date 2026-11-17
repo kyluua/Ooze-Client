@@ -65,6 +65,7 @@ impl CoreLibrary {
     /// window opens, beside `CoreBackend::open`).
     pub fn open(data_dir: &Path) -> Result<Self, LibError> {
         let lib = sl::Library::open(data_dir).map_err(|e| map_error(&e))?;
+        migrate_legacy_appearance(&lib, data_dir)?;
         let raw = lib.snapshot();
         let caps = lib.capabilities();
         let snap = map_snapshot(&raw, &caps);
@@ -277,6 +278,59 @@ impl CoreLibrary {
             _ => return Err(unexpected()),
         })
     }
+}
+
+/// Bounded, local-only startup migration, before the window/paint loop exists.
+/// The old preference bytes stay intact; all new persistence goes through the library API.
+fn migrate_legacy_appearance(lib: &sl::Library, data: &Path) -> Result<(), LibError> {
+    use std::io::Read;
+    if data.join("library/appearance.json").exists() {
+        return Ok(());
+    }
+    let Ok(file) = std::fs::File::open(data.join("ui-preferences.json")) else {
+        return Ok(());
+    };
+    let mut bytes = Vec::new();
+    if file.take(65537).read_to_end(&mut bytes).is_err() || bytes.len() > 65536 {
+        return Ok(());
+    }
+    let Ok(prefs) = serde_json::from_slice::<crate::core_backend::UiPrefs>(&bytes) else {
+        return Ok(());
+    };
+    if prefs.schema != 1 || !ooze_ui::theme_doc::UI_SCALES.contains(&prefs.ui_scale_percent) {
+        return Ok(());
+    }
+    let motion = match prefs.motion.as_str() {
+        "off" => ooze_ui::theme_doc::Motion::Off,
+        "reduced" => ooze_ui::theme_doc::Motion::Reduced,
+        "full" => ooze_ui::theme_doc::Motion::Full,
+        _ => return Ok(()),
+    };
+    let document = ooze_ui::theme_doc::ThemeDoc {
+        motion,
+        ui_scale: prefs.ui_scale_percent,
+        ..Default::default()
+    };
+    let op = lib
+        .submit(sl::Command::SaveAppearance(sl::Appearance { document }))
+        .map_err(|e| map_error(&e))?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    while std::time::Instant::now() < deadline {
+        if let Some(sl::Event::Finished { id, result }) = lib.try_event()
+            && id == op
+        {
+            return result.map(|_| ()).map_err(|e| map_error(&e));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    Err(LibError {
+        kind: LibErrorKind::Config,
+        detail: Some(
+            "Appearance migration timed out; the original interface preferences were preserved."
+                .into(),
+        ),
+        retry_after_s: None,
+    })
 }
 
 impl LibraryBackend for CoreLibrary {
@@ -890,6 +944,37 @@ fn map_integrity(r: &sl::IntegrityReport) -> IntegrityReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_motion_and_scale_migrate_once_without_changing_the_original_preferences() {
+        let dir = temp_dir("legacy-appearance");
+        let path = dir.join("ui-preferences.json");
+        let prefs = crate::core_backend::UiPrefs {
+            motion: "off".into(),
+            ui_scale_percent: 125,
+            ..Default::default()
+        };
+        prefs.save(&path).unwrap();
+        let original = std::fs::read(&path).unwrap();
+        let mut lib = CoreLibrary::open(&dir).unwrap();
+        let mut doc = lib.snapshot().theme;
+        assert_eq!(doc.motion, ooze_ui::theme_doc::Motion::Off);
+        assert_eq!(doc.ui_scale, 125);
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        doc.motion = ooze_ui::theme_doc::Motion::Reduced;
+        let op = lib.submit(LibCommand::SaveTheme(doc.clone())).unwrap();
+        wait(&mut lib, op).unwrap();
+        drop(lib);
+        let lib = CoreLibrary::open(&dir).unwrap();
+        assert_eq!(
+            lib.snapshot().theme,
+            doc,
+            "a global theme takes precedence over legacy preferences"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        drop(lib);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn global_appearance_and_opaque_local_worlds_use_the_real_library() {

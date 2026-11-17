@@ -116,6 +116,26 @@ fn without_a_library_the_launcher_has_no_library_pages() {
 }
 
 #[test]
+fn appearance_only_offers_system_motion_when_the_backend_can_read_it() {
+    let (mut h, handle, _) = harness(Some(fx::snapshot()));
+    let mut changed = snapshot();
+    changed.system.system_reduced_motion = None;
+    handle.push(Event::Snapshot(Box::new(changed)));
+    steps(&mut h);
+    go(&mut h, "Appearance");
+    assert_eq!(
+        h.query_all_by_role_and_label(Role::RadioButton, "Follow Windows")
+            .count(),
+        0
+    );
+    assert!(
+        h.query_all_by_role_and_label(Role::RadioButton, "Full")
+            .count()
+            > 0
+    );
+}
+
+#[test]
 fn an_empty_or_archived_library_cannot_play_the_previous_game_directory() {
     let mut library = fx::snapshot();
     library.instances.clear();

@@ -11,6 +11,11 @@ The desktop adapter now maps global `SaveAppearance`, `ListWorlds`, all four
 progress stages and `set_notify` to the window. Global `ooze.theme/1` is the
 authority for appearance, including motion and scale; the old UI-preferences
 motion/scale fields remain only for running without the library.
+Before opening the window, the desktop migrates valid schema-1 legacy motion/scale
+preferences once through SaveAppearance when no global appearance file exists.
+The original preference bytes are retained, and an existing global theme always
+wins. Invalid/oversized legacy documents are not adopted. System motion is offered
+only when API 1 reports the platform preference; otherwise System resolves to Full.
 
 `Command::ChangeContent { instance, record_id, enabled: Option<bool> }` edits
 one exact recorded receipt. `Some` enables/disables it, `None` removes it.
