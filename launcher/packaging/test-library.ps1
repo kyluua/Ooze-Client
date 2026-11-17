@@ -29,6 +29,15 @@ $verify=Invoke-Library @('verify',$id)
 if($verify.Integrity.issues.Count -ne 0 -or $verify.Integrity.verified_files -ne 2){throw 'Installed hashes failed verification'}
 $null=Invoke-Library @('disable',$id,'YL57xq9U')
 $null=Invoke-Library @('enable',$id,'YL57xq9U')
+$installed=Invoke-Library @('list')
+$target=@($installed.instances|Where-Object {$_.instance.id -eq $id})[0]
+$iris=@($target.instance.content|Where-Object project -eq 'YL57xq9U')[0]
+[IO.File]::AppendAllText((Join-Path $target.game_dir $iris.path),'controlled modified-file fixture')
+$verify=Invoke-Library @('verify',$id)
+if($verify.Integrity.issues.Count -eq 0){throw 'Changed registered content was not detected'}
+$null=Invoke-Library @('repair',$id,'YL57xq9U')
+$verify=Invoke-Library @('verify',$id)
+if($verify.Integrity.issues.Count -ne 0){throw 'Explicit content repair failed'}
 $profile=Invoke-Library @('export-profile',$id)
 if($profile.schema -ne 'ooze.profile/1' -or $profile.base -ne 'pvp'){throw 'Canonical profile schema was not persisted'}
 $appearance=Invoke-Library @('appearance')

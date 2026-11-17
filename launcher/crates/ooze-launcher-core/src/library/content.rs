@@ -320,11 +320,12 @@ pub(super) fn recover(store: &Store, id: &Id) -> Result<()> {
     }
     for (index, m) in journal.moves.iter().enumerate() {
         util::relative(&m.path)?;
-        if !current
-            .content
-            .iter()
-            .chain(journal.after.content.iter())
-            .any(|r| r.path == m.path)
+        if (current.revision != journal.after.revision
+            && !current
+                .content
+                .iter()
+                .chain(journal.after.content.iter())
+                .any(|r| r.path == m.path))
             || m.new_file
                 .as_ref()
                 .is_some_and(|n| n != &format!("new-{index}"))
@@ -832,6 +833,19 @@ mod tests {
             fs::read(store.game(&copy).unwrap().join("mods/a.jar")).unwrap(),
             b"verified"
         );
+        change(&store, &id, "A", Some(false), &|| Ok(())).unwrap();
+        assert!(
+            store
+                .game(&id)
+                .unwrap()
+                .join("mods/a.jar.disabled")
+                .is_file()
+        );
+        change(&store, &id, "A", Some(true), &|| Ok(())).unwrap();
+        assert!(store.game(&id).unwrap().join("mods/a.jar").is_file());
+        change(&store, &id, "A", None, &|| Ok(())).unwrap();
+        assert!(!store.game(&id).unwrap().join("mods/a.jar").exists());
+        assert!(store.game(&copy).unwrap().join("mods/a.jar").exists());
     }
     #[test]
     fn interrupted_content_replacement_rolls_back_and_rejects_unrelated_paths() {
