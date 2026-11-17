@@ -162,7 +162,10 @@ impl Modrinth {
             }
             let value = serde_json::from_slice(&bytes).map_err(|_| metadata_error())?;
             let mut cache = self.cache.lock().map_err(|_| network())?;
-            if cache.len() >= 64 {
+            if cache.len() >= 64
+                || cache.values().map(|(_, bytes)| bytes.len()).sum::<usize>() + bytes.len()
+                    > 16 * 1024 * 1024
+            {
                 cache.clear();
             }
             cache.insert(key, (Instant::now(), bytes));

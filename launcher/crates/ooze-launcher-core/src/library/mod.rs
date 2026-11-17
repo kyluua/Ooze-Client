@@ -128,6 +128,19 @@ pub struct Library {
     events: Receiver<Event>,
 }
 impl Library {
+    pub fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            api_version: LIBRARY_API_VERSION,
+            targets: vec![Target::vanilla(), Target::fabric()],
+            content_kinds: vec![
+                ContentKind::Mod,
+                ContentKind::Resourcepack,
+                ContentKind::Datapack,
+                ContentKind::Shader,
+            ],
+            runtime_modules: Vec::new(),
+        }
+    }
     pub fn open(data_dir: impl AsRef<Path>) -> Result<Self> {
         let data = data_dir.as_ref().to_owned();
         util::absolute(&data)?;

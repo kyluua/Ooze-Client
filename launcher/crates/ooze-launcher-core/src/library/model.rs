@@ -324,6 +324,65 @@ impl Instance {
         let mut projects = std::collections::HashSet::new();
         for c in &self.content {
             crate::util::relative(&c.path)?;
+            super::modrinth::identifier(&c.project)?;
+            super::modrinth::identifier(&c.version)?;
+            if c.required_versions.len() > 128
+                || c.required_projects
+                    .iter()
+                    .any(|p| super::modrinth::identifier(p).is_err())
+                || c.required_versions.iter().any(|(p, v)| {
+                    super::modrinth::identifier(p).is_err()
+                        || super::modrinth::identifier(v).is_err()
+                })
+            {
+                return Err(invalid("Invalid recorded dependency identity."));
+            }
+            let parts: Vec<_> = c.path.split('/').collect();
+            let scope = match c.kind {
+                ContentKind::Datapack
+                    if parts.len() == 4 && parts[0] == "saves" && parts[2] == "datapacks" =>
+                {
+                    parts[1]
+                }
+                ContentKind::Mod | ContentKind::Resourcepack | ContentKind::Shader
+                    if parts.len() == 2 && parts[0] == c.kind.directory() =>
+                {
+                    ""
+                }
+                _ => {
+                    return Err(invalid(
+                        "Content receipts must point only to their kind's pack/mod files.",
+                    ));
+                }
+            };
+            let filename = parts
+                .last()
+                .ok_or_else(|| invalid("Missing content filename."))?;
+            let filename = if c.enabled {
+                if filename.ends_with(".disabled") {
+                    return Err(invalid("Invalid enabled content filename."));
+                }
+                *filename
+            } else {
+                filename
+                    .strip_suffix(".disabled")
+                    .ok_or_else(|| invalid("Invalid disabled content filename."))?
+            };
+            let extension = if c.kind == ContentKind::Mod {
+                ".jar"
+            } else {
+                ".zip"
+            };
+            if !filename.ends_with(extension) {
+                return Err(invalid(
+                    "Content receipt file type does not match its kind.",
+                ));
+            }
+            if !projects.insert((c.project.as_str(), c.kind.api_name(), scope)) {
+                return Err(invalid(
+                    "A project is recorded more than once for one content destination.",
+                ));
+            }
             if !c.path.starts_with("mods/")
                 && !c.path.starts_with("resourcepacks/")
                 && !c.path.starts_with("shaderpacks/")
@@ -334,7 +393,6 @@ impl Instance {
                 ));
             }
             if !paths.insert(c.path.to_ascii_lowercase())
-                || !projects.insert((&c.project, &c.path))
                 || c.size == 0
                 || c.size > 1024 * 1024 * 1024
                 || c.sha512.len() != 128
@@ -367,6 +425,13 @@ pub struct Search {
     pub target: Target,
     pub offset: u32,
     pub limit: u32,
+}
+#[derive(Clone, Debug)]
+pub struct Capabilities {
+    pub api_version: u32,
+    pub targets: Vec<Target>,
+    pub content_kinds: Vec<ContentKind>,
+    pub runtime_modules: Vec<&'static str>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProjectSummary {
@@ -437,6 +502,36 @@ pub struct IntegrityReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn content_receipts_cannot_target_world_or_settings_data() {
+        let mut instance = Instance {
+            schema: 1,
+            id: Id::new(),
+            name: "Test".into(),
+            revision: 1,
+            target: Target::fabric(),
+            mode: Mode::Custom,
+            profile: Profile::new(Preset::Minimal),
+            theme: Theme::default(),
+            archived: false,
+            content: vec![ContentReceipt {
+                project: "A".into(),
+                version: "a".into(),
+                kind: ContentKind::Datapack,
+                path: "saves/world/level.dat".into(),
+                size: 1,
+                sha512: "a".repeat(128),
+                enabled: true,
+                required_projects: Vec::new(),
+                required_versions: BTreeMap::new(),
+            }],
+        };
+        assert!(instance.validate().is_err());
+        instance.content[0].path = "saves/world/datapacks/a.zip".into();
+        instance.validate().unwrap();
+        instance.content[0].kind = ContentKind::Mod;
+        assert!(instance.validate().is_err());
+    }
     #[test]
     fn profiles_preserve_overrides_and_share_product_schema() {
         let mut p = Profile::new(Preset::Pvp);

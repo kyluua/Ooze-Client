@@ -48,6 +48,7 @@ existing bridge harness and Fabric build. Use SOL-L0 for exact run references.
 ./launcher/packaging/prepare-release.ps1 `
   -OozeJar './build/dist/ooze-client-0.1.0-alpha.0+mc1.21.11.jar' `
   -CliExe './launcher/target/release/ooze-launcher-cli.exe' `
+  -GuiExe './launcher/target/release/ooze-launcher.exe' `
   -OutputDirectory './launcher/dist/ooze-l0-windows-x64'
 ```
 
