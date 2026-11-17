@@ -1,0 +1,12 @@
+{
+  "schema": "ooze.preset/1",
+  "id": "fps",
+  "intent": "Restrained effects for frame rate. Suggested performance content is offered separately and never installed automatically.",
+  "overrides": {
+    "modules": {
+      "fps": { "enabled": true, "settings": { "compact": true } }
+    },
+    "hud": {},
+    "visual": { "effects_quality": "low", "ambient_motion": false, "drips": false }
+  }
+}

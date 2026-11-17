@@ -1,0 +1,10 @@
+{
+  "schema": "ooze.preset/1",
+  "id": "minimal",
+  "intent": "A quiet interface: every optional module off.",
+  "overrides": {
+    "modules": {},
+    "hud": {},
+    "visual": { "effects_quality": "medium", "ambient_motion": false }
+  }
+}

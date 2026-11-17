@@ -1,0 +1,16 @@
+[package]
+name = "ooze-ui"
+description = "Ooze product model: module catalog, fair-play classes, typed settings, FPS/PvP/Minimal profiles, HUD layout, input/frame statistics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# Claude-owned crate inside Sol's native workspace (members = crates/*).
+# Standard library only: no third-party packages enter the native lock or the DLL notices.
+
+[dependencies]
+
+[lints]
+workspace = true

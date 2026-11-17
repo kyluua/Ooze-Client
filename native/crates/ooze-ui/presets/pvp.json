@@ -1,0 +1,18 @@
+{
+  "schema": "ooze.preset/1",
+  "id": "pvp",
+  "intent": "Clear combat information: frame rate, keystrokes and CPS, armour, effects, ping and a simple crosshair.",
+  "overrides": {
+    "modules": {
+      "fps": { "enabled": true },
+      "armor": { "enabled": true },
+      "effects": { "enabled": true, "settings": { "compact": true } },
+      "keystrokes": { "enabled": true },
+      "cps": { "enabled": true },
+      "ping": { "enabled": true },
+      "crosshair": { "enabled": true, "settings": { "shape": "cross", "size": 5, "gap": 2, "outline": true } }
+    },
+    "hud": {},
+    "visual": { "effects_quality": "medium" }
+  }
+}
