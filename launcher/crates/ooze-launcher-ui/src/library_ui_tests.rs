@@ -116,6 +116,27 @@ fn without_a_library_the_launcher_has_no_library_pages() {
 }
 
 #[test]
+fn an_empty_or_archived_library_cannot_play_the_previous_game_directory() {
+    let mut library = fx::snapshot();
+    library.instances.clear();
+    library.selected = None;
+    let (mut h, handle, _) = harness(Some(library));
+    assert!(!enabled(&h, "Play"));
+    assert!(shows(
+        &h,
+        "Create or select an instance before installing or playing"
+    ));
+    click(&mut h, Role::Button, "Instances");
+    assert_eq!(h.state().page(), Page::Instances);
+    assert!(
+        !handle
+            .submitted()
+            .iter()
+            .any(|c| matches!(c, Command::Play | Command::Prepare { .. }))
+    );
+}
+
+#[test]
 fn closing_waits_for_a_library_cancellation_or_committed_operation_to_finish() {
     for committing in [false, true] {
         let (mut h, _, lh) = harness(Some(fx::snapshot()));

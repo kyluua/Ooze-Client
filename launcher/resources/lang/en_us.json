@@ -37,6 +37,7 @@
   "play.action.repair": "Repair",
   "play.action.play": "Play",
   "play.instance_mismatch": "Select this instance for Play to save its game directory before installing or launching.",
+  "play.choose_instance": "Create or select an instance before installing or playing.",
   "close.library.title": "A library operation is running",
   "close.library.body": "Cancel the operation and wait for its confirmation before closing?",
   "close.library.wait": "Waiting for the operation to finish. File changes must finish before the launcher closes.",

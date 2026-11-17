@@ -392,16 +392,6 @@ impl LauncherApp {
             settings.install_root = Some(instance.game_dir.clone());
             self.submit(Command::UpdateSettings(settings));
         }
-        if let Some(library) = self.lib.as_mut() {
-            for instance in &mut library.snap.instances {
-                instance.running = self.model.game_live()
-                    && self
-                        .model
-                        .settings
-                        .as_ref()
-                        .is_some_and(|s| s.install_root.as_ref() == Some(&instance.game_dir));
-            }
-        }
         if let Some((instance, kind)) = refresh_content {
             self.lib_submit(crate::library::LibCommand::ListInstalled { instance, kind });
         }
@@ -970,7 +960,9 @@ impl LauncherApp {
             .button_large(
                 ui,
                 kit.t(label),
-                primary.actionable() && self.selection_ready(),
+                primary.actionable()
+                    && (self.selection_ready()
+                        || primary == Primary::SignIn && self.pending_selection.is_none()),
             )
             .clicked()
             && let Some(cmd) = self.model.primary_command()
@@ -978,13 +970,27 @@ impl LauncherApp {
             self.submit(cmd);
         }
         if !self.selection_ready() && !self.lib_busy() && !self.model.busy() {
-            kit.secondary(ui, kit.t("play.instance_mismatch"));
-            if kit
-                .button(ui, kit.t("instances.select"), ButtonKind::Secondary, true)
-                .clicked()
-                && let Some(instance) = self.selected_instance()
-            {
-                self.select_instance(&instance);
+            if let Some(instance) = self.selected_instance() {
+                kit.secondary(ui, kit.t("play.instance_mismatch"));
+                if kit
+                    .button(
+                        ui,
+                        kit.t("instances.select"),
+                        ButtonKind::Secondary,
+                        !instance.running,
+                    )
+                    .clicked()
+                {
+                    self.select_instance(&instance);
+                }
+            } else {
+                kit.secondary(ui, kit.t("play.choose_instance"));
+                if kit
+                    .button(ui, kit.t("nav.instances"), ButtonKind::Secondary, true)
+                    .clicked()
+                {
+                    self.page = Page::Instances;
+                }
             }
         }
         ui.add_space(th.space.lg);

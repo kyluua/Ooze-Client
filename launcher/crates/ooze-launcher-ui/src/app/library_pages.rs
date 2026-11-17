@@ -186,20 +186,37 @@ impl LauncherApp {
     }
 
     pub(super) fn selected_instance(&self) -> Option<InstanceSummary> {
-        self.lib.as_ref().and_then(|m| m.snap.selected().cloned())
+        self.lib
+            .as_ref()
+            .and_then(|m| m.snap.selected().cloned())
+            .map(|i| self.with_running_state(i))
+    }
+
+    fn with_running_state(&self, mut instance: InstanceSummary) -> InstanceSummary {
+        instance.running |= self.model.game_live()
+            && self
+                .model
+                .settings
+                .as_ref()
+                .is_some_and(|s| s.install_root.as_ref() == Some(&instance.game_dir));
+        instance
     }
 
     pub(super) fn selection_ready(&self) -> bool {
         self.pending_selection.is_none()
             && !self.lib_busy()
-            && self.selected_instance().is_none_or(|i| {
-                !self.model.busy()
-                    && self
-                        .model
-                        .settings
-                        .as_ref()
-                        .is_some_and(|s| s.install_root.as_ref() == Some(&i.game_dir))
-            })
+            && self.selected_instance().map_or_else(
+                || self.lib.as_ref().is_none_or(|m| !m.caps().instances),
+                |i| {
+                    !self.model.busy()
+                        && !i.running
+                        && self
+                            .model
+                            .settings
+                            .as_ref()
+                            .is_some_and(|s| s.install_root.as_ref() == Some(&i.game_dir))
+                },
+            )
     }
 
     /// Which library pages are available now (navigation and routing both use this).
@@ -393,9 +410,10 @@ impl LauncherApp {
             ui.add_space(th.space.md);
         }
         for inst in &snap.instances {
+            let inst = self.with_running_state(inst.clone());
             let selected = snap.selected.as_ref() == Some(&inst.id);
             kit.card(ui, crate::paint::Surface::Card, |ui| {
-                self.instance_row(ui, kit, inst, selected, busy, &snap.capabilities);
+                self.instance_row(ui, kit, &inst, selected, busy, &snap.capabilities);
             });
             ui.add_space(th.space.sm);
         }
@@ -564,7 +582,7 @@ impl LauncherApp {
                         ui,
                         kit.t("instances.select"),
                         ButtonKind::Primary,
-                        !busy && !self.model.busy(),
+                        !busy && !self.model.busy() && !inst.running,
                     )
                     .clicked()
             {
