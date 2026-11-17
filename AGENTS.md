@@ -19,6 +19,13 @@ The specification in `docs/` is the source of truth. Implement it milestone by m
 > - Inside the Fabric mod the old security boundary stays: no tokens in the JNI engine; only non-secret display metadata.
 > - From now on **all agents work on `main`**.
 
+> **Temporary distribution decision (2026-11-17, owner, chat):**
+> "we can do a modpack for now"
+> - Deliver a Prism-importable `.mrpack` containing the real Ooze Fabric mod and its required dependencies while independent-launcher Minecraft access is unresolved.
+> - Prism owns sign-in, credentials and game launching for this route. Ooze must not borrow its client ID or read its credential store.
+> - Preserve the independent Ooze launcher. This temporary route does **not** complete its authentication or Gate L acceptance.
+> - Sol owns pack export/packaging and checks; Claude owns Fabric production inputs, product documentation and in-game validation. Coordinate through `docs/handoffs/SOL-MP0-CLAUDE-REQUEST.md` before changing shared interfaces.
+
 > **Launcher integration ownership update (2026-11-16, owner, chat):**
 > “Yes—finish the launcher end to end.” Sol/Codex may implement the remaining
 > launcher interface and resources as well as its backend during the end-to-end
