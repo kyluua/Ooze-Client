@@ -654,19 +654,27 @@ pub(crate) fn recover_game(game: &Path) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn validate_game_settings(settings: &crate::api::Settings) -> Result<()> {
+    if let Some(instance) = store::for_game(&settings.instance_dir)?
+        && instance.mode == Mode::Managed
+        && settings.java_path.is_some()
+    {
+        return Err(invalid(
+            "Managed mode requires the release's verified managed Java runtime. Choose managed Java or explicitly convert the instance to Custom.",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn verify_prepared(
     settings: &crate::api::Settings,
     prepared: &crate::install::Prepared,
     check: &dyn Fn() -> Result<()>,
 ) -> Result<()> {
+    validate_game_settings(settings)?;
     if let Some(instance) = store::for_game(&settings.instance_dir)?
         && instance.mode == Mode::Managed
     {
-        if settings.java_path.is_some() {
-            return Err(invalid(
-                "Managed mode requires the release's verified managed Java runtime. Use Custom for a user-supplied runtime.",
-            ));
-        }
         let mods = util::join(&prepared.root, "mods")?;
         let approved: std::collections::BTreeSet<_> = prepared
             .installation
@@ -696,6 +704,35 @@ pub(crate) fn verify_prepared(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn managed_java_is_checked_before_any_runtime_validation() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store::Store::open(dir.path()).unwrap();
+        let id = store
+            .create(
+                "Managed".into(),
+                Target::fabric(),
+                Preset::Minimal,
+                Mode::Managed,
+            )
+            .unwrap();
+        let mut settings = crate::api::Settings {
+            instance_dir: store.game(&id).unwrap(),
+            java_path: Some(dir.path().join("unvalidated-java.exe")),
+            memory_mib: 4096,
+        };
+        assert_eq!(
+            validate_game_settings(&settings).unwrap_err().code,
+            ErrorCode::Configuration
+        );
+        settings.java_path = None;
+        validate_game_settings(&settings).unwrap();
+        let mut instance = store.instance(&id).unwrap();
+        instance.mode = Mode::Custom;
+        store.save(&mut instance).unwrap();
+        settings.java_path = Some(dir.path().join("custom-java.exe"));
+        validate_game_settings(&settings).unwrap();
+    }
     #[test]
     fn durable_commit_progress_closes_cancellation_before_finished() {
         let dir = tempfile::tempdir().unwrap();

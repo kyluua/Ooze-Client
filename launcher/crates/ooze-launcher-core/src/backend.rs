@@ -309,6 +309,7 @@ impl Context {
             .saved
             .settings
             .clone();
+        crate::library::validate_game_settings(&settings)?;
         let session = if matches!(command, LauncherCommand::Launch) {
             self.progress(Stage::Authorizing, 0, None);
             let session = auth::authenticate(
@@ -387,6 +388,7 @@ fn validate_settings(settings: &Settings) -> Result<()> {
     if let Some(java) = &settings.java_path {
         util::absolute(java)?;
     }
+    crate::library::validate_game_settings(settings)?;
     Ok(())
 }
 
