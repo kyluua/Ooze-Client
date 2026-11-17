@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "owner": "Sol/Codex",
+  "client_date": "2026-11-16",
+  "timezone": "America/Los_Angeles",
+  "code_commit": "e82b5989ab41269106442b527202e301926874c6",
+  "base_commit": "22d0e2067b578bffa95d9f71a51960e15d2d156b",
+  "workflow_run": 44026232354,
+  "jobs": [133847130307, 133848674232],
+  "workflow_conclusion": "success",
+  "platform": "Windows x64 / x86_64-pc-windows-msvc",
+  "contracts": {"launcher_api": 1, "library_api": 1, "jni_abi": 1},
+  "checks": {
+    "backend_tests_passed": 49,
+    "ui_tests_passed": 95,
+    "ui_tests_ignored": 2,
+    "native_core_tests_passed": 4,
+    "jni_rust_tests_passed": 1,
+    "product_model_tests_passed": 24,
+    "java_runtime": "21.0.13+9-LTS / amd64",
+    "java_bridge_assertions_per_harness_run": 20323,
+    "java_bridge_harness_runs": 2,
+    "live_modrinth_search_types": ["mod", "resourcepack", "datapack", "shader"],
+    "iris_sodium_install_disable_enable_tamper_repair": true,
+    "real_library_ui_appearance_and_worlds": true,
+    "legacy_appearance_migration": true,
+    "managed_java_install_repair_targets": ["Fabric 0.20.1 / Minecraft 1.21.11", "Vanilla / Minecraft 1.21.11"],
+    "pinned_package_repeat": true,
+    "local_verified_package_files": 598,
+    "dependency_notice_entries": 332
+  },
+  "artifact": {
+    "id": 14303633163,
+    "name": "ooze-launcher-windows-x64",
+    "size_bytes": 13978979,
+    "zip_sha256": "731361d9759f31c43d4c379e70ca73d43717f8dcf5293281142ce5eec3e5a543",
+    "gui_sha256": "d7db14db5c7bc34a39976e46d97492adce9b02159cbb92e0903f6f17c090a5ba",
+    "cli_sha256": "c18eedcb5735039d31624160b475c27bbb34b07faf99e20e3260ef4d3eb0ed71",
+    "ooze_jar_sha256": "30a48105d552fa9e1e408615ce999e37fb7f3d14958743cae813da5a830ad6d2"
+  },
+  "renderer_evidence": {
+    "artifact_id": 14303488225,
+    "png_files": 28,
+    "zip_sha256": "0bd861edae3eff6ae912a34b5d2836bad0a8953c8d0febdb6dde79da8f154e01",
+    "real_appearance_png_sha256": "97fa0d73f213b934ef4d11a59a60e2536496413b84cdb6c8ac633f35a17086b5",
+    "real_worlds_png_sha256": "89e7c3a1b1e1c81c5e5912723413f20e022762c42e9f7890424b39e2935cf287",
+    "desktop_window_verified": false,
+    "api_1_platform_account_state_is_fixture_in_real_library_ui_test": true
+  },
+  "local_runtime": {
+    "cli_executed": false,
+    "cli_block": "Windows Application Control blocked the packaged CLI before execution",
+    "dedicated_library_smoke_directory_created": false,
+    "gui_executed": false,
+    "earlier_gui_automatic_approval_block": "blocked by policy",
+    "local_rust_build_block": "Windows Application Control 4551 on a dependency build script",
+    "policy_changed_or_bypassed": false
+  },
+  "microsoft_application_approval": "Owner confirms no approval received; no new live authentication retry",
+  "not_established": ["completed Minecraft sign-in", "signed-in Minecraft title-screen launch", "in-game modules", "other loaders/versions", "Narrator pass", "GUI/JNI/GPU performance budgets", "FPS gains"]
+}
