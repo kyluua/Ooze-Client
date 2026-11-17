@@ -102,6 +102,7 @@ impl Store {
             instances,
             selected: index.selected,
             active_operation: None,
+            appearance: self.appearance()?,
         })
     }
     pub fn save(&self, value: &mut Instance) -> Result<()> {
@@ -114,6 +115,16 @@ impl Store {
             &util::join(&self.container(&value.id)?, "instance.json")?,
             value,
         )
+    }
+    pub fn appearance(&self) -> Result<super::Appearance> {
+        let path = util::join(&self.root, "appearance.json")?;
+        let appearance: super::Appearance = if path.is_file() {
+            util::read_json(&path)?
+        } else {
+            super::Appearance::default()
+        };
+        appearance.validate()?;
+        Ok(appearance)
     }
     pub fn claim(&self, id: &Id) -> Result<(Instance, fs::File)> {
         let instance = self.instance(id)?;
@@ -295,6 +306,29 @@ pub(crate) fn for_game(game: &Path) -> Result<Option<Instance>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn appearance_is_global_and_independent_of_instance_selection() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let a = store
+            .create("A".into(), Target::fabric(), Preset::Fps, Mode::Custom)
+            .unwrap();
+        let b = store
+            .create("B".into(), Target::vanilla(), Preset::Minimal, Mode::Custom)
+            .unwrap();
+        let mut appearance = super::super::Appearance::default();
+        appearance.document.motion = ooze_ui::theme_doc::Motion::Reduced;
+        appearance.document.ui_scale = 125;
+        util::atomic_json(
+            &util::join(&store.root, "appearance.json").unwrap(),
+            &appearance,
+        )
+        .unwrap();
+        store.select(&a).unwrap();
+        assert_eq!(store.snapshot().unwrap().appearance, appearance);
+        store.select(&b).unwrap();
+        assert_eq!(store.snapshot().unwrap().appearance, appearance);
+    }
     #[test]
     fn cancelled_duplicate_is_never_published() {
         let dir = tempfile::tempdir().unwrap();

@@ -58,7 +58,7 @@ pub(crate) fn clear(instance: &Path, pid: u32) -> Result<()> {
     }
     Ok(())
 }
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
     #[test]

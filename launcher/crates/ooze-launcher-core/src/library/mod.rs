@@ -1,4 +1,5 @@
 //! Additive library API 1. Credentials and Minecraft objects never enter this facade.
+mod appearance;
 mod content;
 mod model;
 mod modrinth;
@@ -7,6 +8,7 @@ use crate::{
     api::{ErrorCode, LauncherError},
     util::{self, Result, error, io_error},
 };
+pub use appearance::Appearance;
 pub use model::*;
 use modrinth::Source;
 use std::{
@@ -22,6 +24,10 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub enum Command {
+    SaveAppearance(Appearance),
+    ImportAppearance(String),
+    ExportAppearance,
+    ListWorlds(Id),
     Create {
         name: String,
         target: Target,
@@ -87,6 +93,10 @@ pub enum Command {
 }
 #[derive(Clone, Debug, serde::Serialize)]
 pub enum Reply {
+    Worlds {
+        instance: Id,
+        worlds: Vec<LocalWorld>,
+    },
     None,
     Instance(Id),
     Search(SearchPage),
@@ -95,7 +105,9 @@ pub enum Reply {
     Plan(PlanSummary),
     Integrity(IntegrityReport),
     Export(String),
-    Imported { warnings: Vec<String> },
+    Imported {
+        warnings: Vec<String>,
+    },
 }
 #[derive(Clone, Debug)]
 pub enum Event {
@@ -131,7 +143,7 @@ impl Library {
     pub fn capabilities(&self) -> Capabilities {
         Capabilities {
             api_version: LIBRARY_API_VERSION,
-            targets: vec![Target::vanilla(), Target::fabric()],
+            targets: vec![Target::fabric(), Target::vanilla()],
             content_kinds: vec![
                 ContentKind::Mod,
                 ContentKind::Resourcepack,
@@ -139,6 +151,8 @@ impl Library {
                 ContentKind::Shader,
             ],
             runtime_modules: Vec::new(),
+            appearance: true,
+            world_listing: true,
         }
     }
     pub fn open(data_dir: impl AsRef<Path>) -> Result<Self> {
@@ -311,6 +325,23 @@ impl Inner {
         check()?;
         let store = store::Store::open(&self.data)?;
         match command {
+            Command::SaveAppearance(appearance) => {
+                appearance.validate()?;
+                util::atomic_json(&util::join(&store.root, "appearance.json")?, &appearance)?;
+                Ok(Reply::None)
+            }
+            Command::ImportAppearance(json) => {
+                let appearance = Appearance::from_json(&json)?;
+                self.execute(Command::SaveAppearance(appearance), check)
+            }
+            Command::ExportAppearance => Ok(Reply::Export(store.appearance()?.to_json())),
+            Command::ListWorlds(id) => {
+                let (_instance, _lock) = store.claim(&id)?;
+                Ok(Reply::Worlds {
+                    instance: id.clone(),
+                    worlds: content::list_worlds(&store.game(&id)?, check)?,
+                })
+            }
             Command::Create {
                 name,
                 target,

@@ -79,6 +79,25 @@ must be at least 4.5:1. It does not pretend to implement the complete in-game
 Imports contain no arbitrary paths, scripts, URLs or plugin code. Contrast and
 numeric validation runs before persistence. UI token consumption remains Claude's.
 
+That per-instance subset is retained for source/stored-data compatibility only.
+After Claude P0 review, the active desktop theme is **global**:
+`Appearance { document: ooze_ui::theme_doc::ThemeDoc }`, serialized directly as
+`ooze.theme/1`, stored at `library/appearance.json`, available in
+`Snapshot.appearance`. Use SaveAppearance, ImportAppearance or ExportAppearance.
+It uses the same canonical token file and validator as the UI, including accent/
+on-accent contrast. It carries base/accent/contrast/text_scale/background/motion/
+ui_scale, no paths, URLs, scripts or custom fonts. Selecting an instance does
+not change it. Existing L0 UiPrefs bytes are preserved; UI preference migration
+and token consumption are Claude-owned. `capabilities().appearance` advertises
+this implemented operation separately from runtime module availability.
+
+`ListWorlds(Id)` returns `Reply::Worlds { instance, worlds }`, each with an opaque
+`world:<hash>` key and directory display name. Only existing local world directories
+with level.dat are returned (at most 512 scanned entries). Pass the key in
+Plan.world; resolution is repeated on Apply. Direct directory names remain
+accepted for compatibility with the CLI. Unknown/stale keys fail; no absolute
+caller path is used. `capabilities().world_listing` advertises this operation.
+
 ## Modrinth and content
 
 Search uses public Modrinth API v2, descriptive User-Agent, bounded response

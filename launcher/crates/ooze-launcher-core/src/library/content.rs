@@ -63,8 +63,56 @@ pub(super) fn hash(path: &Path, check: &dyn Fn() -> Result<()>) -> Result<String
     }
     Ok(hex::encode(hash.finalize()))
 }
+pub(super) fn list_worlds(game: &Path, check: &dyn Fn() -> Result<()>) -> Result<Vec<LocalWorld>> {
+    let saves = util::join(game, "saves")?;
+    if !saves.exists() {
+        return Ok(Vec::new());
+    }
+    let mut worlds = Vec::new();
+    let mut scanned = 0;
+    for entry in fs::read_dir(saves).map_err(|_| io_error())? {
+        check()?;
+        scanned += 1;
+        if scanned > 512 {
+            return Err(invalid("World listing exceeds its 512-entry limit."));
+        }
+        let entry = entry.map_err(|_| io_error())?;
+        util::reject_links(&entry.path())?;
+        if !entry.file_type().map_err(|_| io_error())?.is_dir() {
+            continue;
+        }
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| invalid("World directory name is not valid Unicode."))?;
+        util::relative(&name)?;
+        if name.len() > 96 {
+            continue;
+        }
+        let level = util::join(&entry.path(), "level.dat")?;
+        if !level.is_file() {
+            continue;
+        }
+        let key = format!(
+            "world:{}",
+            &hex::encode(sha2::Sha256::digest(name.as_bytes()))[..32]
+        );
+        worlds.push(LocalWorld { key, name });
+    }
+    worlds.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(worlds)
+}
 fn world_directory(game: &Path, world: &str) -> Result<PathBuf> {
-    util::relative(world)?;
+    let world = if world.starts_with("world:") {
+        list_worlds(game, &|| Ok(()))?
+            .into_iter()
+            .find(|w| w.key == world)
+            .ok_or_else(|| invalid("The selected world no longer exists; list worlds again."))?
+            .name
+    } else {
+        world.to_owned()
+    };
+    util::relative(&world)?;
     if world.contains('/') || world.len() > 96 {
         return Err(invalid(
             "Select a local world directly inside this instance's saves directory.",
@@ -92,8 +140,14 @@ pub(super) fn destination(
     if kind == ContentKind::Datapack {
         let world =
             world.ok_or_else(|| invalid("Select a local world before installing a data pack."))?;
-        world_directory(game, world)?;
-        Ok(format!("saves/{world}/datapacks/{filename}"))
+        let directory = world_directory(game, world)?;
+        let relative = directory
+            .strip_prefix(game)
+            .map_err(|_| metadata_error())?
+            .to_str()
+            .ok_or_else(metadata_error)?
+            .replace('\\', "/");
+        Ok(format!("{relative}/datapacks/{filename}"))
     } else {
         Ok(format!("{}/{filename}", kind.directory()))
     }
@@ -709,6 +763,34 @@ pub(super) fn verify(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn opaque_world_keys_resolve_only_existing_local_worlds() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("saves/world")).unwrap();
+        fs::write(dir.path().join("saves/world/level.dat"), b"world").unwrap();
+        let worlds = list_worlds(dir.path(), &|| Ok(())).unwrap();
+        assert_eq!(worlds.len(), 1);
+        assert!(worlds[0].key.starts_with("world:"));
+        assert_eq!(
+            destination(
+                dir.path(),
+                ContentKind::Datapack,
+                "pack.zip",
+                Some(&worlds[0].key)
+            )
+            .unwrap(),
+            "saves/world/datapacks/pack.zip"
+        );
+        assert!(
+            destination(
+                dir.path(),
+                ContentKind::Datapack,
+                "pack.zip",
+                Some("world:unknown")
+            )
+            .is_err()
+        );
+    }
     #[test]
     fn successful_commit_and_duplicate_sync_writable_handles_on_windows() {
         let dir = tempfile::tempdir().unwrap();

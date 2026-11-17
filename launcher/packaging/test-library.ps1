@@ -31,6 +31,10 @@ $null=Invoke-Library @('disable',$id,'YL57xq9U')
 $null=Invoke-Library @('enable',$id,'YL57xq9U')
 $profile=Invoke-Library @('export-profile',$id)
 if($profile.schema -ne 'ooze.profile/1' -or $profile.base -ne 'pvp'){throw 'Canonical profile schema was not persisted'}
+$appearance=Invoke-Library @('appearance')
+if($appearance.schema -ne 'ooze.theme/1'){throw 'Canonical global appearance schema was not persisted'}
+$worlds=Invoke-Library @('worlds',$id)
+if($null -eq $worlds.Worlds -or $worlds.Worlds.worlds.Count -ne 0){throw 'Fresh instance should contain no worlds'}
 $managed=@($list.instances | Where-Object {$_.instance.id -eq $vanilla.Instance})[0]
 $mods=Join-Path $managed.game_dir 'mods'
 New-Item -ItemType Directory -Path $mods | Out-Null

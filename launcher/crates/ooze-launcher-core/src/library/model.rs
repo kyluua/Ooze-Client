@@ -417,6 +417,7 @@ pub struct Snapshot {
     pub instances: Vec<InstanceSummary>,
     pub selected: Option<Id>,
     pub active_operation: Option<u64>,
+    pub appearance: super::Appearance,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Search {
@@ -432,6 +433,13 @@ pub struct Capabilities {
     pub targets: Vec<Target>,
     pub content_kinds: Vec<ContentKind>,
     pub runtime_modules: Vec<&'static str>,
+    pub appearance: bool,
+    pub world_listing: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LocalWorld {
+    pub key: String,
+    pub name: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProjectSummary {

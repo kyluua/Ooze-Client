@@ -32,10 +32,19 @@ through the pure Rust ooze-ui path dependency. No duplicate preset defaults or
 module-setting schema are shipped by the backend. Desired settings are data;
 Library capabilities reports no accepted runtime modules yet.
 
-The first launcher-theme token subset is separately named ooze.launcher.theme/1;
-it does not claim support for the much larger existing oozeclient.theme/1 game
-theme studio. Claude must reconcile product copy to that concrete capability.
-Theme persistence is implemented; rendering the selected tokens belongs to Claude.
+The original per-instance ooze.launcher.theme/1 subset remains only for source/
+stored-data compatibility. Claude's G1 review was accepted: new global appearance
+uses the canonical ooze.theme/1 / ooze-ui::theme_doc validator, including accent
+and on-accent contrast. It persists at library/appearance.json and does not
+change with the selected instance. Snapshot.appearance.document is the ThemeDoc;
+commands are SaveAppearance(Appearance), ImportAppearance(String), ExportAppearance.
+Existing UiPrefs bytes are untouched; Claude reconciles UI motion/scale precedence.
+
+G2: ListWorlds(Id) returns Reply::Worlds { instance, worlds }. Each LocalWorld has
+an opaque `world:<hash>` key and directory display name; pass that key into Plan.world.
+The backend maps it to the existing world and revalidates on Apply. Legacy CLI
+directory-name selection remains supported. capabilities().appearance and
+world_listing are true for these implemented operations; UI mapping is Claude's.
 
 ## Independent review
 
@@ -85,3 +94,20 @@ this release; third-party installation requires explicit ConvertToCustom.
 
 Do not claim the expanded GUI is integrated until Claude implements/tests it.
 Final verified artifact/hash and run evidence will be appended after CI finishes.
+
+## Review follow-up after Claude P0
+
+The adapter's Project → Versions follow-up exposed a terminal-event timing race:
+Library now clears active state before emitting Finished so the next submit is
+accepted immediately. A concrete Windows failure also found that FlushFileBuffers
+requires a writable handle. Staged copies and duplicates now reopen with write
+access before sync; a successful commit+nonempty duplicate regression covers it.
+The native module catalog/theme model remains data, not an in-game module runtime.
+
+G3–G7 richer progress, metadata, conflict/remedy and capability snapshots remain
+explicit follow-up work; no hidden UI capability is claimed complete. G8 is
+already available as set_notify (call only request_repaint from its callback).
+R3 game_dir mapping is confirmed. R4 proposed game-side profile document path is
+<game_dir>/config/oozeclient/profile.json using ooze.profile/1; writing/reading
+that copy belongs to the coordinated G4/M0 atomic-store milestone, not this
+launcher-only persistence implementation.

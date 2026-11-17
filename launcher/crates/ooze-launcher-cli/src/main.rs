@@ -67,6 +67,13 @@ enum InstanceAction {
 }
 #[derive(Subcommand)]
 enum LibraryAction {
+    Appearance {
+        #[arg(long)]
+        import: Option<PathBuf>,
+    },
+    Worlds {
+        id: String,
+    },
     Repair {
         id: String,
         project: String,
@@ -304,6 +311,14 @@ fn library_wait(
 fn run_library(data: PathBuf, command: LibraryAction) -> Result<(), Box<dyn std::error::Error>> {
     let library = lib::Library::open(data)?;
     let command = match command {
+        LibraryAction::Appearance { import } => {
+            if let Some(file) = import {
+                lib::Command::ImportAppearance(read_import(&file)?)
+            } else {
+                lib::Command::ExportAppearance
+            }
+        }
+        LibraryAction::Worlds { id } => lib::Command::ListWorlds(lib::Id(id)),
         LibraryAction::Repair { id, project } => lib::Command::RepairContent {
             instance: lib::Id(id),
             project,
