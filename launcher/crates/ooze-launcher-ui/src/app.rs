@@ -450,7 +450,7 @@ impl LauncherApp {
         let animation_time = self
             .motion()
             .tween(&self.theme.motion, self.theme.motion.short);
-        if (ctx.style().animation_time - animation_time).abs() > f32::EPSILON {
+        if (ctx.style_of(egui::Theme::Light).animation_time - animation_time).abs() > f32::EPSILON {
             ctx.all_styles_mut(|style| style.animation_time = animation_time);
         }
         // A draft appearance previews its interface scale live; otherwise the saved setting.
