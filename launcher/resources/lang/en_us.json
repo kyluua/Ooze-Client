@@ -243,12 +243,14 @@
   "error.io.body": "Check free disk space and folder permissions, then try again.",
   "error.network.title": "Network problem",
   "error.network.body": "Check your connection and try again. Files already downloaded are kept.",
-  "error.authentication.title": "Sign-in didn't complete",
-  "error.authentication.body": "Try signing in again.",
+  "error.authentication.title": "Sign-in couldn't be completed",
+  "error.authentication.body": "Microsoft or Xbox sign-in didn't finish. Sign in again; the details below name the step that failed.",
   "error.metadata.title": "Version information couldn't be used",
   "error.metadata.body": "This launcher package may be damaged. Download it again from the official release.",
   "error.java_runtime.title": "Java problem",
   "error.java_runtime.body": "Ooze needs a 64-bit Java 21. Use the managed Java or choose another installation.",
   "error.credential_store.title": "Windows couldn't store your sign-in",
-  "error.credential_store.body": "Windows Credential Manager refused the request. Try again or restart your PC."
+  "error.credential_store.body": "Windows Credential Manager refused the request. Try again or restart your PC.",
+  "error.service_denied.title": "A Minecraft or Xbox service refused the request",
+  "error.service_denied.body": "The service didn't allow this request. Try again later. If it keeps happening, export the log from Diagnostics."
 }

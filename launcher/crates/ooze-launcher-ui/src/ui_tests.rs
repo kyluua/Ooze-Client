@@ -625,7 +625,7 @@ fn sign_in_over_the_real_backend_has_no_reopen_button() {
             }),
         }],
     );
-    assert!(shows(&h, "Sign-in didn't complete"));
+    assert!(shows(&h, "Sign-in couldn't be completed"));
     assert!(shows(&h, "timed out after three minutes"));
 }
 
@@ -652,4 +652,71 @@ fn startup_failure_shows_one_clear_page() {
         "no controls that cannot work"
     );
     shot(&mut h, "15-startup-busy");
+}
+
+/// Sol's 2026-11-16 review: API 1's generic codes must not be turned into approval or
+/// session-expiry claims. A refreshed session can still meet an Xbox denial, and a Minecraft
+/// HTTP 403 does not say why.
+#[test]
+fn generic_service_and_auth_failures_get_neutral_copy_with_the_safe_detail() {
+    use ooze_launcher_core as lc;
+    let cases = [
+        (
+            lc::ErrorCode::Authentication,
+            "Xbox user authentication failed (HTTP 401).",
+            "Sign-in couldn't be completed",
+        ),
+        (
+            lc::ErrorCode::ServiceAccess,
+            "Minecraft sign-in failed (HTTP 403). Check the account and owned application's access to this service.",
+            "A Minecraft or Xbox service refused the request",
+        ),
+    ];
+    for (code, detail, title) in cases {
+        let mut s = real_profile(snapshot());
+        s.account = Some(account());
+        let (mut h, handle) = harness(s, MotionPreference::Off);
+        settle(&mut h);
+        h.get_by_role_and_label(Role::Button, "Play").click();
+        settle(&mut h);
+        let mapped = crate::core_backend::map_error(
+            &lc::LauncherError {
+                code,
+                message: detail.into(),
+                retryable: false,
+            },
+            Some(OperationKind::Launch),
+        );
+        push_all(
+            &mut h,
+            &handle,
+            vec![
+                Event::Started {
+                    op: OperationId(1),
+                    kind: OperationKind::Launch,
+                },
+                Event::Finished {
+                    op: OperationId(1),
+                    outcome: Outcome::Failed(mapped),
+                },
+            ],
+        );
+        assert!(shows(&h, title), "{title}");
+        assert!(
+            shows(&h, detail),
+            "the backend's safe stage/status stays visible"
+        );
+        assert!(!shows(&h, "nothing is wrong with your account"));
+        assert!(!shows(&h, "expired"));
+        assert!(!shows(&h, "isn't approved"));
+        assert!(
+            shows(&h, "FixturePlayer"),
+            "a generic failure does not sign the account out"
+        );
+        // Signing in again is offered only where it can help (an authentication step failed).
+        assert_eq!(
+            h.query_by_role_and_label(Role::Button, "Sign in").is_some(),
+            code == lc::ErrorCode::Authentication
+        );
+    }
 }

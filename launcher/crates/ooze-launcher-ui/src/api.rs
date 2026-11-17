@@ -266,6 +266,9 @@ pub enum ErrorKind {
     Metadata,
     JavaRuntime,
     CredentialStore,
+    /// A Microsoft, Xbox or Minecraft service refused the request (HTTP status in the detail).
+    /// The cause is not known to the interface: never claim approval or account state from it.
+    ServiceDenied,
     // Configuration (developer/build problem, not the player's fault)
     AuthNotConfigured,
     /// Minecraft Services rejected the app registration (new apps need Mojang/Microsoft approval).
@@ -441,6 +444,7 @@ impl ErrorKind {
                 | Self::Metadata
                 | Self::JavaRuntime
                 | Self::CredentialStore
+                | Self::ServiceDenied
                 | Self::Internal
         )
     }

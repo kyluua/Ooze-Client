@@ -954,7 +954,7 @@ impl LauncherApp {
         let repair = matches!(error.kind, ErrorKind::ChecksumMismatch);
         let sign_in = matches!(
             error.kind,
-            ErrorKind::SessionExpired | ErrorKind::NotSignedIn
+            ErrorKind::SessionExpired | ErrorKind::NotSignedIn | ErrorKind::Authentication
         );
         let mut actions: Vec<(&str, ButtonKind)> = Vec::new();
         if retry.is_some() {
@@ -1839,6 +1839,7 @@ pub fn error_keys(kind: ErrorKind) -> (&'static str, &'static str) {
         ErrorKind::Authentication => ("error.authentication.title", "error.authentication.body"),
         ErrorKind::Metadata => ("error.metadata.title", "error.metadata.body"),
         ErrorKind::JavaRuntime => ("error.java_runtime.title", "error.java_runtime.body"),
+        ErrorKind::ServiceDenied => ("error.service_denied.title", "error.service_denied.body"),
         ErrorKind::CredentialStore => (
             "error.credential_store.title",
             "error.credential_store.body",

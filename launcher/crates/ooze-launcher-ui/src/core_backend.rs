@@ -317,10 +317,12 @@ pub fn map_error(error: &lc::LauncherError, during: Option<OperationKind>) -> La
         C::Cancelled => ErrorKind::Busy,
         C::Io => ErrorKind::Io,
         C::Network => ErrorKind::Network,
-        // A failed refresh at Play time means the saved sign-in no longer works.
-        C::Authentication if during == Some(OperationKind::Launch) => ErrorKind::SessionExpired,
+        // API 1 codes are generic: an Authentication failure at Play may follow a successful
+        // Microsoft refresh (for example an Xbox denial), and a Minecraft HTTP 403 does not
+        // establish why. Neutral kinds only; the backend's safe stage/status stays visible.
+        // Approval- or expiry-specific claims wait for explicit backend subtypes (Sol, 2026-11-16).
         C::Authentication => ErrorKind::Authentication,
-        C::ServiceAccess => ErrorKind::AuthAppNotApproved,
+        C::ServiceAccess => ErrorKind::ServiceDenied,
         C::Entitlement => ErrorKind::NotEntitled,
         C::Integrity => ErrorKind::ChecksumMismatch,
         C::Metadata => ErrorKind::Metadata,
@@ -792,7 +794,7 @@ mod tests {
             &out[1],
             Event::Finished {
                 outcome: Outcome::Failed(LauncherError {
-                    kind: ErrorKind::SessionExpired,
+                    kind: ErrorKind::Authentication,
                     ..
                 }),
                 ..
@@ -817,7 +819,16 @@ mod tests {
         );
         assert_eq!(
             e(ErrorCode::ServiceAccess, OperationKind::SignIn),
-            ErrorKind::AuthAppNotApproved
+            ErrorKind::ServiceDenied
+        );
+        assert_eq!(
+            e(ErrorCode::ServiceAccess, OperationKind::Launch),
+            ErrorKind::ServiceDenied
+        );
+        assert_eq!(
+            e(ErrorCode::Authentication, OperationKind::Launch),
+            ErrorKind::Authentication,
+            "no session-expiry claim from a generic code"
         );
         assert_eq!(
             e(ErrorCode::Entitlement, OperationKind::SignIn),
