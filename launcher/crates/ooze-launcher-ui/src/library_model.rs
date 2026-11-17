@@ -309,7 +309,12 @@ mod tests {
     #[test]
     fn commit_boundary_ends_cancellation_and_install_is_not_called_working() {
         let mut m = LibraryModel::new(LibrarySnapshot::default(), None);
-        m.on_submitted(LibCommand::Apply { plan_id: 7 }, Ok(LibOpId(3)));
+        m.on_submitted(
+            LibCommand::Apply {
+                plan_id: "7".into(),
+            },
+            Ok(LibOpId(3)),
+        );
         assert!(m.cancellable());
         m.apply(LibEvent::Progress {
             op: LibOpId(3),
@@ -343,7 +348,12 @@ mod tests {
             m.notice,
             Some(LibNotice::Error { during: LibOpKind::Search, ref error }) if error.kind == LibErrorKind::Busy
         ));
-        m.on_submitted(LibCommand::Apply { plan_id: 1 }, Ok(LibOpId(9)));
+        m.on_submitted(
+            LibCommand::Apply {
+                plan_id: "1".into(),
+            },
+            Ok(LibOpId(9)),
+        );
         m.apply(LibEvent::Finished {
             op: LibOpId(9),
             result: Err(LibError::new(LibErrorKind::Cancelled)),

@@ -6,6 +6,8 @@
 - **Consumes:** `docs/launcher/LIBRARY_API_V1.md`, unchanged.
 - **Interface spec:** `docs/launcher/LIBRARY_UI.md`.
 
+> **Update after `ac9a7ba`/`d48e88d`:** your library exists and is now attached through `core_library.rs`. R1 is half done: profiles use `ooze-ui`. The concrete gaps against your implementation are listed as **G1–G8 at the end**. R2 below remains the target shape; anything missing stays hidden in the interface.
+
 The interface is built against Library API 1's semantics. It is gated so that **nothing appears until the library exists**.
 
 To integrate (L1), I need the exact Rust types. Below is what the interface consumes, each item with the reason. Where your `ooze_launcher_core::library` types differ in shape, keep yours: I will map them in an adapter (`core_library.rs`, like `core_backend.rs` for API 1). Please say so in SOL-L1.md. Semantics are what matter.
@@ -158,3 +160,18 @@ Please propose the path in SOL-L1.md.
 
 - **Linux clippy fails** on `crates/ooze-launcher-core/src/game_guard.rs:63`: an unused `use super::*` in a test module that is presumably used only under `cfg(windows)`. `cargo clippy --workspace --all-targets -- -D warnings` fails on Linux (Windows CI is unaffected). I did not edit it.
 - **`UiPrefs::save` regression:** added `prefs_save_replaces_an_existing_file_and_leaves_no_temp_file`. It runs in your Windows CI job (`cargo test --workspace`). A leftover `.json.tmp` from an interrupted save is overwritten by the next save. Single-writer use is guaranteed by your instance lock.
+
+## Gaps against `ooze_launcher_core::library` (ac9a7ba / d48e88d)
+
+Each gap keeps its interface feature hidden until it lands.
+
+| # | Gap | Unblocks |
+|---|---|---|
+| G1 | **One global theme as `ooze_ui::theme_doc::ThemeDoc`** (`ooze.theme/1`), instead of the per-instance `ooze.launcher.theme/1`. Validate with `ThemeDoc::from_json` / `validate` against `BaseColors::classic()` | Appearance page; L1 "persisted theme" |
+| G2 | `ListWorlds(instance)`: the existing local worlds (directory name plus display name) | Data packs |
+| G3 | Progress events: `Contacting`, `Downloading` (done/total bytes), `Verifying` and **`Committing`** (the commit boundary) | Real progress and "can't cancel now" |
+| G4 | Keep Modrinth's `author`, `downloads` and `date_modified` on hits; `version_type`, `date_published` and the primary file size on versions; pass a `loaders` filter to versions; search `index` (sort) and category facets | Richer cards, sort and filter controls, no Fabric-incompatible versions listed |
+| G5 | Plan as data instead of only errors: conflicts (with the installed item) and shader-loader state (`Present` / `InPlan` / `Unavailable`) | Conflict and loader review before Install |
+| G6 | Integrity issues typed: file, problem kind and allowed remedies (`Repair` / `Quarantine` / `OpenFolder`; never delete). Also a command to switch Custom → Managed | Per-issue remedies; the Managed switch |
+| G7 | Capabilities in the snapshot: create targets, per-instance content kinds, actions, `running`, install state | The adapter stops hard-coding them |
+| G8 | Package the library's notify into a waker, or document that polling at 100 ms while an operation is active is intended | Lower idle CPU (the adapter polls only while busy) |

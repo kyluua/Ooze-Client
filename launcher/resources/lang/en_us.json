@@ -440,7 +440,6 @@
   "content.results": "{0} results",
   "content.compat_note": "Compatible with {0}, as reported by Modrinth.",
   "content.no_results": "No results. Try other words.",
-  "content.by": "by {0} · {1} downloads · updated {2}",
   "content.view": "View {0}",
   "content.back_to_results": "Back to results",
   "content.author": "by {0}",
@@ -450,7 +449,6 @@
   "content.channel.release": "Release",
   "content.channel.beta": "Beta",
   "content.channel.alpha": "Alpha",
-  "content.version_line": "{0} · {1} · {2} · Minecraft {3} · {4} · {5} MB",
   "content.version_incompatible": "Can't be installed here: {0}",
   "content.version_chosen": "Chosen",
   "content.choose_version": "Choose {0}",
@@ -604,5 +602,10 @@
   "content.category.all": "All",
   "content.page.range": "{0}–{1} of {2}",
   "content.page.previous": "Previous page",
-  "content.page.next": "Next page"
+  "content.page.next": "Next page",
+  "content.downloads": "{0} downloads",
+  "content.updated": "updated {0}",
+  "content.version_games": "Minecraft {0}",
+  "content.size_mb": "{0} MB",
+  "integrity.problem.baseline": "Ooze's release manifest couldn't be verified, so managed files can't be checked against it."
 }

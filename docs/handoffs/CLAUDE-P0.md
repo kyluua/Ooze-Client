@@ -3,7 +3,7 @@
 - **Owner:** Claude (product lead: Fabric integration, in-game UI, launcher interface).
 - **Milestone:** P0 (`IMPLEMENTATION_PLAN.md`, owner scope expansion 2026-11-17).
 - **Base:** `0773976` (main, after Sol's `87c3e6c` library contract).
-- **Result:** `6141efd` (code) plus the commit that adds this file. Merged with `origin/main` before the push.
+- **Result:** `6141efd` (P0 code), then the L1 start: Sol's library merged (`ac9a7ba`, `d48e88d`) and the real adapter added. Merged with `origin/main` before the push. Hashes: `git log`.
 
 ## 1. What was delivered
 
@@ -69,6 +69,21 @@ Files and changes:
 - every key is used, including keys built from the catalog;
 - **no banned claim** appears in any string: cheat-proof, undetectable, anticheat, server-approved, safe on all servers, guaranteed, ready to use.
 
+**8. L1 started: the real library is attached** (Sol pushed `ac9a7ba`/`d48e88d` during P0).
+- `core_library.rs` adapts `ooze_launcher_core::library` to the interface types. A project's details take two library operations and are reported as one; profile load and the installed list are answered from Sol's snapshot.
+- `bin/ooze-launcher.rs` opens the library with the launcher's data directory. If opening fails, a `FailedLibrary` shows the error on the Instances page.
+- **Capabilities report only what Sol's API supports today:**
+  - instances: create Fabric 0.20.1 / Vanilla on 1.21.11, select, rename, duplicate, archive, convert Managed → Custom;
+  - profiles: load and save with a revision check, validated by Sol with `ooze-ui`;
+  - content: mods, resource packs and shader packs; search, details and versions; dependency plan; apply; installed list; enable/disable/remove;
+  - integrity: verify.
+
+  Hidden until Sol adds them (see the updated request):
+  - Appearance: the library's theme is per instance and uses a different schema;
+  - data packs: no world list;
+  - sort and categories, switching to Managed, and progress steps.
+- The live tests found that real Modrinth data includes CJK titles that the shipped fonts can't draw. The app now sets egui's Tofu policy explicitly; AccessKit still reads the real text. Bundling a wider-coverage font (for example Noto Sans CJK, OFL, around 16 MB) is an **owner decision**.
+
 ## 2. Changed paths (mine)
 
 - `AGENTS.md`
@@ -76,7 +91,7 @@ Files and changes:
 - `docs/MODULES.md` (new) and `docs/launcher/LIBRARY_UI.md` (new)
 - `docs/handoffs/CLAUDE-P0-request.md`, `docs/handoffs/CLAUDE-P0.md` and `docs/handoffs/evidence/CLAUDE-P0/*.png`
 - `native/crates/ooze-ui/**` (new)
-- `launcher/crates/ooze-launcher-ui/**`: `Cargo.toml` (adds the `ooze-ui` path dependency), plus `app.rs`, `app/library_pages.rs`, `appearance.rs`, `library.rs`, `library_model.rs`, `library_fixture.rs`, `library_ui_tests.rs`, `widgets.rs`, `i18n.rs`, `core_backend.rs` (test only), `lib.rs` and `bin/ooze-launcher-preview.rs`
+- `launcher/crates/ooze-launcher-ui/**`: `Cargo.toml` (adds the `ooze-ui` path dependency), `core_library.rs` and `bin/ooze-launcher.rs` (real library attached), plus `app.rs`, `app/library_pages.rs`, `appearance.rs`, `library.rs`, `library_model.rs`, `library_fixture.rs`, `library_ui_tests.rs`, `widgets.rs`, `i18n.rs`, `core_backend.rs` (test only), `lib.rs` and `bin/ooze-launcher-preview.rs`
 - `launcher/resources/lang/en_us.json`
 
 **Mechanical changes to Sol's files** (needed to keep the build valid; no behaviour changed):
@@ -89,7 +104,7 @@ Files and changes:
 |---|---|
 | JNI ABI | 1 (unchanged) |
 | Launcher API | 1 (unchanged) |
-| Library API | 1. Consumed as documented; the interface mirror is v1 and awaits Sol's exact types (request R2) |
+| Library API | 1, Sol's `ooze_launcher_core::library` (`LIBRARY_API_VERSION = 1`), consumed through `core_library.rs` |
 | Schemas | `ooze.profile/1`, `ooze.preset/1`, `ooze.theme/1` |
 
 ## 4. Evidence
@@ -97,9 +112,13 @@ Files and changes:
 | Check | Result |
 |---|---|
 | `native`: `cargo fmt --all --check`; `cargo clippy -p ooze-ui --all-targets -D warnings` (Linux **and** `--target x86_64-pc-windows-msvc`); `cargo clippy --workspace --all-targets -D warnings`; `cargo test --workspace` | **Built**, **Headless-tested** (Linux): 29 tests passed (24 in `ooze-ui`) |
-| `launcher/crates/ooze-launcher-ui`: `cargo fmt --check`; `cargo clippy --all-targets --features dev-fixtures -D warnings`; `cargo test --features dev-fixtures` | **Built**, **Headless-tested** (Linux, lavapipe): **84 passed** (56 L0 plus 28 new: 20 library page tests, 3 model, 3 appearance, 1 prefs, 1 banned-claims scan) |
+| `launcher/crates/ooze-launcher-ui`: `cargo fmt --check`; `cargo clippy --all-targets --features dev-fixtures -D warnings`; `cargo test --features dev-fixtures` | **Built**, **Headless-tested** (Linux, lavapipe): **87 passed, 2 ignored** (the live tests; see below). That is 56 L0 tests plus 31 new: 20 library page, 3 model, 3 appearance, 3 adapter over Sol's real library, 1 prefs, 1 banned-claims scan |
 | `launcher` workspace: `cargo fmt --all --check`; `cargo test --workspace` (without `dev-fixtures`) | **Headless-tested** (Linux): 100 passed, 0 failed |
 | `launcher` workspace: `cargo clippy --workspace --all-targets -D warnings` on Linux | **Fails in Sol's `ooze-launcher-core`** (`game_guard.rs:63`, unused test import on non-Windows). This is pre-existing and not from this change (R5) |
+| `ooze-launcher-ui` over **Sol's real library**, Linux, no network: `the_real_library_round_trips_through_the_interface_types` (create → select → profile save with revision check → installed list → rename → archive); `unsupported_combinations_are_refused_by_the_library_with_its_reason` | **Headless-tested** (Linux) |
+| **Live Modrinth**, Linux, `--ignored`: `live_modrinth_search_details_plan_install_and_verify` | **Headless-tested** (Linux, real network). Real search returned results for mods (20 of 13,242), resource packs (20 of 18,947) and shader packs (20 of 766). Iris details and versions were read. The plan was `sodium-fabric-0.8.14+mc1.21.11.jar` (required) plus `iris-fabric-1.10.8+mc1.21.11.jar` (selected). Apply downloaded and verified both (SHA-512), the installed list shows 2 items, and the integrity check reports 0 issues in 2 files. **This is not Game-launched: no Minecraft started** |
+| Live window, `--ignored`: `live_window_shows_real_modrinth_results_for_a_fabric_instance` | **Headless-tested** (Linux, real network, real library; API 1 side is the fixture, hence "FixturePlayer"). Screenshots: `lib-live-content-results.png` (`8b48299002c8a87752dc06cf710ff3dc38cd9e157774d8f3507c7b72a54f3c42`) and `lib-live-instances.png` (`e42c0bdc345f60052b90769a9102c4aeba70cb34e28ba2c1abbb4e3f5b554403`) |
+| `launcher` workspace after merging Sol's library: `cargo test --workspace` | **Headless-tested** (Linux): 119 passed, 0 failed, 2 ignored (the live tests) |
 | Windows: launcher type-check for `x86_64-pc-windows-msvc` | **Not run locally:** `ring` (Sol's TLS dependency) needs the MSVC C toolchain. Sol's Windows CI (`launcher-l0.yml`, `cargo test --workspace` on windows-latest, dx12) is the Windows evidence after this push |
 | Gradle / Fabric | Not run: no Java, Gradle or game changes in P0 |
 | Game-launched | **None.** Nothing Minecraft-facing changed; no module runs in game yet (M0+) |
@@ -118,10 +137,14 @@ Files and changes:
 
 ## 5. Limitations
 
-- **No real library yet.**
-  - Sol's `ooze_launcher_core::library` does not exist in code, so the release launcher shows none of P0's pages.
-  - There is no real Modrinth browsing, instance isolation, persisted theme or installed content yet. Those are the **L1 gate**, after Sol's implementation and my adapter.
-  - Nothing in P0 is Game-launched.
+- **L1 is not passed.** The real library is attached and Headless-tested on Linux, including live Modrinth. Still open:
+  - Windows CI on this push;
+  - a persisted theme (Appearance stays hidden until request G1);
+  - **Play of an installed instance to `OOZE_READY` on Windows x64**, needed for Game-launched (R3 decides the directory mapping);
+  - a Narrator pass.
+
+  Nothing in P0 is Game-launched.
+- **Non-Latin text** in Modrinth data draws as boxes (owner decision on a wider font).
 - **Authentication:**
   - The owner's AppID review is submitted, and approval is unconfirmed.
   - Microsoft and Xbox passed; Minecraft `login_with_xbox` previously returned 403.
@@ -141,25 +164,36 @@ Files and changes:
 
 **`ca0698d` / `f254af5` (service denial diagnostics):** consumed in `0773976` (neutral copy). No further findings.
 
+**`ac9a7ba` / `d48e88d` (library implementation)**, reviewed before integrating:
+- Good:
+  - profiles validated with `ooze-ui` (R1 for profiles);
+  - typed, ID-validated commands;
+  - CDN-only downloads with SHA-512;
+  - data-pack world confined to `saves/<name>` with `level.dat`;
+  - one operation at a time, with cancellation;
+  - honest refusal text for unsupported targets.
+- **Finding 1 (design):** the theme is stored **per instance** (`Instance.theme`, `SaveTheme{instance}`). That contradicts ADR-017: the launcher's appearance would change with the selected instance. Its validation also checks only background vs foreground, not text on the accent. Please adopt `ooze_ui::theme_doc` as one global theme (G1).
+- **Finding 2:** `versions()` filters by game version only, so Fabric-incompatible versions are listed and fail later at Plan. Please also pass Modrinth's `loaders` filter for the instance's loader.
+- **Finding 3:** search hits drop Modrinth's `author`, `downloads` and `date_modified`, and versions drop `version_type`, `date_published` and file size. The interface shows them when present (G4).
+
 **Finding:** `cargo clippy --workspace --all-targets -- -D warnings` fails on Linux at `crates/ooze-launcher-core/src/game_guard.rs:63` (unused `use super::*`). It is low severity because Windows CI is unaffected. Left for Sol.
 
 ## 7. Exact next task
 
-**Sol (L1):**
-1. Implement Library API 1 per `LIBRARY_API_V1.md` with the shapes in `CLAUDE-P0-request.md` R2. Validate profiles and themes with `ooze-ui` (R1).
-2. Answer R3 (the game-directory mapping for Play).
-3. Publish the exact types, checks and artifacts in SOL-L1.md.
+**Sol:** close the gaps in `CLAUDE-P0-request.md` (G1–G8) and answer R3.
+- G1, the global `ooze.theme/1`, unblocks Appearance and the L1 theme item.
+- G2, world listing, unblocks data packs.
+- Then say in SOL-L1.md which of them landed.
 
-**Claude (L1), after SOL-L1:**
-1. Write `core_library.rs`, an adapter from Sol's types to `library.rs`, with mapping unit tests.
-2. Attach the real library in `bin/ooze-launcher.rs`.
-3. Run the L1 gate on Windows x64:
+**Claude (L1), next:**
+1. As each gap lands, map it in `core_library.rs` and turn on its capability.
+2. On Windows x64 (owner machine or CI artifact):
+   - install the packaged launcher;
    - create a Fabric 1.21.11 instance;
    - choose PvP;
-   - persist a theme;
-   - real Modrinth search;
-   - install one Fabric mod with a required dependency;
-   - Play to `OOZE_READY` in that instance, then Game-launched;
-   - Narrator pass (Manually verified, if the owner can).
+   - install Iris + Sodium through the window;
+   - Play to `OOZE_READY` in that instance, then **Game-launched**;
+   - Narrator pass, then **Manually verified** if the owner can.
+3. Owner decision: bundle a CJK-capable font or not.
 
-**Claude (M0), in parallel once G1/G4 land:** the in-game module runtime from the `ooze-ui` catalog.
+**Claude (M0), once Sol's engine milestones G1 (frame protocol) and G4 (config store) land:** the in-game module runtime from the `ooze-ui` catalog.

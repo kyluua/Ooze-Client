@@ -69,7 +69,7 @@ fn instance(
         preset,
         overrides: 0,
         mode: IntegrityMode::Custom,
-        install: InstallState::Ready,
+        install: Some(InstallState::Ready),
         actions: ALL_ACTIONS.to_vec(),
         content,
         running: false,
@@ -94,6 +94,7 @@ pub fn snapshot() -> LibrarySnapshot {
             themes: true,
             content: ContentKind::ALL.to_vec(),
             managed_mode: true,
+            sort: true,
         },
         instances: vec![
             fabric,
@@ -115,10 +116,10 @@ pub fn hits(kind: ContentKind) -> Vec<SearchHit> {
         .map(|i| SearchHit {
             project_id: format!("fixture-{kind:?}-{i}").to_lowercase(),
             title: format!("{base} {i} (fixture)"),
-            author: "Fixture Author".into(),
             summary: "Fixture data for tests and the developer preview. Not a real project.".into(),
-            downloads: 1_000 * i,
-            updated: "2026-11-01".into(),
+            author: Some("Fixture Author".into()),
+            downloads: Some(1_000 * i),
+            updated: Some("2026-11-01".into()),
         })
         .collect()
 }
@@ -139,7 +140,7 @@ pub fn details(instance: InstanceId, kind: ContentKind, project_id: &str) -> Pro
         kind,
         project_id: project_id.into(),
         title,
-        author: "Fixture Author".into(),
+        author: Some("Fixture Author".into()),
         description: "Fixture project. <b>Markup</b> is shown as text.".into(),
         license: Some("MIT".into()),
         links: vec![("Source".into(), "https://example.invalid/source".into())],
@@ -147,21 +148,21 @@ pub fn details(instance: InstanceId, kind: ContentKind, project_id: &str) -> Pro
             VersionSummary {
                 version_id: format!("{project_id}-v2"),
                 number: "2.0.0".into(),
-                channel: Channel::Release,
-                published: "2026-11-01".into(),
+                channel: Some(Channel::Release),
+                published: Some("2026-11-01".into()),
                 game_versions: vec!["1.21.11".into()],
                 loaders: loaders.clone(),
-                size_bytes: 1_250_000,
+                size_bytes: Some(1_250_000),
                 compatible: Ok(()),
             },
             VersionSummary {
                 version_id: format!("{project_id}-v1"),
                 number: "1.0.0".into(),
-                channel: Channel::Release,
-                published: "2026-06-01".into(),
+                channel: Some(Channel::Release),
+                published: Some("2026-06-01".into()),
                 game_versions: vec!["1.21.10".into()],
                 loaders,
-                size_bytes: 1_100_000,
+                size_bytes: Some(1_100_000),
                 compatible: Err("Needs Minecraft 1.21.10".into()),
             },
         ],
@@ -205,7 +206,7 @@ pub fn plan(
         _ => {}
     }
     DependencyPlan {
-        plan_id: 42,
+        plan_id: "42".into(),
         instance,
         kind,
         install,
@@ -500,6 +501,7 @@ impl LibraryFixture {
                 kind,
                 version_id,
                 world,
+                ..
             } => {
                 self.last_kind = kind;
                 let world =

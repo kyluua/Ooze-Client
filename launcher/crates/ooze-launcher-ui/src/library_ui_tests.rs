@@ -413,7 +413,9 @@ fn install_flow_reviews_dependencies_reports_progress_and_never_claims_it_works(
     click(&mut h, Role::Button, "Install");
     assert_eq!(
         lh.submitted().last(),
-        Some(&LibCommand::Apply { plan_id: 42 })
+        Some(&LibCommand::Apply {
+            plan_id: "42".into()
+        })
     );
     let op = lh.last_op();
     lh.push(LibEvent::Progress {
@@ -798,4 +800,92 @@ fn library_pages_are_reachable_with_the_keyboard() {
     h.key_press(Key::Enter);
     steps(&mut h);
     assert_eq!(h.state().page(), Page::Instances);
+}
+
+/// Live (network): the real window over Sol's real library and Modrinth. Appearance evidence of
+/// real results; run with `cargo test -p ooze-launcher-ui live_window -- --ignored`.
+#[test]
+#[ignore = "contacts api.modrinth.com"]
+fn live_window_shows_real_modrinth_results_for_a_fabric_instance() {
+    use crate::core_library::CoreLibrary;
+    let dir = std::env::temp_dir().join(format!("ooze-ui-live-window-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut lib = CoreLibrary::open(&dir).unwrap();
+    let target = lib.snapshot().capabilities.create[0].clone();
+    let mut create = Some(lib.submit(LibCommand::Create {
+        name: "Fabric 1.21.11".into(),
+        target,
+    }));
+    // Wait for the instance, then select it, before the window opens.
+    let mut events = Vec::new();
+    let mut created = None;
+    for _ in 0..500 {
+        lib.drain_events(&mut events);
+        for e in events.drain(..) {
+            if let LibEvent::Finished {
+                result: Ok(LibPayload::Created(id)),
+                ..
+            } = e
+            {
+                created = Some(id);
+            }
+        }
+        if created.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let _ = create.take();
+    let id = created.expect("instance created");
+    lib.submit(LibCommand::Select(id)).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    lib.drain_events(&mut events);
+
+    let mut snap = snapshot();
+    snap.account = Some(account());
+    snap.install = InstallStatus::Ready;
+    snap.settings.motion = MotionPreference::Off;
+    let (backend, _handle) = FixtureBackend::manual(snap);
+    let app =
+        LauncherApp::new(Box::new(backend), AppOptions::default()).with_library(Box::new(lib));
+    // Real Modrinth data includes scripts the shipped fonts don't cover (drawn as boxes in the
+    // app, which sets the Tofu policy itself).
+    let mut h = Harness::builder()
+        .with_size(vec2(1120.0, 900.0))
+        .with_pixels_per_point(1.0)
+        .allow_missing_glyphs()
+        .build_ui_state(|ui, app: &mut LauncherApp| app.frame(ui), app);
+    h.set_render_cursor(false);
+    h.run_steps(6);
+    assert_eq!(
+        tabs(&h),
+        [
+            "Play",
+            "Instances",
+            "Profile",
+            "Content",
+            "Settings",
+            "Diagnostics"
+        ],
+        "Appearance stays hidden until the library persists ooze.theme/1"
+    );
+    go(&mut h, "Content");
+    search(&mut h, "sodium");
+    let mut found = false;
+    for _ in 0..300 {
+        h.run_steps(1);
+        if shows(&h, "results") {
+            found = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(found, "real results arrived");
+    assert!(shows(&h, "Sodium"));
+    steps(&mut h);
+    shot(&mut h, "live-content-results");
+    go(&mut h, "Instances");
+    shot(&mut h, "live-instances");
+    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -233,6 +233,11 @@ impl LauncherApp {
             vec!["bubblegum".into(), "inter".into()],
         );
         ctx.set_fonts(fonts);
+        // Modrinth titles and descriptions can use any script; the shipped fonts (Inter, Bubblegum
+        // Sans) cover Latin, Greek and Cyrillic. Missing glyphs draw as boxes rather than failing,
+        // and AccessKit still reads the real text. (Wider script coverage needs a bundled font:
+        // owner decision recorded in CLAUDE-P0.)
+        ctx.set_missing_glyph_policy(egui::MissingGlyphPolicy::Tofu);
         ctx.options_mut(|o| o.zoom_with_keyboard = false);
         let th = Arc::clone(&self.theme);
         ctx.all_styles_mut(|style| {

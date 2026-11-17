@@ -42,10 +42,19 @@ fn config() -> Result<LauncherConfig, LauncherError> {
 }
 
 fn main() -> eframe::Result {
-    let backend: Box<dyn ooze_launcher_ui::api::Backend> =
-        match config().and_then(CoreBackend::open) {
-            Ok(backend) => Box::new(backend),
-            Err(error) => Box::new(FailedBackend { error }),
-        };
-    ooze_launcher_ui::run(backend)
+    let config = config();
+    // Sol's library (Library API 1) shares the launcher's data directory.
+    let library: Option<Box<dyn ooze_launcher_ui::library::LibraryBackend>> =
+        config.as_ref().ok().map(|c| {
+            match ooze_launcher_ui::core_library::CoreLibrary::open(&c.data_dir) {
+                Ok(lib) => Box::new(lib) as Box<dyn ooze_launcher_ui::library::LibraryBackend>,
+                Err(e) => Box::new(ooze_launcher_ui::core_library::FailedLibrary(e)),
+            }
+        });
+    let backend: Box<dyn ooze_launcher_ui::api::Backend> = match config.and_then(CoreBackend::open)
+    {
+        Ok(backend) => Box::new(backend),
+        Err(error) => Box::new(FailedBackend { error }),
+    };
+    ooze_launcher_ui::run_with_library(backend, library)
 }

@@ -24,6 +24,7 @@ pub mod app;
 pub mod appearance;
 pub mod config;
 pub mod core_backend;
+pub mod core_library;
 pub mod i18n;
 pub mod library;
 pub mod library_model;
@@ -48,10 +49,25 @@ pub use app::{AppOptions, LauncherApp};
 
 /// Open the launcher window over `backend` and run until it closes.
 pub fn run(backend: Box<dyn api::Backend>) -> eframe::Result {
+    run_with_library(backend, None)
+}
+
+/// As [`run`], with Sol's library attached (instances, profiles, content). Without it the window
+/// is the L0 launcher.
+pub fn run_with_library(
+    backend: Box<dyn api::Backend>,
+    library: Option<Box<dyn library::LibraryBackend>>,
+) -> eframe::Result {
     let title = i18n::Strings::en_us().get("app.name").to_owned();
     eframe::run_native(
         "ooze-launcher",
         LauncherApp::native_options(&title),
-        Box::new(move |_cc| Ok(Box::new(LauncherApp::new(backend, AppOptions::default())))),
+        Box::new(move |_cc| {
+            let app = LauncherApp::new(backend, AppOptions::default());
+            Ok(Box::new(match library {
+                Some(l) => app.with_library(l),
+                None => app,
+            }))
+        }),
     )
 }

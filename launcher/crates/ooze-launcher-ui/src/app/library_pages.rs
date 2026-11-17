@@ -473,11 +473,11 @@ impl LauncherApp {
             }
             kit.tag(ui, kit.t(mode_key(inst.mode)), None);
             match inst.install {
-                InstallState::Ready => {}
-                InstallState::NeedsInstall => {
+                Some(InstallState::Ready) | None => {}
+                Some(InstallState::NeedsInstall) => {
                     kit.tag(ui, kit.t("instances.needs_install"), Some(Tone::Warning));
                 }
-                InstallState::NeedsRepair => {
+                Some(InstallState::NeedsRepair) => {
                     kit.tag(ui, kit.t("instances.needs_repair"), Some(Tone::Danger));
                 }
             }
@@ -782,6 +782,10 @@ impl LauncherApp {
                 IntegrityProblem::ProhibitedLaunchSetting(s) => {
                     kit.tr.fmt("integrity.problem.launch_setting", &[s])
                 }
+                IntegrityProblem::Reported(s) => s.clone(),
+                IntegrityProblem::BaselineUnverified => {
+                    kit.t("integrity.problem.baseline").to_owned()
+                }
             };
             let labels: Vec<(&str, ButtonKind)> = issue
                 .actions
@@ -798,7 +802,13 @@ impl LauncherApp {
                 })
                 .collect();
             ui.add_space(th.space.xs);
-            if let Some(i) = kit.banner(ui, Tone::Warning, &issue.file, &problem, &labels)
+            // Issues without a file name show the problem as the title.
+            let (title, body) = if issue.file.is_empty() {
+                (problem.as_str(), "")
+            } else {
+                (issue.file.as_str(), problem.as_str())
+            };
+            if let Some(i) = kit.banner(ui, Tone::Warning, title, body, &labels)
                 && let Some(action) = issue.actions.get(i).copied()
             {
                 self.lib_submit(LibCommand::Resolve {
@@ -1537,18 +1547,21 @@ impl LauncherApp {
         let hint = kit.t("content.search.hint");
         let resp = kit.text_field(ui, search_label, &mut self.lib_ui.query, hint);
         let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+        let sort_supported = self.lib.as_ref().is_some_and(|m| m.caps().sort);
         let mut sort = self.lib_ui.sort.unwrap_or(SortBy::Relevance);
-        kit.segmented(
-            ui,
-            "content-sort",
-            kit.t("content.sort"),
-            &[
-                (SortBy::Relevance, kit.t("content.sort.relevance")),
-                (SortBy::Downloads, kit.t("content.sort.downloads")),
-                (SortBy::Updated, kit.t("content.sort.updated")),
-            ],
-            &mut sort,
-        );
+        if sort_supported {
+            kit.segmented(
+                ui,
+                "content-sort",
+                kit.t("content.sort"),
+                &[
+                    (SortBy::Relevance, kit.t("content.sort.relevance")),
+                    (SortBy::Downloads, kit.t("content.sort.downloads")),
+                    (SortBy::Updated, kit.t("content.sort.updated")),
+                ],
+                &mut sort,
+            );
+        }
         self.lib_ui.sort = Some(sort);
         ui.horizontal(|ui| {
             if (kit
@@ -1678,13 +1691,20 @@ impl LauncherApp {
             ui.add_space(th.space.sm);
             kit.card(ui, crate::paint::Surface::Card, |ui| {
                 kit.text(ui, th.text.subtitle, th.c.text_primary, &hit.title);
-                kit.caption(
-                    ui,
-                    &kit.tr.fmt(
-                        "content.by",
-                        &[&hit.author, &hit.downloads.to_string(), &hit.updated],
-                    ),
-                );
+                // Only facts the library reported; nothing is filled in.
+                let mut facts = Vec::new();
+                if let Some(a) = &hit.author {
+                    facts.push(kit.tr.fmt("content.author", &[a]));
+                }
+                if let Some(d) = hit.downloads {
+                    facts.push(kit.tr.fmt("content.downloads", &[&d.to_string()]));
+                }
+                if let Some(u) = &hit.updated {
+                    facts.push(kit.tr.fmt("content.updated", &[u]));
+                }
+                if !facts.is_empty() {
+                    kit.caption(ui, &facts.join(" · "));
+                }
                 kit.body(ui, &hit.summary);
                 if kit
                     .button(
@@ -1773,7 +1793,9 @@ impl LauncherApp {
         }
         kit.card(ui, crate::paint::Surface::Card, |ui| {
             kit.text(ui, th.text.subtitle, th.c.text_primary, &d.title);
-            kit.caption(ui, &kit.tr.fmt("content.author", &[&d.author]));
+            if let Some(a) = &d.author {
+                kit.caption(ui, &kit.tr.fmt("content.author", &[a]));
+            }
             if let Some(l) = &d.license {
                 kit.caption(ui, &kit.tr.fmt("content.license", &[l]));
             }
@@ -1805,27 +1827,36 @@ impl LauncherApp {
         if self.lib_ui.version.is_none() {
             self.lib_ui.version = compatible
                 .iter()
-                .find(|v| v.channel == Channel::Release)
+                .find(|v| v.channel == Some(Channel::Release))
                 .or(compatible.first())
                 .map(|v| v.version_id.clone());
         }
         for v in &d.versions {
-            let channel = kit.t(match v.channel {
-                Channel::Release => "content.channel.release",
-                Channel::Beta => "content.channel.beta",
-                Channel::Alpha => "content.channel.alpha",
-            });
-            let line = kit.tr.fmt(
-                "content.version_line",
-                &[
-                    &v.number,
-                    channel,
-                    &v.published,
-                    &v.game_versions.join(", "),
-                    &v.loaders.join(", "),
-                    &mb(v.size_bytes),
-                ],
+            let mut parts = vec![v.number.clone()];
+            if let Some(c) = v.channel {
+                parts.push(
+                    kit.t(match c {
+                        Channel::Release => "content.channel.release",
+                        Channel::Beta => "content.channel.beta",
+                        Channel::Alpha => "content.channel.alpha",
+                    })
+                    .to_owned(),
+                );
+            }
+            if let Some(p) = &v.published {
+                parts.push(p.clone());
+            }
+            parts.push(
+                kit.tr
+                    .fmt("content.version_games", &[&v.game_versions.join(", ")]),
             );
+            if !v.loaders.is_empty() {
+                parts.push(v.loaders.join(", "));
+            }
+            if let Some(b) = v.size_bytes {
+                parts.push(kit.tr.fmt("content.size_mb", &[&mb(b)]));
+            }
+            let line = parts.join(" · ");
             match &v.compatible {
                 Ok(()) => {
                     let chosen = self.lib_ui.version.as_deref() == Some(v.version_id.as_str());
@@ -1867,6 +1898,7 @@ impl LauncherApp {
             self.lib_submit(LibCommand::Plan {
                 instance: inst.id.clone(),
                 kind,
+                project_id: d.project_id.clone(),
                 version_id,
                 world: if kind == ContentKind::DataPack {
                     world
@@ -1983,7 +2015,7 @@ impl LauncherApp {
                     .clicked()
                 {
                     self.lib_submit(LibCommand::Apply {
-                        plan_id: plan.plan_id,
+                        plan_id: plan.plan_id.clone(),
                     });
                 }
                 if kit

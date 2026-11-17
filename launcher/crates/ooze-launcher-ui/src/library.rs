@@ -90,7 +90,8 @@ pub struct InstanceSummary {
     /// Number of user overrides on top of the preset.
     pub overrides: u32,
     pub mode: IntegrityMode,
-    pub install: InstallState,
+    /// `None` when the library does not report install state (Play still verifies via API 1).
+    pub install: Option<InstallState>,
     pub actions: Vec<InstanceAction>,
     /// Content kinds the library can manage for this instance (for example, no mods or shader
     /// packs for Vanilla). The interface offers the intersection with the capability.
@@ -140,6 +141,8 @@ pub struct LibraryCapabilities {
     /// Content kinds the library can search and install (for supported instances).
     pub content: Vec<ContentKind>,
     pub managed_mode: bool,
+    /// Search accepts a sort order.
+    pub sort: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -184,11 +187,12 @@ pub struct SearchQuery {
 pub struct SearchHit {
     pub project_id: String,
     pub title: String,
-    pub author: String,
     pub summary: String,
-    pub downloads: u64,
+    /// Shown only when the library reports them.
+    pub author: Option<String>,
+    pub downloads: Option<u64>,
     /// ISO date as reported by Modrinth (display only).
-    pub updated: String,
+    pub updated: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -211,11 +215,11 @@ pub enum Channel {
 pub struct VersionSummary {
     pub version_id: String,
     pub number: String,
-    pub channel: Channel,
-    pub published: String,
+    pub channel: Option<Channel>,
+    pub published: Option<String>,
     pub game_versions: Vec<String>,
     pub loaders: Vec<String>,
-    pub size_bytes: u64,
+    pub size_bytes: Option<u64>,
     /// `Err(reason)`: the backend's safe explanation, for example "Needs Minecraft 1.21.10".
     pub compatible: Result<(), String>,
 }
@@ -226,7 +230,7 @@ pub struct ProjectDetails {
     pub kind: ContentKind,
     pub project_id: String,
     pub title: String,
-    pub author: String,
+    pub author: Option<String>,
     /// Plain text; markup is never interpreted.
     pub description: String,
     pub license: Option<String>,
@@ -271,7 +275,8 @@ pub enum ShaderLoader {
 /// A backend-held, opaque install plan. Apply sends only `plan_id`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DependencyPlan {
-    pub plan_id: u64,
+    /// Opaque backend identifier.
+    pub plan_id: String,
     pub instance: InstanceId,
     pub kind: ContentKind,
     pub install: Vec<PlanItem>,
@@ -328,6 +333,10 @@ pub enum IntegrityProblem {
     UnapprovedPack,
     /// The backend's safe name for the setting (for example "custom JVM argument").
     ProhibitedLaunchSetting(String),
+    /// A problem the library describes only in its own safe words.
+    Reported(String),
+    /// Managed mode: the release manifest itself could not be verified.
+    BaselineUnverified,
 }
 
 /// Safe remedies. There is deliberately no "delete": the library never deletes player files.
@@ -396,11 +405,12 @@ pub enum LibCommand {
     Plan {
         instance: InstanceId,
         kind: ContentKind,
+        project_id: String,
         version_id: String,
         world: Option<String>,
     },
     Apply {
-        plan_id: u64,
+        plan_id: String,
     },
     ListInstalled {
         instance: InstanceId,
