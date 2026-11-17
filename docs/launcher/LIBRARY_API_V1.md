@@ -35,6 +35,19 @@ a claim of the complete global category catalog. Version summaries retain
 optional channel/date and the unambiguous primary file's size. The filters map
 to Modrinth's documented [search index and facets](https://docs.modrinth.com/api/operations/searchprojects/).
 
+`InspectContent(instance)` returns `Reply::Installed(Vec<CheckedContent>)` on a
+worker, with Verified/Modified/Missing from the actual receipt size and SHA-512.
+The desktop no longer labels content enabled from an unchecked receipt alone.
+Integrity reports add the same checked content; legacy issue strings remain.
+`RepairRecord { instance, record_id }` restores that exact receipt's pinned hash
+and returns a refreshed integrity report. Other-world copies are not repaired.
+The older project repair keeps its existing all-project-receipts behavior.
+
+`ConvertToManaged(instance)` refuses unless the pinned installation verifies and
+the managed content policy has no failures. It does not delete/move extra files.
+Per-file repair is offered for Custom receipts; managed baseline repair stays in
+Launcher API 1. Automatic quarantine is not implemented and never offered.
+
 ## Facade and ownership
 
 `Library::open(data_dir)` performs bounded local startup I/O. Call it off the

@@ -546,6 +546,22 @@ pub struct IntegrityReport {
     pub baseline_verified: bool,
     pub verified_files: u32,
     pub issues: Vec<String>,
+    #[serde(default)]
+    pub content: Vec<CheckedContent>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentStatus {
+    Verified,
+    Modified,
+    Missing,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CheckedContent {
+    pub receipt: ContentReceipt,
+    pub status: ContentStatus,
 }
 
 #[cfg(test)]

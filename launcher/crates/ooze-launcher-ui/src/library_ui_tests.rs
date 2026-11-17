@@ -116,6 +116,96 @@ fn without_a_library_the_launcher_has_no_library_pages() {
 }
 
 #[test]
+fn real_library_appearance_persists_and_local_worlds_reach_the_window() {
+    use crate::core_library::CoreLibrary;
+    fn wait(lib: &mut CoreLibrary, op: LibOpId) -> LibPayload {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut events = Vec::new();
+        while std::time::Instant::now() < deadline {
+            lib.drain_events(&mut events);
+            for event in events.drain(..) {
+                if let LibEvent::Finished {
+                    op: completed,
+                    result,
+                } = event
+                    && completed == op
+                {
+                    return result.unwrap();
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        panic!("real library operation timed out");
+    }
+    let dir = std::env::temp_dir().join(format!(
+        "ooze-real-ui-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let mut library = CoreLibrary::open(&dir).unwrap();
+    let op = library
+        .submit(LibCommand::Create {
+            name: "Local UI integration test".into(),
+            target: fx::vanilla_target(),
+        })
+        .unwrap();
+    let LibPayload::Created(id) = wait(&mut library, op) else {
+        panic!("created")
+    };
+    let op = library.submit(LibCommand::Select(id.clone())).unwrap();
+    wait(&mut library, op);
+    let game = library.snapshot().instance(&id).unwrap().game_dir.clone();
+    std::fs::create_dir_all(game.join("saves/Local test world")).unwrap();
+    std::fs::write(
+        game.join("saves/Local test world/level.dat"),
+        b"test fixture",
+    )
+    .unwrap();
+    let mut snap = snapshot();
+    snap.settings.install_root = Some(game);
+    let (backend, _) = FixtureBackend::manual(snap);
+    let app =
+        LauncherApp::new(Box::new(backend), AppOptions::default()).with_library(Box::new(library));
+    let mut h = Harness::builder()
+        .with_size(vec2(1120.0, 900.0))
+        .with_pixels_per_point(1.0)
+        .build_ui_state(|ui, app: &mut LauncherApp| app.frame(ui), app);
+    h.run_steps(6);
+    go(&mut h, "Appearance");
+    click(&mut h, Role::Button, "Mint");
+    click(&mut h, Role::Button, "Apply");
+    for _ in 0..1000 {
+        h.run_steps(1);
+        if !h.state().library_model().unwrap().busy() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    assert!(shows(&h, "Appearance saved"));
+    let bytes = std::fs::read_to_string(dir.join("library/appearance.json")).unwrap();
+    let saved = ooze_launcher_core::library::Appearance::from_json(&bytes).unwrap();
+    assert!(saved.document.accent.is_some());
+    shot(&mut h, "real-appearance");
+    go(&mut h, "Content");
+    h.get_by_role_and_label(Role::RadioButton, "Data packs")
+        .click();
+    for _ in 0..1000 {
+        h.run_steps(1);
+        if shows(&h, "Local test world") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    assert!(shows(&h, "Local test world"));
+    shot(&mut h, "real-worlds");
+    drop(h);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn each_page_appears_only_with_its_capability() {
     let mut snap = fx::snapshot();
     snap.capabilities = LibraryCapabilities {

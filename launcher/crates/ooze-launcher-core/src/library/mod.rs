@@ -63,6 +63,7 @@ pub enum Command {
     ExportProfile(Id),
     ExportTheme(Id),
     ConvertToCustom(Id),
+    ConvertToManaged(Id),
     Search(Search),
     SearchFiltered {
         search: Search,
@@ -97,6 +98,11 @@ pub enum Command {
         enabled: Option<bool>,
     },
     Verify(Id),
+    InspectContent(Id),
+    RepairRecord {
+        instance: Id,
+        record_id: String,
+    },
     RepairContent {
         instance: Id,
         project: String,
@@ -115,6 +121,7 @@ pub enum Reply {
     Versions(Vec<VersionSummary>),
     Plan(PlanSummary),
     Integrity(IntegrityReport),
+    Installed(Vec<CheckedContent>),
     Export(String),
     Imported {
         warnings: Vec<String>,
@@ -481,6 +488,20 @@ impl Inner {
                 store.save(&mut value)?;
                 Ok(Reply::None)
             }
+            Command::ConvertToManaged(id) => {
+                let (mut value, _lock) = store.claim(&id)?;
+                value.mode = Mode::Managed;
+                let game = store.game(&id)?;
+                let integrity = content::verify(&value, &game, check)?;
+                if !integrity.issues.is_empty() || !verify_baseline(&value, &game, check)? {
+                    return Err(invalid(
+                        "Managed mode requires a verified pinned installation and no extra content. Repair the installation and explicitly remove extra content first; nothing was changed.",
+                    ));
+                }
+                report(ProgressStage::Committing, 0, None, None)?;
+                store.save(&mut value)?;
+                Ok(Reply::None)
+            }
             Command::Search(request) => Ok(Reply::Search(self.http.search(&request, check)?)),
             Command::SearchFiltered { search, options } => Ok(Reply::Search(
                 self.http.search_filtered(&search, &options, check)?,
@@ -591,8 +612,37 @@ impl Inner {
                 Ok(Reply::None)
             }
             Command::RepairContent { instance, project } => {
-                content::repair(&store, &self.http, &instance, &project, check, report)?;
+                content::repair(
+                    &store,
+                    &self.http,
+                    &instance,
+                    content::Selection::Project(&project),
+                    check,
+                    report,
+                )?;
                 Ok(Reply::None)
+            }
+            Command::RepairRecord {
+                instance,
+                record_id,
+            } => {
+                content::repair(
+                    &store,
+                    &self.http,
+                    &instance,
+                    content::Selection::Record(&record_id),
+                    check,
+                    report,
+                )?;
+                self.execute(Command::Verify(instance), check, report)
+            }
+            Command::InspectContent(id) => {
+                let (instance, _lock) = store.claim(&id)?;
+                Ok(Reply::Installed(content::inspect(
+                    &instance,
+                    &store.game(&id)?,
+                    check,
+                )?))
             }
             Command::Verify(id) => {
                 let (value, _lock) = store.claim(&id)?;
@@ -741,6 +791,28 @@ pub(crate) fn verify_prepared(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn managed_conversion_refuses_missing_baseline_without_changing_the_instance() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store::Store::open(dir.path()).unwrap();
+        let id = store
+            .create(
+                "Custom".into(),
+                Target::fabric(),
+                Preset::Minimal,
+                Mode::Custom,
+            )
+            .unwrap();
+        let before = store.instance(&id).unwrap();
+        let library = Library::open(dir.path()).unwrap();
+        let op = library
+            .submit(Command::ConvertToManaged(id.clone()))
+            .unwrap();
+        assert!(wait(&library, op).is_err());
+        let after = store.instance(&id).unwrap();
+        assert_eq!(after.mode, Mode::Custom);
+        assert_eq!(after.revision, before.revision);
+    }
     #[test]
     fn managed_java_is_checked_before_any_runtime_validation() {
         let dir = tempfile::tempdir().unwrap();

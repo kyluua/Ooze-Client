@@ -331,9 +331,36 @@ impl LauncherApp {
             self.model.apply(event);
         }
         let mut selected = None;
+        let mut refresh_content = None;
         if let (Some(library), Some(model)) = (self.library.as_mut(), self.lib.as_mut()) {
             library.drain_events(&mut self.lib_events);
             for event in self.lib_events.drain(..) {
+                if let LibEvent::Finished {
+                    op,
+                    result: Ok(payload),
+                } = &event
+                    && model.active().is_some_and(|(active, _)| active == *op)
+                {
+                    match payload {
+                        crate::library::LibPayload::Installed { instance, kind, .. } => {
+                            refresh_content = Some((instance.clone(), *kind))
+                        }
+                        _ if matches!(
+                            model.active_command(),
+                            Some(
+                                crate::library::LibCommand::SetEnabled { .. }
+                                    | crate::library::LibCommand::Remove { .. }
+                            )
+                        ) =>
+                        {
+                            refresh_content = model
+                                .installed
+                                .as_ref()
+                                .map(|(id, kind, _)| (id.clone(), *kind));
+                        }
+                        _ => {}
+                    }
+                }
                 if let LibEvent::Finished { op, result } = &event
                     && self
                         .pending_selection
@@ -372,6 +399,9 @@ impl LauncherApp {
                         .as_ref()
                         .is_some_and(|s| s.install_root.as_ref() == Some(&instance.game_dir));
             }
+        }
+        if let Some((instance, kind)) = refresh_content {
+            self.lib_submit(crate::library::LibCommand::ListInstalled { instance, kind });
         }
         if self.backend.wants_polling() {
             // The real backend has no waker: poll while an operation or the game is active.

@@ -9,7 +9,7 @@
 //!   run any before M0; Real or absent);
 //! - themes and local data packs use the library's persisted appearance and opaque world keys;
 //! - search sort, category filters and metadata map the library's real catalog response;
-//! - switching to Managed Fair Play: off (the library offers only conversion to Custom).
+//! - Managed conversion and repair remain backend-validated, never optimistic interface state.
 
 use std::collections::VecDeque;
 use std::path::Path;
@@ -49,7 +49,7 @@ pub struct CoreLibrary {
     out: VecDeque<LibEvent>,
     synthetic: u64,
     /// The last plan's id, kind, selected project and file names (for the installed notice).
-    plan: Option<(String, ContentKind, Vec<String>)>,
+    plan: Option<(String, InstanceId, ContentKind, Vec<String>)>,
 }
 
 impl std::fmt::Debug for CoreLibrary {
@@ -240,24 +240,36 @@ impl CoreLibrary {
                 let plan = map_plan(instance, *kind, project_id, world.clone(), &p);
                 self.plan = Some((
                     plan.plan_id.clone(),
+                    instance.clone(),
                     *kind,
                     plan.install.iter().map(|i| i.title.clone()).collect(),
                 ));
                 LibPayload::Plan(plan)
             }
             (LibCommand::Apply { plan_id }, _) => {
-                let (kind, titles) = match self.plan.take() {
-                    Some((id, kind, titles)) if id == *plan_id => (kind, titles),
-                    _ => (ContentKind::Mod, Vec::new()),
+                let (instance, kind, titles) = match self.plan.take() {
+                    Some((id, instance, kind, titles)) if id == *plan_id => {
+                        (instance, kind, titles)
+                    }
+                    _ => return Err(unexpected()),
                 };
-                let instance = self.snap.selected.clone().ok_or_else(unexpected)?;
                 LibPayload::Installed {
                     instance,
                     kind,
                     titles,
                 }
             }
-            (LibCommand::CheckIntegrity(id), sl::Reply::Integrity(r)) => LibPayload::Integrity {
+            (LibCommand::ListInstalled { instance, kind }, sl::Reply::Installed(records)) => {
+                LibPayload::InstalledList {
+                    instance: instance.clone(),
+                    kind: *kind,
+                    items: installed_items(&records, *kind),
+                }
+            }
+            (
+                LibCommand::CheckIntegrity(id) | LibCommand::Resolve { instance: id, .. },
+                sl::Reply::Integrity(r),
+            ) => LibPayload::Integrity {
                 instance: id.clone(),
                 report: map_integrity(&r),
             },
@@ -313,6 +325,10 @@ impl LibraryBackend for CoreLibrary {
                 id: i,
                 mode: IntegrityMode::Custom,
             } => self.start(sl::Command::ConvertToCustom(id(i)), plain(&c)),
+            LibCommand::SetMode {
+                id: i,
+                mode: IntegrityMode::ManagedFairPlay,
+            } => self.start(sl::Command::ConvertToManaged(id(i)), plain(&c)),
             LibCommand::LoadProfile(i) => {
                 let s = self
                     .raw_instance(i)
@@ -411,17 +427,8 @@ impl LibraryBackend for CoreLibrary {
             LibCommand::Apply { plan_id } => {
                 self.start(sl::Command::Apply(sl::Id(plan_id.clone())), plain(&c))
             }
-            LibCommand::ListInstalled { instance, kind } => {
-                let s = self
-                    .raw_instance(instance)
-                    .ok_or_else(|| LibError::new(LibErrorKind::NotFound))?;
-                let items = installed_items(&s.instance.content, *kind);
-                let payload = LibPayload::InstalledList {
-                    instance: instance.clone(),
-                    kind: *kind,
-                    items,
-                };
-                Ok(self.synthetic_op(payload))
+            LibCommand::ListInstalled { instance, .. } => {
+                self.start(sl::Command::InspectContent(id(instance)), plain(&c))
             }
             LibCommand::SetEnabled {
                 instance,
@@ -454,12 +461,22 @@ impl LibraryBackend for CoreLibrary {
                 plain(&c),
             ),
             LibCommand::ListWorlds(i) => self.start(sl::Command::ListWorlds(id(i)), plain(&c)),
+            LibCommand::Resolve {
+                instance,
+                file,
+                action: IntegrityAction::Repair,
+            } => self.start(
+                sl::Command::RepairRecord {
+                    instance: id(instance),
+                    record_id: file.clone(),
+                },
+                plain(&c),
+            ),
             // Not offered by this library: the interface never shows these (capabilities and
             // per-instance actions exclude them), so reaching here is a programming error.
-            LibCommand::SetMode { .. }
-            | LibCommand::Install(_)
-            | LibCommand::Update { .. }
-            | LibCommand::Resolve { .. } => Err(LibError::new(LibErrorKind::Invalid)),
+            LibCommand::Install(_) | LibCommand::Update { .. } | LibCommand::Resolve { .. } => {
+                Err(LibError::new(LibErrorKind::Invalid))
+            }
         }
     }
 
@@ -660,9 +677,7 @@ pub fn map_snapshot(raw: &sl::Snapshot, caps: &sl::Capabilities) -> LibrarySnaps
                 InstanceAction::Duplicate,
                 InstanceAction::Archive,
             ];
-            if mode == IntegrityMode::ManagedFairPlay {
-                actions.push(InstanceAction::ChangeMode);
-            }
+            actions.push(InstanceAction::ChangeMode);
             InstanceSummary {
                 id: InstanceId(i.id.0.clone()),
                 name: i.name.clone(),
@@ -693,7 +708,7 @@ pub fn map_snapshot(raw: &sl::Snapshot, caps: &sl::Capabilities) -> LibrarySnaps
             profiles: !caps.runtime_modules.is_empty(),
             themes: caps.appearance,
             content: offered,
-            managed_mode: false,
+            managed_mode: true,
             sort: caps.search_options,
         },
         instances,
@@ -783,11 +798,12 @@ fn map_plan(
     }
 }
 
-fn installed_items(receipts: &[sl::ContentReceipt], kind: ContentKind) -> Vec<InstalledItem> {
+fn installed_items(receipts: &[sl::CheckedContent], kind: ContentKind) -> Vec<InstalledItem> {
     receipts
         .iter()
-        .filter(|r| from_core_kind(r.kind) == kind)
-        .map(|r| {
+        .filter(|r| from_core_kind(r.receipt.kind) == kind)
+        .map(|checked| {
+            let r = &checked.receipt;
             let file = r.path.rsplit('/').next().unwrap_or(&r.path).to_owned();
             let world = r
                 .path
@@ -800,10 +816,11 @@ fn installed_items(receipts: &[sl::ContentReceipt], kind: ContentKind) -> Vec<In
                 title: file.clone(),
                 version_number: r.version.clone(),
                 file_name: file,
-                state: if r.enabled {
-                    ContentState::Enabled
-                } else {
-                    ContentState::Disabled
+                state: match checked.status {
+                    sl::ContentStatus::Missing => ContentState::Missing,
+                    sl::ContentStatus::Modified => ContentState::Modified,
+                    sl::ContentStatus::Verified if r.enabled => ContentState::Enabled,
+                    sl::ContentStatus::Verified => ContentState::Disabled,
                 },
                 world,
                 update: None,
@@ -821,11 +838,44 @@ fn map_integrity(r: &sl::IntegrityReport) -> IntegrityReport {
             actions: Vec::new(),
         });
     }
-    issues.extend(r.issues.iter().map(|text| IntegrityIssue {
-        file: String::new(),
-        problem: IntegrityProblem::Reported(crate::redact::redact(text).into_owned()),
-        actions: Vec::new(),
-    }));
+    issues.extend(
+        r.content
+            .iter()
+            .filter(|f| f.status != sl::ContentStatus::Verified)
+            .map(|f| IntegrityIssue {
+                file: f.receipt.path.clone(),
+                problem: match f.status {
+                    sl::ContentStatus::Missing => IntegrityProblem::Missing,
+                    _ => IntegrityProblem::HashMismatch,
+                },
+                actions: if r.managed {
+                    Vec::new()
+                } else {
+                    vec![IntegrityAction::Repair]
+                },
+            }),
+    );
+    let recorded_messages: std::collections::BTreeSet<_> = r
+        .content
+        .iter()
+        .filter(|f| f.status != sl::ContentStatus::Verified)
+        .map(|f| {
+            format!(
+                "Registered content changed or is missing: {}",
+                f.receipt.path
+            )
+        })
+        .collect();
+    issues.extend(
+        r.issues
+            .iter()
+            .filter(|s| !recorded_messages.contains(s.as_str()))
+            .map(|text| IntegrityIssue {
+                file: String::new(),
+                problem: IntegrityProblem::Reported(crate::redact::redact(text).into_owned()),
+                actions: Vec::new(),
+            }),
+    );
     IntegrityReport {
         mode: if r.managed {
             IntegrityMode::ManagedFairPlay

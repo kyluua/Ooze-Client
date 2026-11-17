@@ -41,6 +41,7 @@ jobs:
     timeout-minutes: 60
     env:
       WGPU_BACKEND: dx12
+      OOZE_UI_SCREENSHOT_DIR: '${{ github.workspace }}/launcher/test-data/ui-screenshots'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Configure the owned public Microsoft application
@@ -107,3 +108,9 @@ jobs:
           name: ooze-launcher-windows-x64
           path: launcher/dist/ooze-l0-windows-x64/
           if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ooze-launcher-ui-evidence
+          path: launcher/test-data/ui-screenshots/
+          if-no-files-found: ignore

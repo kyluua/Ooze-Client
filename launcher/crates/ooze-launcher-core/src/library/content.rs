@@ -746,12 +746,17 @@ pub(super) fn repair(
     store: &Store,
     http: &Modrinth,
     id: &Id,
-    project: &str,
+    selection: Selection<'_>,
     check: &dyn Fn() -> Result<()>,
     report: Reporter<'_>,
 ) -> Result<()> {
     use modrinth::Source;
-    modrinth::identifier(project)?;
+    match &selection {
+        Selection::Project(project) => modrinth::identifier(project)?,
+        Selection::Record(path) => {
+            util::relative(path)?;
+        }
+    }
     let (before, _lock) = store.claim(id)?;
     if before.mode == Mode::Managed {
         return Err(invalid(
@@ -761,7 +766,7 @@ pub(super) fn repair(
     let selected: Vec<_> = before
         .content
         .iter()
-        .filter(|r| r.project == project)
+        .filter(|r| selection.matches(r))
         .collect();
     if selected.is_empty() {
         return Err(invalid("This project is not installed."));
@@ -786,6 +791,34 @@ pub(super) fn repair(
     commit_with_repair(store, &before, before.clone(), changes, check, true, report)
 }
 
+pub(super) fn inspect(
+    instance: &Instance,
+    game: &Path,
+    check: &dyn Fn() -> Result<()>,
+) -> Result<Vec<CheckedContent>> {
+    instance
+        .content
+        .iter()
+        .map(|receipt| {
+            check()?;
+            let path = util::join(game, &receipt.path)?;
+            let status = if !path.is_file() {
+                ContentStatus::Missing
+            } else if fs::metadata(&path).map_err(|_| io_error())?.len() != receipt.size
+                || hash(&path, check)? != receipt.sha512
+            {
+                ContentStatus::Modified
+            } else {
+                ContentStatus::Verified
+            };
+            Ok(CheckedContent {
+                receipt: receipt.clone(),
+                status,
+            })
+        })
+        .collect()
+}
+
 pub(super) fn verify(
     instance: &Instance,
     game: &Path,
@@ -796,17 +829,13 @@ pub(super) fn verify(
         baseline_verified: false,
         verified_files: 0,
         issues: Vec::new(),
+        content: inspect(instance, game, check)?,
     };
-    for receipt in &instance.content {
-        check()?;
-        let path = util::join(game, &receipt.path)?;
-        if !path.is_file()
-            || fs::metadata(&path).map_err(|_| io_error())?.len() != receipt.size
-            || hash(&path, check)? != receipt.sha512
-        {
+    for file in &result.content {
+        if file.status != ContentStatus::Verified {
             result.issues.push(format!(
                 "Registered content changed or is missing: {}",
-                receipt.path
+                file.receipt.path
             ));
         } else {
             result.verified_files += 1;
@@ -922,6 +951,20 @@ mod tests {
         )
         .unwrap();
         assert_eq!(store.instance(&id).unwrap().content.len(), 1);
+        let path = store.game(&id).unwrap().join("mods/a.jar");
+        fs::write(&path, b"modified").unwrap();
+        let checked = inspect(
+            &store.instance(&id).unwrap(),
+            &store.game(&id).unwrap(),
+            &|| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(
+            checked[0].status,
+            ContentStatus::Modified,
+            "same-length edits require hash verification"
+        );
+        fs::write(&path, b"verified").unwrap();
         let copy = store.duplicate(&id, "Copy".into(), &|| Ok(())).unwrap();
         assert_eq!(
             fs::read(store.game(&copy).unwrap().join("mods/a.jar")).unwrap(),
@@ -974,6 +1017,12 @@ mod tests {
             });
         }
         store.save(&mut instance).unwrap();
+        let second = game.join("saves/two/datapacks/a.zip");
+        let held = game.join("saves/two/datapacks/a.zip.held");
+        fs::rename(&second, &held).unwrap();
+        let checked = inspect(&store.instance(&id).unwrap(), &game, &|| Ok(())).unwrap();
+        assert_eq!(checked[1].status, ContentStatus::Missing);
+        fs::rename(&held, &second).unwrap();
         let report = |_, _, _, _: Option<&str>| Ok(());
         change_reported(
             &store,
