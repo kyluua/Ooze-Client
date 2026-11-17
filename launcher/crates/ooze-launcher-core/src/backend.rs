@@ -388,7 +388,6 @@ fn validate_settings(settings: &Settings) -> Result<()> {
     if let Some(java) = &settings.java_path {
         util::absolute(java)?;
     }
-    crate::library::validate_game_settings(settings)?;
     Ok(())
 }
 
