@@ -8,6 +8,15 @@ use std::collections::BTreeMap;
 pub const LIBRARY_API_VERSION: u32 = 1;
 pub const SCHEMA: u32 = 1;
 pub const THEME_SCHEMA: &str = "ooze.launcher.theme/1";
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+pub enum ProgressStage {
+    Contacting,
+    Downloading,
+    Verifying,
+    Committing,
+}
+pub(super) type Reporter<'a> =
+    &'a dyn Fn(ProgressStage, u64, Option<u64>, Option<&str>) -> Result<()>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(transparent)]

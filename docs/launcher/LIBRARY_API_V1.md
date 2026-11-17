@@ -13,9 +13,16 @@ paint path, beside `Launcher::open`, using the same absolute data directory.
 pattern. One library operation is active at a time; concurrent submit is Busy.
 `capabilities()` advertises the implemented targets/content types and an empty
 runtime_modules list until game hooks are validated. `set_notify` accepts a
-nonblocking repaint notifier. Events are Started and Finished; Finished contains
+nonblocking repaint notifier. Events are Started, Progress and Finished; Finished contains
 Result<Reply, LauncherError>. The queue is bounded to 64 events. The snapshot is
-updated before Finished. Library 1 currently has no byte-progress events.
+updated before Finished and accepts a next operation immediately at Finished.
+Progress carries id, ProgressStage (Contacting/Downloading/Verifying/Committing),
+done/optional total and an optional safe filename. Byte counts are per file.
+Downloading events are throttled to at most one per 50 ms plus first/last and
+are best effort. Committing is a reliable control event: cancellation is closed
+under the same mutex used by cancel before it is emitted. cancel then returns
+false and dropping the facade lets the commit finish. Errors still trigger
+transaction recovery; forced process termination is recovered next startup.
 IDs are monotonic per facade lifetime, independent of Launcher OperationId.
 Every accepted operation has one terminal result unless its process terminates.
 Callers must keep draining the bounded queue, discard stale IDs, and perform no

@@ -157,6 +157,7 @@ fn download(
     file: &modrinth::VersionFile,
     path: &Path,
     check: &dyn Fn() -> Result<()>,
+    report: Reporter<'_>,
 ) -> Result<()> {
     modrinth::validate_file(file)?;
     check()?;
@@ -181,6 +182,13 @@ fn download(
     let mut hash = Sha512::new();
     let mut buffer = [0u8; 65536];
     let mut size = 0;
+    let mut last_report = std::time::Instant::now();
+    report(
+        ProgressStage::Downloading,
+        0,
+        Some(file.size),
+        Some(&file.filename),
+    )?;
     loop {
         check()?;
         let n = input.read(&mut buffer).map_err(|_| {
@@ -201,6 +209,15 @@ fn download(
         }
         hash.update(&buffer[..n]);
         output.write_all(&buffer[..n]).map_err(|_| io_error())?;
+        if last_report.elapsed() >= std::time::Duration::from_millis(50) || size == file.size {
+            report(
+                ProgressStage::Downloading,
+                size,
+                Some(file.size),
+                Some(&file.filename),
+            )?;
+            last_report = std::time::Instant::now();
+        }
     }
     output.sync_all().map_err(|_| io_error())?;
     if size != file.size || !hex::encode(hash.finalize()).eq_ignore_ascii_case(&file.hashes.sha512)
@@ -211,6 +228,12 @@ fn download(
         ));
     }
     drop(output);
+    report(
+        ProgressStage::Verifying,
+        file.size,
+        Some(file.size),
+        Some(&file.filename),
+    )?;
     validate_archive(path, check)
 }
 fn context(stage: &str, mut e: crate::api::LauncherError) -> crate::api::LauncherError {
@@ -371,6 +394,7 @@ pub(super) fn recover(store: &Store, id: &Id) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 fn commit(
     store: &Store,
     before: &Instance,
@@ -378,7 +402,15 @@ fn commit(
     changes: BTreeMap<String, Option<PathBuf>>,
     check: &dyn Fn() -> Result<()>,
 ) -> Result<()> {
-    commit_with_repair(store, before, after, changes, check, false)
+    commit_with_repair(
+        store,
+        before,
+        after,
+        changes,
+        check,
+        false,
+        &|_, _, _, _| Ok(()),
+    )
 }
 fn commit_with_repair(
     store: &Store,
@@ -387,6 +419,7 @@ fn commit_with_repair(
     mut changes: BTreeMap<String, Option<PathBuf>>,
     check: &dyn Fn() -> Result<()>,
     repair: bool,
+    report: Reporter<'_>,
 ) -> Result<()> {
     check()?;
     let game = store.game(&before.id)?;
@@ -454,6 +487,7 @@ fn commit_with_repair(
         },
     )?;
     check()?;
+    report(ProgressStage::Committing, 0, None, None)?;
     let kept = stage.keep();
     fs::rename(&kept, &dir).map_err(|e| io_context("activating a staged transaction", &e))?;
     let work = (|| {
@@ -487,6 +521,7 @@ pub(super) fn apply(
     http: &Modrinth,
     plan: &Plan,
     check: &dyn Fn() -> Result<()>,
+    report: Reporter<'_>,
 ) -> Result<()> {
     let (before, _lock) = store.claim(&plan.instance)?;
     if before.mode == Mode::Managed {
@@ -535,7 +570,7 @@ pub(super) fn apply(
             return Err(invalid("Multiple content files use the same destination."));
         }
         let staged = util::join(download_dir.path(), &i.to_string())?;
-        download(http, file, &staged, check)
+        download(http, file, &staged, check, report)
             .map_err(|e| context("downloading and validating a file", e))?;
         let world_prefix = if resolved.kind == ContentKind::Datapack {
             path.rsplit_once('/').map(|(p, _)| p.to_owned())
@@ -574,16 +609,27 @@ pub(super) fn apply(
                 .collect(),
         });
     }
-    commit(store, &before, after, changes, check)
+    commit_with_repair(store, &before, after, changes, check, false, report)
         .map_err(|e| context("committing staged files or retaining recovery history", e))
 }
 
-pub(super) fn change(
+#[cfg(test)]
+fn change(
     store: &Store,
     id: &Id,
     project: &str,
     enabled: Option<bool>,
     check: &dyn Fn() -> Result<()>,
+) -> Result<()> {
+    change_reported(store, id, project, enabled, check, &|_, _, _, _| Ok(()))
+}
+pub(super) fn change_reported(
+    store: &Store,
+    id: &Id,
+    project: &str,
+    enabled: Option<bool>,
+    check: &dyn Fn() -> Result<()>,
+    report: Reporter<'_>,
 ) -> Result<()> {
     modrinth::identifier(project)?;
     let (before, _lock) = store.claim(id)?;
@@ -646,7 +692,7 @@ pub(super) fn change(
             after.content.retain(|r| r.path != receipt.path);
         }
     }
-    commit(store, &before, after, changes, check)
+    commit_with_repair(store, &before, after, changes, check, false, report)
 }
 
 pub(super) fn repair(
@@ -655,6 +701,7 @@ pub(super) fn repair(
     id: &Id,
     project: &str,
     check: &dyn Fn() -> Result<()>,
+    report: Reporter<'_>,
 ) -> Result<()> {
     use modrinth::Source;
     modrinth::identifier(project)?;
@@ -686,10 +733,10 @@ pub(super) fn repair(
         }
         let source=version.files.iter().find(|f|f.size==receipt.size && f.hashes.sha512.eq_ignore_ascii_case(&receipt.sha512)).ok_or_else(||error(ErrorCode::Integrity,"Provider metadata no longer matches the recorded content hash; existing files were preserved."))?;
         let downloaded = util::join(stage.path(), &i.to_string())?;
-        download(http, source, &downloaded, check)?;
+        download(http, source, &downloaded, check, report)?;
         changes.insert(receipt.path.clone(), Some(downloaded));
     }
-    commit_with_repair(store, &before, before.clone(), changes, check, true)
+    commit_with_repair(store, &before, before.clone(), changes, check, true, report)
 }
 
 pub(super) fn verify(

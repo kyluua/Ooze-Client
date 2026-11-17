@@ -111,6 +111,13 @@ pub enum Reply {
 }
 #[derive(Clone, Debug)]
 pub enum Event {
+    Progress {
+        id: u64,
+        stage: ProgressStage,
+        done: u64,
+        total: Option<u64>,
+        item: Option<String>,
+    },
     Started {
         id: u64,
     },
@@ -122,6 +129,7 @@ pub enum Event {
 struct Active {
     id: u64,
     cancel: Arc<AtomicBool>,
+    cancellable: bool,
 }
 type Notify = Arc<dyn Fn() + Send + Sync>;
 struct Inner {
@@ -236,6 +244,7 @@ impl Library {
         *active = Some(Active {
             id,
             cancel: cancel.clone(),
+            cancellable: true,
         });
         drop(active);
         let inner = self.inner.clone();
@@ -250,8 +259,10 @@ impl Library {
                         Ok(())
                     }
                 };
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    inner.execute(command, &check)
+                let mut result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    inner.execute(command, &check, &|stage, done, total, item| {
+                        inner.progress(id, stage, done, total, item)
+                    })
                 }))
                 .unwrap_or_else(|_| {
                     Err(error(
@@ -259,10 +270,12 @@ impl Library {
                         "A library operation failed internally; restart Ooze.",
                     ))
                 });
-                if let Ok(store) = store::Store::open(&inner.data)
-                    && let Ok(snapshot) = store.snapshot()
-                {
-                    *inner.state.lock().unwrap_or_else(|e| e.into_inner()) = snapshot;
+                match store::Store::open(&inner.data).and_then(|store| store.snapshot()) {
+                    Ok(snapshot) => {
+                        *inner.state.lock().unwrap_or_else(|e| e.into_inner()) = snapshot
+                    }
+                    Err(e) if result.is_ok() => result = Err(e),
+                    Err(_) => {}
                 }
                 *inner.active.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 inner.emit(Event::Finished { id, result });
@@ -286,6 +299,7 @@ impl Library {
             .unwrap_or_else(|e| e.into_inner())
             .as_ref()
             && active.id == id
+            && active.cancellable
         {
             active.cancel.store(true, Ordering::Release);
             return true;
@@ -301,12 +315,48 @@ impl Drop for Library {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .as_ref()
+            && active.cancellable
         {
             active.cancel.store(true, Ordering::Release);
         }
     }
 }
 impl Inner {
+    fn progress(
+        &self,
+        id: u64,
+        stage: ProgressStage,
+        done: u64,
+        total: Option<u64>,
+        item: Option<&str>,
+    ) -> Result<()> {
+        if stage == ProgressStage::Committing {
+            let mut active = self.active.lock().map_err(|_| io_error())?;
+            if let Some(active) = active.as_mut() {
+                if active.cancel.load(Ordering::Acquire) {
+                    return Err(error(
+                        ErrorCode::Cancelled,
+                        "Library operation cancelled before commit.",
+                    ));
+                }
+                active.cancellable = false;
+            }
+        }
+        let event = Event::Progress {
+            id,
+            stage,
+            done,
+            total,
+            item: item.map(str::to_owned),
+        };
+        if stage == ProgressStage::Committing {
+            self.emit(event);
+        } else {
+            let _ = self.events.try_send(event);
+            self.wake();
+        }
+        Ok(())
+    }
     fn wake(&self) {
         let notify = self
             .notify
@@ -314,25 +364,32 @@ impl Inner {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         if let Some(notify) = notify {
-            notify();
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| notify()));
         }
     }
     fn emit(&self, event: Event) {
         let _ = self.events.send(event);
         self.wake();
     }
-    fn execute(&self, command: Command, check: &dyn Fn() -> Result<()>) -> Result<Reply> {
+    fn execute(
+        &self,
+        command: Command,
+        check: &dyn Fn() -> Result<()>,
+        report: Reporter<'_>,
+    ) -> Result<Reply> {
         check()?;
+        report(ProgressStage::Contacting, 0, None, None)?;
         let store = store::Store::open(&self.data)?;
         match command {
             Command::SaveAppearance(appearance) => {
                 appearance.validate()?;
+                report(ProgressStage::Committing, 0, None, None)?;
                 util::atomic_json(&util::join(&store.root, "appearance.json")?, &appearance)?;
                 Ok(Reply::None)
             }
             Command::ImportAppearance(json) => {
                 let appearance = Appearance::from_json(&json)?;
-                self.execute(Command::SaveAppearance(appearance), check)
+                self.execute(Command::SaveAppearance(appearance), check, report)
             }
             Command::ExportAppearance => Ok(Reply::Export(store.appearance()?.to_json())),
             Command::ListWorlds(id) => {
@@ -347,15 +404,20 @@ impl Inner {
                 target,
                 preset,
                 mode,
-            } => Ok(Reply::Instance(store.create(name, target, preset, mode)?)),
+            } => {
+                report(ProgressStage::Committing, 0, None, None)?;
+                Ok(Reply::Instance(store.create(name, target, preset, mode)?))
+            }
             Command::Select(id) => {
+                report(ProgressStage::Committing, 0, None, None)?;
                 store.select(&id)?;
                 Ok(Reply::None)
             }
-            Command::Duplicate { instance, name } => {
-                Ok(Reply::Instance(store.duplicate(&instance, name, check)?))
-            }
+            Command::Duplicate { instance, name } => Ok(Reply::Instance(
+                store.duplicate_reported(&instance, name, check, report)?,
+            )),
             Command::Archive(id) => {
+                report(ProgressStage::Committing, 0, None, None)?;
                 store.archive(&id)?;
                 Ok(Reply::None)
             }
@@ -366,6 +428,7 @@ impl Inner {
                 name(&name_value)?;
                 let (mut value, _lock) = store.claim(&instance)?;
                 value.name = name_value;
+                report(ProgressStage::Committing, 0, None, None)?;
                 store.save(&mut value)?;
                 Ok(Reply::None)
             }
@@ -373,6 +436,7 @@ impl Inner {
                 profile.validate()?;
                 let (mut value, _lock) = store.claim(&instance)?;
                 value.profile = profile;
+                report(ProgressStage::Committing, 0, None, None)?;
                 store.save(&mut value)?;
                 Ok(Reply::None)
             }
@@ -380,17 +444,18 @@ impl Inner {
                 theme.validate()?;
                 let (mut value, _lock) = store.claim(&instance)?;
                 value.theme = theme;
+                report(ProgressStage::Committing, 0, None, None)?;
                 store.save(&mut value)?;
                 Ok(Reply::None)
             }
             Command::ImportProfile { instance, json } => {
                 let (profile, warnings) = Profile::from_json(&json)?;
-                self.execute(Command::SaveProfile { instance, profile }, check)?;
+                self.execute(Command::SaveProfile { instance, profile }, check, report)?;
                 Ok(Reply::Imported { warnings })
             }
             Command::ImportTheme { instance, json } => {
                 let theme = import::<Theme>(&json)?;
-                self.execute(Command::SaveTheme { instance, theme }, check)
+                self.execute(Command::SaveTheme { instance, theme }, check, report)
             }
             Command::ExportProfile(id) => Ok(Reply::Export(store.instance(&id)?.profile.to_json())),
             Command::ExportTheme(id) => Ok(Reply::Export(
@@ -400,6 +465,7 @@ impl Inner {
             Command::ConvertToCustom(id) => {
                 let (mut value, _lock) = store.claim(&id)?;
                 value.mode = Mode::Custom;
+                report(ProgressStage::Committing, 0, None, None)?;
                 store.save(&mut value)?;
                 Ok(Reply::None)
             }
@@ -465,7 +531,7 @@ impl Inner {
                     .map_err(|_| io_error())?
                     .remove(&id)
                     .ok_or_else(|| invalid("Unknown or consumed content plan."))?;
-                content::apply(&store, &self.http, &plan, check)?;
+                content::apply(&store, &self.http, &plan, check, report)?;
                 Ok(Reply::None)
             }
             Command::SetEnabled {
@@ -473,15 +539,22 @@ impl Inner {
                 project,
                 enabled,
             } => {
-                content::change(&store, &instance, &project, Some(enabled), check)?;
+                content::change_reported(
+                    &store,
+                    &instance,
+                    &project,
+                    Some(enabled),
+                    check,
+                    report,
+                )?;
                 Ok(Reply::None)
             }
             Command::RemoveContent { instance, project } => {
-                content::change(&store, &instance, &project, None, check)?;
+                content::change_reported(&store, &instance, &project, None, check, report)?;
                 Ok(Reply::None)
             }
             Command::RepairContent { instance, project } => {
-                content::repair(&store, &self.http, &instance, &project, check)?;
+                content::repair(&store, &self.http, &instance, &project, check, report)?;
                 Ok(Reply::None)
             }
             Command::Verify(id) => {
@@ -623,6 +696,39 @@ pub(crate) fn verify_prepared(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn durable_commit_progress_closes_cancellation_before_finished() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = Library::open(dir.path()).unwrap();
+        let mut appearance = Appearance::default();
+        appearance.document.ui_scale = 125;
+        let id = library
+            .submit(Command::SaveAppearance(appearance.clone()))
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut commit = false;
+        let mut finished = false;
+        while std::time::Instant::now() < deadline {
+            match library.try_event() {
+                Some(Event::Progress {
+                    id: event,
+                    stage: ProgressStage::Committing,
+                    ..
+                }) if event == id => {
+                    commit = true;
+                    assert!(!library.cancel(id));
+                }
+                Some(Event::Finished { id: event, result }) if event == id => {
+                    result.unwrap();
+                    finished = true;
+                    break;
+                }
+                _ => std::thread::sleep(std::time::Duration::from_millis(1)),
+            }
+        }
+        assert!(commit && finished);
+        assert_eq!(library.snapshot().appearance, appearance);
+    }
     fn wait(library: &Library, id: u64) -> Result<Reply> {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while std::time::Instant::now() < deadline {

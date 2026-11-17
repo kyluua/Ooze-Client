@@ -104,7 +104,11 @@ requires a writable handle. Staged copies and duplicates now reopen with write
 access before sync; a successful commit+nonempty duplicate regression covers it.
 The native module catalog/theme model remains data, not an in-game module runtime.
 
-G3–G7 richer progress, metadata, conflict/remedy and capability snapshots remain
+G3 backend progress is implemented as Event::Progress { id, stage, done, total,
+item }. Stage is Contacting/Downloading/Verifying/Committing. Downloads are
+throttled to first/last plus 50 ms; Committing is reliable and closes cancellation
+atomically. Claude: map the event and hide Cancel once Committing arrives.
+G4–G7 richer metadata, conflict/remedy and capability snapshots remain
 explicit follow-up work; no hidden UI capability is claimed complete. G8 is
 already available as set_notify (call only request_repaint from its callback).
 R3 game_dir mapping is confirmed. R4 proposed game-side profile document path is

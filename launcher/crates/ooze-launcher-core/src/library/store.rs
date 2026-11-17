@@ -212,11 +212,21 @@ impl Store {
         index.selected = Some(id.clone());
         util::atomic_json(&self.index_path()?, &index)
     }
+    #[cfg(test)]
     pub fn duplicate(
         &self,
         id: &Id,
         name_value: String,
         check: &dyn Fn() -> Result<()>,
+    ) -> Result<Id> {
+        self.duplicate_reported(id, name_value, check, &|_, _, _, _| Ok(()))
+    }
+    pub fn duplicate_reported(
+        &self,
+        id: &Id,
+        name_value: String,
+        check: &dyn Fn() -> Result<()>,
+        report: Reporter<'_>,
     ) -> Result<Id> {
         let (original, _source) = self.claim(id)?;
         check()?;
@@ -252,7 +262,8 @@ impl Store {
                         .map_err(|_| io_error())?;
                     copy.content.push(receipt.clone());
                 }
-                check()
+                check()?;
+                report(ProgressStage::Committing, 0, None, None)
             },
         )
     }
