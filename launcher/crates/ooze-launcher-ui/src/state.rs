@@ -91,6 +91,8 @@ pub enum Announcement {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CloseGuard {
     Allow,
+    ConfirmLibrary,
+    WaitLibrary,
     /// Closing would cancel a running sign-in or installation.
     ConfirmOperation(OperationKind),
     /// Minecraft keeps running; the launcher can no longer report a crash.

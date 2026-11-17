@@ -116,6 +116,61 @@ fn without_a_library_the_launcher_has_no_library_pages() {
 }
 
 #[test]
+fn closing_waits_for_a_library_cancellation_or_committed_operation_to_finish() {
+    for committing in [false, true] {
+        let (mut h, _, lh) = harness(Some(fx::snapshot()));
+        let lh = lh.unwrap();
+        let op = LibOpId(99);
+        h.state_mut()
+            .library_model_mut_for_tests()
+            .unwrap()
+            .on_submitted(
+                LibCommand::Apply {
+                    plan_id: "fixture".into(),
+                },
+                Ok(op),
+            );
+        if committing {
+            lh.push(LibEvent::Progress {
+                op,
+                progress: LibProgress {
+                    step: LibStep::Committing,
+                    done: 0,
+                    total: None,
+                    item: None,
+                },
+            });
+            steps(&mut h);
+        }
+        assert!(!h.state_mut().on_close_requested());
+        steps(&mut h);
+        click(
+            &mut h,
+            Role::Button,
+            if committing {
+                "Close when finished"
+            } else {
+                "Cancel and close"
+            },
+        );
+        assert!(
+            !h.state_mut().on_close_requested(),
+            "wait for terminal result, including a cancellation/commit race"
+        );
+        lh.push(LibEvent::Finished {
+            op,
+            result: if committing {
+                Ok(LibPayload::Done)
+            } else {
+                Err(LibError::new(LibErrorKind::Cancelled))
+            },
+        });
+        steps(&mut h);
+        assert!(h.state_mut().on_close_requested());
+    }
+}
+
+#[test]
 fn real_library_appearance_persists_and_local_worlds_reach_the_window() {
     use crate::core_library::CoreLibrary;
     fn wait(lib: &mut CoreLibrary, op: LibOpId) -> LibPayload {

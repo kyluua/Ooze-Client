@@ -164,7 +164,7 @@ impl LauncherApp {
     }
 
     /// Cancel and keep waiting for the acknowledgement (shown as "Cancelled").
-    fn lib_cancel(&mut self) {
+    pub(super) fn lib_cancel(&mut self) {
         if let (Some(backend), Some(model)) = (self.library.as_mut(), self.lib.as_ref())
             && let Some((op, _)) = model.active()
         {

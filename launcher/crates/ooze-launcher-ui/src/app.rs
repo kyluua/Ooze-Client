@@ -79,6 +79,7 @@ pub struct LauncherApp {
     pick: Option<(PickTarget, Receiver<Option<PathBuf>>)>,
     close_prompt: Option<CloseGuard>,
     allow_close: bool,
+    close_after_library: bool,
     details_open: bool,
     applied_scale: f32,
     live_seq: u64,
@@ -118,6 +119,7 @@ impl LauncherApp {
             pick: None,
             close_prompt: None,
             allow_close: false,
+            close_after_library: false,
             details_open: false,
             applied_scale: 0.0,
             live_seq: 0,
@@ -402,6 +404,11 @@ impl LauncherApp {
         }
         if let Some((instance, kind)) = refresh_content {
             self.lib_submit(crate::library::LibCommand::ListInstalled { instance, kind });
+        }
+        if self.close_after_library && !self.lib_busy() {
+            self.close_prompt = None;
+            self.allow_close = true;
+            ctx.send_viewport_cmd(ViewportCommand::Close);
         }
         if self.backend.wants_polling() {
             // The real backend has no waker: poll while an operation or the game is active.
@@ -1862,6 +1869,14 @@ impl LauncherApp {
         if self.allow_close {
             return true;
         }
+        if let Some(library) = self.lib.as_ref().filter(|m| m.busy()) {
+            self.close_prompt = Some(if library.cancellable() {
+                CloseGuard::ConfirmLibrary
+            } else {
+                CloseGuard::WaitLibrary
+            });
+            return false;
+        }
         match self.model.close_guard() {
             CloseGuard::Allow => true,
             guard => {
@@ -1877,6 +1892,16 @@ impl LauncherApp {
         };
         let th = kit.theme;
         let (title, body, confirm) = match guard {
+            CloseGuard::ConfirmLibrary => (
+                "close.library.title",
+                "close.library.body",
+                "close.cancel_and_close",
+            ),
+            CloseGuard::WaitLibrary => (
+                "close.library.title",
+                "close.library.wait",
+                "close.library.after",
+            ),
             CloseGuard::ConfirmGameRunning => (
                 "close.game_running.title",
                 "close.game_running.body",
@@ -1919,7 +1944,12 @@ impl LauncherApp {
                             decision = Some(false);
                         }
                         if kit
-                            .button(ui, kit.t(confirm), ButtonKind::Secondary, true)
+                            .button(
+                                ui,
+                                kit.t(confirm),
+                                ButtonKind::Secondary,
+                                !self.close_after_library,
+                            )
                             .clicked()
                         {
                             decision = Some(true);
@@ -1932,6 +1962,14 @@ impl LauncherApp {
         }
         match decision {
             Some(true) => {
+                if matches!(guard, CloseGuard::ConfirmLibrary | CloseGuard::WaitLibrary) {
+                    if guard == CloseGuard::ConfirmLibrary {
+                        self.lib_cancel();
+                    }
+                    self.close_after_library = true;
+                    self.close_prompt = Some(CloseGuard::WaitLibrary);
+                    return;
+                }
                 for op in self.model.cancellable_ops() {
                     self.submit(Command::Cancel { op });
                 }
@@ -1939,7 +1977,10 @@ impl LauncherApp {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(ViewportCommand::Close);
             }
-            Some(false) => self.close_prompt = None,
+            Some(false) => {
+                self.close_prompt = None;
+                self.close_after_library = false;
+            }
             None => {}
         }
     }
