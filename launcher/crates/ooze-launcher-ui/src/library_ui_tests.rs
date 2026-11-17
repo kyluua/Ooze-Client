@@ -457,6 +457,52 @@ fn install_flow_reviews_dependencies_reports_progress_and_never_claims_it_works(
 }
 
 #[test]
+fn search_pages_and_filters_by_the_librarys_categories() {
+    let (mut h, _, lh) = harness(Some(fx::snapshot()));
+    let lh = lh.unwrap();
+    open_content(&mut h, &lh);
+    search(&mut h, "");
+    let LibCommand::Search(q) = lh.submitted().last().cloned().unwrap() else {
+        panic!()
+    };
+    finish(
+        &mut h,
+        &lh,
+        LibPayload::Search(SearchPage {
+            query: q.clone(),
+            hits: fx::hits(ContentKind::Mod),
+            total: 7,
+            categories: vec!["utility".into(), "optimization".into()],
+        }),
+    );
+    assert!(shows(&h, "1–3 of 7"));
+    assert!(!has_button(&h, "Previous page"));
+    click(&mut h, Role::Button, "Next page");
+    assert!(
+        matches!(lh.submitted().last(), Some(LibCommand::Search(n)) if n.offset == 3 && n.text == q.text)
+    );
+    let LibCommand::Search(q2) = lh.submitted().last().cloned().unwrap() else {
+        panic!()
+    };
+    finish(
+        &mut h,
+        &lh,
+        LibPayload::Search(SearchPage {
+            query: q2,
+            hits: fx::hits(ContentKind::Mod),
+            total: 7,
+            categories: vec!["utility".into(), "optimization".into()],
+        }),
+    );
+    assert!(shows(&h, "4–6 of 7"));
+    click(&mut h, Role::RadioButton, "optimization");
+    assert!(matches!(
+        lh.submitted().last(),
+        Some(LibCommand::Search(n)) if n.categories == ["optimization"] && n.offset == 0
+    ));
+}
+
+#[test]
 fn cancelling_a_download_is_acknowledged_by_the_library() {
     let (mut h, _, lh) = harness(Some(fx::snapshot()));
     let lh = lh.unwrap();

@@ -23,6 +23,7 @@ The reference clients are **product references only**. Ooze implements every mod
 **Status vocabulary:**
 - **Planned:** specified, not built.
 - **Model built:** settings, presets and layout logic exist in `ooze-ui` and are Headless-tested; the in-game hook and rendering are not built.
+  - The launcher's Profile page edits these settings (enable, typed editors, presets, import/export). It is Headless-tested over the fixture library and hidden until Sol's library reports `profiles` (P0, 2026-11-17).
 - **Built**, **Headless-tested**, **Game-launched (OS)**: the AGENTS.md evidence words.
 
 **Compatibility:** "Fabric 1.21.11 Ooze instance" means the module exists only where the Ooze mod is installed. Other instances show "Ooze modules unavailable".

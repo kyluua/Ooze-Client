@@ -1624,8 +1624,55 @@ impl LauncherApp {
             &kit.tr
                 .fmt("content.compat_note", &[&target_text(kit, &inst.target)]),
         );
+        // Category filter: only the categories the library offers for this kind.
+        if !page.categories.is_empty() {
+            let current = page.query.categories.first().cloned();
+            let mut idx = current
+                .as_ref()
+                .and_then(|c| page.categories.iter().position(|x| x == c))
+                .map_or(0, |i| i + 1);
+            let mut opts: Vec<(usize, &str)> = vec![(0, kit.t("content.category.all"))];
+            opts.extend(
+                page.categories
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| (i + 1, c.as_str())),
+            );
+            if kit.segmented(
+                ui,
+                "content-category",
+                kit.t("content.category"),
+                &opts,
+                &mut idx,
+            ) && !busy
+            {
+                let mut q = page.query.clone();
+                q.categories = page
+                    .categories
+                    .get(idx.wrapping_sub(1))
+                    .cloned()
+                    .into_iter()
+                    .collect();
+                q.offset = 0;
+                self.lib_submit(LibCommand::Search(q));
+            }
+        }
         if page.hits.is_empty() {
             kit.body(ui, kit.t("content.no_results"));
+        } else {
+            let first = page.query.offset + 1;
+            let last = page.query.offset + page.hits.len() as u32;
+            kit.caption(
+                ui,
+                &kit.tr.fmt(
+                    "content.page.range",
+                    &[
+                        &first.to_string(),
+                        &last.to_string(),
+                        &page.total.to_string(),
+                    ],
+                ),
+            );
         }
         for hit in &page.hits {
             ui.add_space(th.space.sm);
@@ -1654,6 +1701,38 @@ impl LauncherApp {
                         kind,
                         project_id: hit.project_id.clone(),
                     });
+                }
+            });
+        }
+        // Paging by the backend's offsets; the page size is whatever the library returned.
+        let shown = page.hits.len() as u32;
+        let has_prev = page.query.offset > 0;
+        let has_next = page.query.offset + shown < page.total && shown > 0;
+        if has_prev || has_next {
+            ui.add_space(th.space.sm);
+            ui.horizontal(|ui| {
+                if has_prev
+                    && kit
+                        .button(
+                            ui,
+                            kit.t("content.page.previous"),
+                            ButtonKind::Secondary,
+                            !busy,
+                        )
+                        .clicked()
+                {
+                    let mut q = page.query.clone();
+                    q.offset = q.offset.saturating_sub(shown.max(1));
+                    self.lib_submit(LibCommand::Search(q));
+                }
+                if has_next
+                    && kit
+                        .button(ui, kit.t("content.page.next"), ButtonKind::Secondary, !busy)
+                        .clicked()
+                {
+                    let mut q = page.query.clone();
+                    q.offset += shown;
+                    self.lib_submit(LibCommand::Search(q));
                 }
             });
         }

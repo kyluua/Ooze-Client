@@ -599,5 +599,10 @@
   "profile.preset.minimal": "Minimal",
   "profile.visual.effects_quality": "Interface effects quality",
   "profile.visual.ambient_motion": "Ambient motion",
-  "profile.visual.drips": "Drips"
+  "profile.visual.drips": "Drips",
+  "content.category": "Category",
+  "content.category.all": "All",
+  "content.page.range": "{0}–{1} of {2}",
+  "content.page.previous": "Previous page",
+  "content.page.next": "Next page"
 }
