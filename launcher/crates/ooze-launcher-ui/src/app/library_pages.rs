@@ -13,7 +13,6 @@ use ooze_ui::settings::{SettingDef, SettingKind, Value, is_key_name};
 use ooze_ui::theme_doc::{Background, Contrast, Motion, Rgb, TEXT_SCALES, ThemeDoc, UI_SCALES};
 
 use super::{LauncherApp, Page};
-use crate::api::Command;
 use crate::appearance::{self, import_error_text};
 use crate::library::*;
 use crate::library_model::{LibNotice, LibOpKind};
