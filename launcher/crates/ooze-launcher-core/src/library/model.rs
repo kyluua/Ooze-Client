@@ -7,8 +7,9 @@ use std::collections::BTreeMap;
 
 pub const LIBRARY_API_VERSION: u32 = 1;
 pub const SCHEMA: u32 = 1;
+pub const THEME_SCHEMA: &str = "ooze.launcher.theme/1";
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(transparent)]
 pub struct Id(pub String);
 impl Id {
@@ -180,7 +181,7 @@ pub enum Motion {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Theme {
-    pub schema: u32,
+    pub schema: String,
     pub name: String,
     pub background: [u8; 4],
     pub foreground: [u8; 4],
@@ -192,7 +193,7 @@ pub struct Theme {
 impl Default for Theme {
     fn default() -> Self {
         Self {
-            schema: SCHEMA,
+            schema: THEME_SCHEMA.into(),
             name: "Ooze classic".into(),
             background: [248, 249, 255, 255],
             foreground: [23, 25, 35, 255],
@@ -206,7 +207,7 @@ impl Default for Theme {
 impl Theme {
     pub(crate) fn validate(&self) -> Result<()> {
         name(&self.name)?;
-        if self.schema != SCHEMA
+        if self.schema != THEME_SCHEMA
             || !range(self.ui_scale, 1.0, 2.0)
             || !matches!(self.font.as_str(), "inter" | "bubblegum_sans")
             || self.background[3] != 255
@@ -428,6 +429,7 @@ pub struct PlanSummary {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IntegrityReport {
     pub managed: bool,
+    pub baseline_verified: bool,
     pub verified_files: u32,
     pub issues: Vec<String>,
 }

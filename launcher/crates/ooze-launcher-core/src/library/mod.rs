@@ -80,6 +80,10 @@ pub enum Command {
         project: String,
     },
     Verify(Id),
+    RepairContent {
+        instance: Id,
+        project: String,
+    },
 }
 #[derive(Clone, Debug, serde::Serialize)]
 pub enum Reply {
@@ -194,7 +198,7 @@ impl Library {
         let id = self
             .inner
             .next
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
             .map_err(|_| {
                 error(
                     ErrorCode::Internal,
@@ -432,13 +436,18 @@ impl Inner {
                 content::change(&store, &instance, &project, None, check)?;
                 Ok(Reply::None)
             }
+            Command::RepairContent { instance, project } => {
+                content::repair(&store, &self.http, &instance, &project, check)?;
+                Ok(Reply::None)
+            }
             Command::Verify(id) => {
                 let (value, _lock) = store.claim(&id)?;
-                Ok(Reply::Integrity(content::verify(
-                    &value,
-                    &store.game(&id)?,
-                    check,
-                )?))
+                let mut report = content::verify(&value, &store.game(&id)?, check)?;
+                report.baseline_verified = verify_baseline(&value, &store.game(&id)?, check)?;
+                if report.managed && !report.baseline_verified {
+                    report.issues.push("Managed game/runtime baseline is missing or changed. Install or repair it before launch.".into());
+                }
+                Ok(Reply::Integrity(report))
             }
         }
     }
@@ -463,6 +472,57 @@ pub(crate) fn before_launch(game: &Path, check: &dyn Fn() -> Result<()>) -> Resu
         }
     }
     Ok(())
+}
+
+fn verify_baseline(
+    instance: &Instance,
+    game: &Path,
+    check: &dyn Fn() -> Result<()>,
+) -> Result<bool> {
+    let managed = util::join(game, ".ooze-launcher")?;
+    let pointer = util::join(&managed, "active-install.json")?;
+    if !pointer.is_file() {
+        return Ok(false);
+    }
+    let install: crate::metadata::Installation = util::read_json(&pointer)?;
+    if install.schema != 1 || install.files.is_empty() || install.files.len() > 100000 {
+        return Ok(false);
+    }
+    let expected = if instance.target.loader == Loader::Fabric {
+        "net.fabricmc.loader.impl.launch.knot.KnotClient"
+    } else {
+        "net.minecraft.client.main.Main"
+    };
+    if install.main_class != expected {
+        return Ok(false);
+    }
+    let root = util::join(&managed, &install.directory)?;
+    for file in &install.files {
+        check()?;
+        let path = util::join(&root, &file.path)?;
+        if !path.is_file()
+            || fs::metadata(&path).map_err(|_| io_error())?.len() != file.size
+            || util::sha256(&path)? != file.sha256
+        {
+            return Ok(false);
+        }
+    }
+    if instance.mode == Mode::Managed {
+        let settings = crate::api::Settings {
+            instance_dir: game.to_owned(),
+            java_path: None,
+            memory_mib: 4096,
+        };
+        verify_prepared(
+            &settings,
+            &crate::install::Prepared {
+                installation: install,
+                root,
+            },
+            check,
+        )?;
+    }
+    Ok(true)
 }
 
 pub(crate) fn recover_game(game: &Path) -> Result<()> {

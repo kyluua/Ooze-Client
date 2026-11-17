@@ -270,7 +270,10 @@ pub(super) fn compatible(project: &Project, version: &Version, target: &Target) 
                     .is_some_and(|l| v.loaders.iter().any(|s| s == l))
         }
         ContentKind::Datapack => v.loaders.iter().any(|l| l == "datapack"),
-        ContentKind::Shader | ContentKind::Resourcepack => project.client_side != "unsupported",
+        ContentKind::Shader => {
+            project.client_side != "unsupported" && v.loaders.iter().any(|l| l == "iris")
+        }
+        ContentKind::Resourcepack => project.client_side != "unsupported",
     }
 }
 
@@ -403,6 +406,11 @@ pub(super) fn resolve(
                 }
             };
             validate_file(file)?;
+            if (project.project_type == ContentKind::Mod && !file.filename.ends_with(".jar"))
+                || (project.project_type != ContentKind::Mod && !file.filename.ends_with(".zip"))
+            {
+                return Err(metadata_error());
+            }
             self.result.files.push(ResolvedFile {
                 project: project.id,
                 version: summary.id.clone(),

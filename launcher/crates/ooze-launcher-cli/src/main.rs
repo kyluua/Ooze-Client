@@ -67,6 +67,10 @@ enum InstanceAction {
 }
 #[derive(Subcommand)]
 enum LibraryAction {
+    Repair {
+        id: String,
+        project: String,
+    },
     List,
     Create {
         name: String,
@@ -300,6 +304,10 @@ fn library_wait(
 fn run_library(data: PathBuf, command: LibraryAction) -> Result<(), Box<dyn std::error::Error>> {
     let library = lib::Library::open(data)?;
     let command = match command {
+        LibraryAction::Repair { id, project } => lib::Command::RepairContent {
+            instance: lib::Id(id),
+            project,
+        },
         LibraryAction::List => {
             println!("{}", serde_json::to_string_pretty(&library.snapshot())?);
             return Ok(());

@@ -230,7 +230,7 @@ pub(super) fn recover(store: &Store, id: &Id) -> Result<()> {
     journal.after.validate()?;
     if journal.schema != SCHEMA
         || &journal.after.id != id
-        || journal.after.revision != journal.before_revision + 1
+        || journal.before_revision.checked_add(1) != Some(journal.after.revision)
         || journal.moves.len() > 1024
     {
         return Err(metadata_error());
@@ -273,9 +273,19 @@ pub(super) fn recover(store: &Store, id: &Id) -> Result<()> {
 fn commit(
     store: &Store,
     before: &Instance,
+    after: Instance,
+    changes: BTreeMap<String, Option<PathBuf>>,
+    check: &dyn Fn() -> Result<()>,
+) -> Result<()> {
+    commit_with_repair(store, before, after, changes, check, false)
+}
+fn commit_with_repair(
+    store: &Store,
+    before: &Instance,
     mut after: Instance,
     mut changes: BTreeMap<String, Option<PathBuf>>,
     check: &dyn Fn() -> Result<()>,
+    repair: bool,
 ) -> Result<()> {
     check()?;
     let game = store.game(&before.id)?;
@@ -305,6 +315,7 @@ fn commit(
         if let Some(receipt) = old
             && dest.exists()
             && hash(&dest, check)? != receipt.sha512
+            && !repair
         {
             return Err(error(
                 ErrorCode::Integrity,
@@ -314,6 +325,10 @@ fn commit(
         let new_file = if let Some(source) = source {
             let name = format!("new-{index}");
             fs::copy(source, util::join(stage.path(), &name)?).map_err(|_| io_error())?;
+            fs::File::open(util::join(stage.path(), &name)?)
+                .map_err(|_| io_error())?
+                .sync_all()
+                .map_err(|_| io_error())?;
             Some(name)
         } else {
             None
@@ -497,10 +512,10 @@ pub(super) fn change(
                 continue;
             }
             if enable
-                && receipt
-                    .required_projects
-                    .iter()
-                    .any(|p| !before.content.iter().any(|r| r.enabled && &r.project == p))
+                && receipt.required_projects.iter().any(|p| {
+                    !(before.target.ooze && p == "P7dR8mSH")
+                        && !before.content.iter().any(|r| r.enabled && &r.project == p)
+                })
             {
                 return Err(invalid("Enable required dependencies first."));
             }
@@ -527,6 +542,49 @@ pub(super) fn change(
     commit(store, &before, after, changes, check)
 }
 
+pub(super) fn repair(
+    store: &Store,
+    http: &Modrinth,
+    id: &Id,
+    project: &str,
+    check: &dyn Fn() -> Result<()>,
+) -> Result<()> {
+    use modrinth::Source;
+    modrinth::identifier(project)?;
+    let (before, _lock) = store.claim(id)?;
+    if before.mode == Mode::Managed {
+        return Err(invalid(
+            "Managed baseline repair uses the launcher's Repair operation.",
+        ));
+    }
+    let selected: Vec<_> = before
+        .content
+        .iter()
+        .filter(|r| r.project == project)
+        .collect();
+    if selected.is_empty() {
+        return Err(invalid("This project is not installed."));
+    }
+    let game = store.game(id)?;
+    let stage = tempfile::Builder::new()
+        .prefix(".ooze-repair-")
+        .tempdir_in(&game)
+        .map_err(|_| io_error())?;
+    let mut changes = BTreeMap::new();
+    for (i, receipt) in selected.iter().enumerate() {
+        check()?;
+        let version = http.version(&receipt.version, check)?;
+        if version.summary.project_id != receipt.project {
+            return Err(metadata_error());
+        }
+        let source=version.files.iter().find(|f|f.size==receipt.size && f.hashes.sha512.eq_ignore_ascii_case(&receipt.sha512)).ok_or_else(||error(ErrorCode::Integrity,"Provider metadata no longer matches the recorded content hash; existing files were preserved."))?;
+        let downloaded = util::join(stage.path(), &i.to_string())?;
+        download(http, source, &downloaded, check)?;
+        changes.insert(receipt.path.clone(), Some(downloaded));
+    }
+    commit_with_repair(store, &before, before.clone(), changes, check, true)
+}
+
 pub(super) fn verify(
     instance: &Instance,
     game: &Path,
@@ -534,6 +592,7 @@ pub(super) fn verify(
 ) -> Result<IntegrityReport> {
     let mut result = IntegrityReport {
         managed: instance.mode == Mode::Managed,
+        baseline_verified: false,
         verified_files: 0,
         issues: Vec::new(),
     };
