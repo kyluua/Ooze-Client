@@ -860,15 +860,8 @@ fn live_window_shows_real_modrinth_results_for_a_fabric_instance() {
     h.run_steps(6);
     assert_eq!(
         tabs(&h),
-        [
-            "Play",
-            "Instances",
-            "Profile",
-            "Content",
-            "Settings",
-            "Diagnostics"
-        ],
-        "Appearance stays hidden until the library persists ooze.theme/1"
+        ["Play", "Instances", "Content", "Settings", "Diagnostics"],
+        "Profile waits for runtime modules; Appearance for ooze.theme/1"
     );
     go(&mut h, "Content");
     search(&mut h, "sodium");

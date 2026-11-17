@@ -72,9 +72,9 @@ Files and changes:
 **8. L1 started: the real library is attached** (Sol pushed `ac9a7ba`/`d48e88d` during P0).
 - `core_library.rs` adapts `ooze_launcher_core::library` to the interface types. A project's details take two library operations and are reported as one; profile load and the installed list are answered from Sol's snapshot.
 - `bin/ooze-launcher.rs` opens the library with the launcher's data directory. If opening fails, a `FailedLibrary` shows the error on the Instances page.
-- **Capabilities report only what Sol's API supports today:**
+- **Capabilities come from Sol's `Library::capabilities()` and report only what is real today:**
   - instances: create Fabric 0.20.1 / Vanilla on 1.21.11, select, rename, duplicate, archive, convert Managed → Custom;
-  - profiles: load and save with a revision check, validated by Sol with `ooze-ui`;
+  - **profiles are hidden** until `runtime_modules` is non-empty. The game can't run any module before M0, so module switches would be decorative (Real or absent; this agrees with Sol's SOL-L1). The adapter still maps load and save, with a revision check; that is tested;
   - content: mods, resource packs and shader packs; search, details and versions; dependency plan; apply; installed list; enable/disable/remove;
   - integrity: verify.
 
@@ -117,8 +117,8 @@ Files and changes:
 | `launcher` workspace: `cargo clippy --workspace --all-targets -D warnings` on Linux | **Fails in Sol's `ooze-launcher-core`** (`game_guard.rs:63`, unused test import on non-Windows). This is pre-existing and not from this change (R5) |
 | `ooze-launcher-ui` over **Sol's real library**, Linux, no network: `the_real_library_round_trips_through_the_interface_types` (create → select → profile save with revision check → installed list → rename → archive); `unsupported_combinations_are_refused_by_the_library_with_its_reason` | **Headless-tested** (Linux) |
 | **Live Modrinth**, Linux, `--ignored`: `live_modrinth_search_details_plan_install_and_verify` | **Headless-tested** (Linux, real network). Real search returned results for mods (20 of 13,242), resource packs (20 of 18,947) and shader packs (20 of 766). Iris details and versions were read. The plan was `sodium-fabric-0.8.14+mc1.21.11.jar` (required) plus `iris-fabric-1.10.8+mc1.21.11.jar` (selected). Apply downloaded and verified both (SHA-512), the installed list shows 2 items, and the integrity check reports 0 issues in 2 files. **This is not Game-launched: no Minecraft started** |
-| Live window, `--ignored`: `live_window_shows_real_modrinth_results_for_a_fabric_instance` | **Headless-tested** (Linux, real network, real library; API 1 side is the fixture, hence "FixturePlayer"). Screenshots: `lib-live-content-results.png` (`8b48299002c8a87752dc06cf710ff3dc38cd9e157774d8f3507c7b72a54f3c42`) and `lib-live-instances.png` (`e42c0bdc345f60052b90769a9102c4aeba70cb34e28ba2c1abbb4e3f5b554403`) |
-| `launcher` workspace after merging Sol's library: `cargo test --workspace` | **Headless-tested** (Linux): 119 passed, 0 failed, 2 ignored (the live tests) |
+| Live window, `--ignored`: `live_window_shows_real_modrinth_results_for_a_fabric_instance` | **Headless-tested** (Linux, real network, real library; API 1 side is the fixture, hence "FixturePlayer"). Screenshots: `lib-live-content-results.png` (`ed561e193fe20421b0fa29c541cb89397b47ad9f65b88c1173f47a7e4748dd91`) and `lib-live-instances.png` (`b933307a4f7efb3679a968cfd8e888b37e0dde19f66c75137caefcb878400e54`) |
+| `launcher` workspace after merging Sol's library (through `e36cbb2`): `cargo test --workspace` | **Headless-tested** (Linux): 122 passed, 0 failed, 2 ignored (the live tests) |
 | Windows: launcher type-check for `x86_64-pc-windows-msvc` | **Not run locally:** `ring` (Sol's TLS dependency) needs the MSVC C toolchain. Sol's Windows CI (`launcher-l0.yml`, `cargo test --workspace` on windows-latest, dx12) is the Windows evidence after this push |
 | Gradle / Fabric | Not run: no Java, Gradle or game changes in P0 |
 | Game-launched | **None.** Nothing Minecraft-facing changed; no module runs in game yet (M0+) |
@@ -156,6 +156,16 @@ Files and changes:
 - The 130 % text size was checked only in unit tests (token sizes and control heights). No screenshot review at that size has been done yet.
 
 ## 6. Review of Sol's latest changes
+
+**`e36cbb2` / SOL-L1:**
+- Answers **R3**: on Select, the interface submits API 1 settings with `install_root = game_dir`, then Play. This matches Sol's "SaveSettings, await, then Install/Launch". The UI already does it on Select and never changes API 1 implicitly otherwise.
+- Adds `Library::capabilities()`, which the adapter now uses.
+- On the theme, Sol names its subset `ooze.launcher.theme/1` and asks me to "reconcile product copy". I keep **Appearance hidden** rather than ship a per-instance theme, for two reasons:
+  - ADR-017 (the appearance must not change with the selected instance);
+  - Sol's validator lacks the accent/on-accent contrast check.
+
+  G1 stands: one global `ooze.theme/1` through `ooze_ui::theme_doc`, which Sol already links.
+
 
 **`87c3e6c` (library contract, packaging):**
 - Correct: registering `ooze-launcher-ui` in the workspace, and removing my crate's standalone `[workspace]` table and lock.

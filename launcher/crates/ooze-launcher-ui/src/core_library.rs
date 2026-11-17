@@ -5,7 +5,9 @@
 //! operations, reported as one), replies map to typed payloads, and errors keep the library's safe
 //! message. **Capabilities report only what Sol's API supports today**; everything else stays
 //! hidden in the interface:
-//! - themes: off until the library persists `ooze.theme/1` (CLAUDE-P0-request R1);
+//! - profiles (module switches): off until the library reports runtime modules (the game can't
+//!   run any before M0; Real or absent);
+//! - themes: off until the library persists `ooze.theme/1` (CLAUDE-P0-request G1);
 //! - data packs: off until the library lists an instance's worlds;
 //! - search sort and categories: off;
 //! - switching to Managed Fair Play: off (the library offers only conversion to Custom).
@@ -41,6 +43,7 @@ enum Pending {
 
 pub struct CoreLibrary {
     lib: sl::Library,
+    caps: sl::Capabilities,
     raw: sl::Snapshot,
     snap: LibrarySnapshot,
     /// (library operation, interface operation, what it was).
@@ -65,9 +68,11 @@ impl CoreLibrary {
     pub fn open(data_dir: &Path) -> Result<Self, LibError> {
         let lib = sl::Library::open(data_dir).map_err(|e| map_error(&e))?;
         let raw = lib.snapshot();
-        let snap = map_snapshot(&raw);
+        let caps = lib.capabilities();
+        let snap = map_snapshot(&raw, &caps);
         Ok(Self {
             lib,
+            caps,
             raw,
             snap,
             pending: None,
@@ -93,7 +98,7 @@ impl CoreLibrary {
 
     fn refresh(&mut self) {
         self.raw = self.lib.snapshot();
-        let snap = map_snapshot(&self.raw);
+        let snap = map_snapshot(&self.raw, &self.caps);
         if snap != self.snap {
             self.snap = snap.clone();
             self.out.push_back(LibEvent::Changed(snap));
@@ -564,20 +569,29 @@ pub fn to_core_target(t: &GameTarget) -> sl::Target {
     }
 }
 
-/// Content kinds this library can install for a target: Modrinth's loader-specific kinds need
-/// Fabric; data packs wait for a world list (see module docs).
-fn kinds_for(t: &sl::Target) -> Vec<ContentKind> {
-    match t.loader {
-        sl::Loader::Fabric => vec![
-            ContentKind::Mod,
-            ContentKind::ResourcePack,
-            ContentKind::Shader,
-        ],
-        _ => vec![ContentKind::ResourcePack],
-    }
+/// Content kinds the interface can offer: the library's kinds, without data packs until the
+/// library lists an instance's worlds (the interface never reads the saves folder itself).
+fn offered_kinds(caps: &sl::Capabilities) -> Vec<ContentKind> {
+    caps.content_kinds
+        .iter()
+        .map(|k| from_core_kind(*k))
+        .filter(|k| *k != ContentKind::DataPack)
+        .collect()
 }
 
-pub fn map_snapshot(raw: &sl::Snapshot) -> LibrarySnapshot {
+/// Per instance: mods and shader packs need a mod loader (shaders need Iris, a Fabric mod).
+fn kinds_for(t: &sl::Target, offered: &[ContentKind]) -> Vec<ContentKind> {
+    offered
+        .iter()
+        .copied()
+        .filter(|k| {
+            t.loader != sl::Loader::Vanilla || !matches!(k, ContentKind::Mod | ContentKind::Shader)
+        })
+        .collect()
+}
+
+pub fn map_snapshot(raw: &sl::Snapshot, caps: &sl::Capabilities) -> LibrarySnapshot {
+    let offered = offered_kinds(caps);
     let instances = raw
         .instances
         .iter()
@@ -605,7 +619,7 @@ pub fn map_snapshot(raw: &sl::Snapshot) -> LibrarySnapshot {
                 mode,
                 install: None,
                 actions,
-                content: kinds_for(&i.target),
+                content: kinds_for(&i.target, &offered),
                 running: false,
                 revision: i.revision,
                 game_dir: s.game_dir.clone(),
@@ -614,18 +628,18 @@ pub fn map_snapshot(raw: &sl::Snapshot) -> LibrarySnapshot {
         .collect();
     LibrarySnapshot {
         capabilities: LibraryCapabilities {
-            create: vec![
-                from_core_target(&sl::Target::fabric()),
-                from_core_target(&sl::Target::vanilla()),
-            ],
+            // Fabric (with Ooze) first: it's the product's main target.
+            create: {
+                let mut t: Vec<GameTarget> = caps.targets.iter().map(from_core_target).collect();
+                t.sort_by_key(|t| !t.ooze);
+                t
+            },
             instances: true,
-            profiles: true,
+            // Real or absent: module switches appear only once the game can run modules
+            // (`runtime_modules` from the library; empty until M0).
+            profiles: !caps.runtime_modules.is_empty(),
             themes: false,
-            content: vec![
-                ContentKind::Mod,
-                ContentKind::ResourcePack,
-                ContentKind::Shader,
-            ],
+            content: offered,
             managed_mode: false,
             sort: false,
         },
@@ -804,7 +818,11 @@ mod tests {
         let dir = temp_dir("roundtrip");
         let mut lib = CoreLibrary::open(&dir).unwrap();
         let caps = lib.snapshot().capabilities;
-        assert!(caps.instances && caps.profiles);
+        assert!(caps.instances);
+        assert!(
+            !caps.profiles,
+            "no module switches before the game can run modules"
+        );
         assert!(
             !caps.themes,
             "hidden until the library persists ooze.theme/1"

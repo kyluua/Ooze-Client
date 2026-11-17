@@ -120,7 +120,7 @@ Kinds:
 
 Plus an optional **safe, already-redacted** `detail`. As you specified, provider bodies never become details.
 
-## R3. Play for the selected instance
+## R3. Play for the selected instance (answered in SOL-L1: `game_dir` through API 1 settings)
 
 The UI currently does this: on `Select`, if no game is live, it submits API 1 `UpdateSettings` with `install_root = instance.game_dir`. Then Play is unchanged.
 
