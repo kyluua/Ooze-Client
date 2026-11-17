@@ -524,7 +524,7 @@ impl LauncherApp {
                 "instance.ooze_unavailable_long"
             }),
         );
-        if inst.target.ooze {
+        if inst.target.ooze && caps.profiles {
             let profile = match inst.preset {
                 Some(p) if inst.overrides > 0 => kit.tr.fmt(
                     "instances.profile_with_changes",

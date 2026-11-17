@@ -112,16 +112,26 @@ $fontsRoot = Join-Path $repoRoot 'launcher\resources\fonts'
 Copy-Item -LiteralPath $fontsRoot -Destination (Join-Path $licenseRoot 'fonts') -Recurse
 @'
 Ooze Launcher review package — Windows x64. Start ooze-launcher.exe for the desktop interface.
-Microsoft sign-in requires Ooze's owned public OAuth client ID and valid Minecraft Services access.
-Set OOZE_MICROSOFT_CLIENT_ID in developer builds; players should receive a configured final build.
-Run: ooze-launcher-cli.exe status
-Then: ooze-launcher-cli.exe install
-Then: ooze-launcher-cli.exe sign-in
-Then: ooze-launcher-cli.exe play
-Optional: ooze-launcher-cli.exe settings --java "C:\path\to\Java21\bin\java.exe"
-Default storage: %LOCALAPPDATA%\OozeLauncher. Minecraft files and Java download at install.
-The CLI is also included for diagnostics. This is an unsigned review build.
-This package proves no live sign-in or title-screen launch until acceptance evidence says so.
+Extract the entire ZIP into a folder and keep release.json, metadata and ooze-client.jar beside it.
+Players do not need Rust, Gradle or a developer JDK; the package installs its verified Java 21.
+
+Choose the initial storage location, then open Instances to create a Fabric or Vanilla 1.21.11
+instance. Select it for Play. Sign in in your system browser with an account that owns Minecraft
+Java Edition. Install/Play downloads and verifies the required game files.
+
+Content browses Modrinth without signing in. Review dependencies before installing. Custom mode
+allows chosen extra content; Managed accepts only the pinned release baseline. Data packs require
+an existing local world and a stopped game. Shader packs need a compatible installed shader loader;
+installing a pack does not turn it on in Minecraft. Appearance is saved globally across instances.
+
+Ooze's public application ID is configured in this build; players do not register an application.
+Minecraft Services access for that application is an external prerequisite. If access is denied,
+the launcher reports the service error. The owner has submitted review; approval is not confirmed.
+Full authenticated Play and in-game module hooks are not established by this review package.
+Only the version/loader combinations actually listed in the interface are offered.
+
+Default storage: %LOCALAPPDATA%\OozeLauncher. The CLI is included for diagnostics and automation.
+This is an unsigned review build. Checksums and actual acceptance evidence are in the handoff.
 '@ | Set-Content -LiteralPath (Join-Path $outputRoot 'README.txt') -Encoding utf8NoBOM
 # Remove only the scratch directory created above, after verifying its resolved absolute confinement.
 $scratchFull = [IO.Path]::GetFullPath($scratchRoot)

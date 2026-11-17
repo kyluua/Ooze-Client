@@ -52,7 +52,7 @@ pub struct GameTarget {
     pub loader: Loader,
     pub loader_version: Option<String>,
     pub java_major: u16,
-    /// The Ooze mod and its modules are available (Fabric 1.21.11 only).
+    /// The Ooze mod is bundled (Fabric 1.21.11 only). Runtime modules have a separate capability.
     pub ooze: bool,
 }
 

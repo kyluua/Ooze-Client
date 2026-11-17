@@ -167,7 +167,7 @@ impl LauncherApp {
 
     /// Keep the tokens in step with the shown appearance (draft or saved) and keep the page valid
     /// when a capability disappears.
-    fn sync_library(&mut self) {
+    fn sync_library(&mut self, ctx: &Context) {
         let doc = self.shown_theme_doc();
         if doc != self.applied_doc {
             self.theme = match (&doc, &self.guard) {
@@ -175,6 +175,7 @@ impl LauncherApp {
                 _ => Arc::clone(&self.base_theme),
             };
             self.applied_doc = doc;
+            self.apply_theme_styles(ctx);
         }
         let library_page = matches!(
             self.page,
@@ -247,6 +248,18 @@ impl LauncherApp {
         // owner decision recorded in CLAUDE-P0.)
         ctx.set_missing_glyph_policy(egui::MissingGlyphPolicy::Tofu);
         ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        self.apply_theme_styles(ctx);
+        let repaint = ctx.clone();
+        self.backend
+            .set_waker(Box::new(move || repaint.request_repaint()));
+        if let Some(library) = self.library.as_mut() {
+            let repaint = ctx.clone();
+            library.set_waker(Box::new(move || repaint.request_repaint()));
+        }
+        self.initialised = true;
+    }
+
+    fn apply_theme_styles(&self, ctx: &Context) {
         let th = Arc::clone(&self.theme);
         ctx.all_styles_mut(|style| {
             let v = &mut style.visuals;
@@ -284,14 +297,6 @@ impl LauncherApp {
             style.spacing.interact_size.y = th.control.min_hit;
             style.spacing.slider_width = th.control.content_max_width * 0.5;
         });
-        let repaint = ctx.clone();
-        self.backend
-            .set_waker(Box::new(move || repaint.request_repaint()));
-        if let Some(library) = self.library.as_mut() {
-            let repaint = ctx.clone();
-            library.set_waker(Box::new(move || repaint.request_repaint()));
-        }
-        self.initialised = true;
     }
 
     fn submit(&mut self, command: Command) {
@@ -435,7 +440,13 @@ impl LauncherApp {
                 }
             }
         });
-        self.sync_library();
+        self.sync_library(&ctx);
+        let animation_time = self
+            .motion()
+            .tween(&self.theme.motion, self.theme.motion.short);
+        if (ctx.style().animation_time - animation_time).abs() > f32::EPSILON {
+            ctx.all_styles_mut(|style| style.animation_time = animation_time);
+        }
         // A draft appearance previews its interface scale live; otherwise the saved setting.
         let scale = self
             .shown_theme_doc()

@@ -271,7 +271,7 @@
   "loader.neoforge": "NeoForge",
   "instance.target": "{0} {1} · Minecraft {2} · Java {3}",
   "instance.target_no_loader_version": "{0} · Minecraft {1} · Java {2}",
-  "instance.ooze_available": "Ooze modules available",
+  "instance.ooze_available": "Ooze Client included",
   "instance.ooze_unavailable": "No Ooze modules",
   "instance.ooze_unavailable_long": "Ooze modules are not available for this instance. It plays as a plain instance.",
   "instances.intro": "Each instance has its own game version, loader, files and content. Worlds and settings stay inside their instance.",
