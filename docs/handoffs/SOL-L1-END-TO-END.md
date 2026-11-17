@@ -16,3 +16,9 @@ no offline-auth fallback or borrowed application ID is introduced.
 Result, checks, artifact and the remaining acceptance gates are recorded below once
 the new Windows package is built and verified. Launcher API 1, Library API 1 and
 JNI ABI 1 remain the contracts.
+
+The owner confirmed in this continuation that no Microsoft/Minecraft application
+approval has been received. No new live authentication retry is authorized by
+that status answer, and none is made. Microsoft sign-in UI, credentials and game
+launch remain real backend operations; acceptance of the full authenticated flow
+is pending the external review and an owner-completed entitled-account test.

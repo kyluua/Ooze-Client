@@ -95,6 +95,7 @@ pub struct LauncherApp {
     applied_doc: Option<ooze_ui::theme_doc::ThemeDoc>,
     /// Select must finish successfully before API 1 may change the Play directory.
     pending_selection: Option<(crate::library::LibOpId, crate::library::InstanceId)>,
+    bind_initial_selection: bool,
 }
 
 impl LauncherApp {
@@ -130,6 +131,7 @@ impl LauncherApp {
             guard: ooze_ui::theme_doc::BaseColors::classic(),
             applied_doc: None,
             pending_selection: None,
+            bind_initial_selection: false,
         }
     }
 
@@ -139,6 +141,7 @@ impl LauncherApp {
         let model = LibraryModel::new(library.snapshot(), library.open_error());
         self.lib = Some(model);
         self.library = Some(library);
+        self.bind_initial_selection = true;
         self
     }
 
@@ -348,6 +351,10 @@ impl LauncherApp {
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
             }
         }
+        if self.bind_initial_selection && self.model.connected() && !self.model.busy() {
+            self.bind_initial_selection = false;
+            selected = selected.or_else(|| self.lib.as_ref().and_then(|m| m.snap.selected.clone()));
+        }
         if let Some(id) = selected
             && let Some(instance) = self.lib.as_ref().and_then(|m| m.snap.instance(&id))
             && let Some(mut settings) = self.model.settings.clone()
@@ -355,6 +362,16 @@ impl LauncherApp {
         {
             settings.install_root = Some(instance.game_dir.clone());
             self.submit(Command::UpdateSettings(settings));
+        }
+        if let Some(library) = self.lib.as_mut() {
+            for instance in &mut library.snap.instances {
+                instance.running = self.model.game_live()
+                    && self
+                        .model
+                        .settings
+                        .as_ref()
+                        .is_some_and(|s| s.install_root.as_ref() == Some(&instance.game_dir));
+            }
         }
         if self.backend.wants_polling() {
             // The real backend has no waker: poll while an operation or the game is active.

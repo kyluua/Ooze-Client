@@ -64,6 +64,10 @@ pub enum Command {
     ExportTheme(Id),
     ConvertToCustom(Id),
     Search(Search),
+    SearchFiltered {
+        search: Search,
+        options: SearchOptions,
+    },
     Project(String),
     Versions {
         project: String,
@@ -168,6 +172,7 @@ impl Library {
             runtime_modules: Vec::new(),
             appearance: true,
             world_listing: true,
+            search_options: true,
         }
     }
     pub fn open(data_dir: impl AsRef<Path>) -> Result<Self> {
@@ -477,6 +482,9 @@ impl Inner {
                 Ok(Reply::None)
             }
             Command::Search(request) => Ok(Reply::Search(self.http.search(&request, check)?)),
+            Command::SearchFiltered { search, options } => Ok(Reply::Search(
+                self.http.search_filtered(&search, &options, check)?,
+            )),
             Command::Project(project) => Ok(Reply::Project(self.http.project(&project, check)?)),
             Command::Versions { project, target } => {
                 let project = self.http.project(&project, check)?;

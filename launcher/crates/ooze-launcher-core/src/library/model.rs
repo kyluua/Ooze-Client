@@ -436,6 +436,20 @@ pub struct Search {
     pub offset: u32,
     pub limit: u32,
 }
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchOrder {
+    #[default]
+    Relevance,
+    Downloads,
+    Updated,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SearchOptions {
+    pub order: SearchOrder,
+    pub categories: Vec<String>,
+}
 #[derive(Clone, Debug)]
 pub struct Capabilities {
     pub api_version: u32,
@@ -444,6 +458,7 @@ pub struct Capabilities {
     pub runtime_modules: Vec<&'static str>,
     pub appearance: bool,
     pub world_listing: bool,
+    pub search_options: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocalWorld {
@@ -457,6 +472,14 @@ pub struct ProjectSummary {
     pub title: String,
     pub description: String,
     pub project_type: ContentKind,
+    #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub downloads: Option<u64>,
+    #[serde(default)]
+    pub date_modified: Option<String>,
+    #[serde(default)]
+    pub categories: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SearchPage {
@@ -464,6 +487,9 @@ pub struct SearchPage {
     pub offset: u32,
     pub limit: u32,
     pub total_hits: u32,
+    /// Category slugs discovered in this page's real search hits.
+    #[serde(default)]
+    pub categories: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Project {
@@ -489,6 +515,12 @@ pub struct VersionSummary {
     pub version_number: String,
     pub game_versions: Vec<String>,
     pub loaders: Vec<String>,
+    #[serde(default)]
+    pub version_type: Option<String>,
+    #[serde(default)]
+    pub date_published: Option<String>,
+    #[serde(default)]
+    pub size_bytes: Option<u64>,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct PlanFile {

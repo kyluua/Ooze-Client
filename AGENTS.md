@@ -19,6 +19,13 @@ The specification in `docs/` is the source of truth. Implement it milestone by m
 > - Inside the Fabric mod the old security boundary stays: no tokens in the JNI engine; only non-secret display metadata.
 > - From now on **all agents work on `main`**.
 
+> **Launcher integration ownership update (2026-11-16, owner, chat):**
+> “Yes—finish the launcher end to end.” Sol/Codex may implement the remaining
+> launcher interface and resources as well as its backend during the end-to-end
+> launcher milestone. This supersedes the usual Claude path restriction for
+> `launcher/crates/ooze-launcher-ui/**` and `launcher/resources/**` in this work.
+> Claude retains in-game/product-model ownership and independent review.
+
 ## Who owns what
 
 Two agents work in this repository. They do **not** share chat history: **handoffs and commits carry all context**. (The L0 brief called the launcher-backend role "Codex"; in this repository that role is **Sol**, as recorded in `docs/handoffs/SOL-L0-CONTRACT.md`.)

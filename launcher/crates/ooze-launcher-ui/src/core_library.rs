@@ -8,7 +8,7 @@
 //! - profiles (module switches): off until the library reports runtime modules (the game can't
 //!   run any before M0; Real or absent);
 //! - themes and local data packs use the library's persisted appearance and opaque world keys;
-//! - search sort and categories: off;
+//! - search sort, category filters and metadata map the library's real catalog response;
 //! - switching to Managed Fair Play: off (the library offers only conversion to Custom).
 
 use std::collections::VecDeque;
@@ -218,13 +218,13 @@ impl CoreLibrary {
                             project_id: h.project_id,
                             title: h.title,
                             summary: h.description,
-                            author: None,
-                            downloads: None,
-                            updated: None,
+                            author: h.author,
+                            downloads: h.downloads,
+                            updated: h.date_modified,
                         })
                         .collect(),
                     total: page.total_hits,
-                    categories: Vec::new(),
+                    categories: page.categories,
                 })
             }
             (
@@ -353,13 +353,23 @@ impl LibraryBackend for CoreLibrary {
                     .target
                     .clone();
                 self.start(
-                    sl::Command::Search(sl::Search {
-                        query: q.text.clone(),
-                        kind: to_core_kind(q.kind),
-                        target,
-                        offset: q.offset,
-                        limit: 20,
-                    }),
+                    sl::Command::SearchFiltered {
+                        search: sl::Search {
+                            query: q.text.clone(),
+                            kind: to_core_kind(q.kind),
+                            target,
+                            offset: q.offset,
+                            limit: 20,
+                        },
+                        options: sl::SearchOptions {
+                            order: match q.sort {
+                                SortBy::Relevance => sl::SearchOrder::Relevance,
+                                SortBy::Downloads => sl::SearchOrder::Downloads,
+                                SortBy::Updated => sl::SearchOrder::Updated,
+                            },
+                            categories: q.categories.clone(),
+                        },
+                    },
                     plain(&c),
                 )
             }
@@ -684,7 +694,7 @@ pub fn map_snapshot(raw: &sl::Snapshot, caps: &sl::Capabilities) -> LibrarySnaps
             themes: caps.appearance,
             content: offered,
             managed_mode: false,
-            sort: false,
+            sort: caps.search_options,
         },
         instances,
         selected: raw.selected.as_ref().map(|i| InstanceId(i.0.clone())),
@@ -719,11 +729,16 @@ fn map_project(
             .map(|v| VersionSummary {
                 version_id: v.id.clone(),
                 number: v.version_number.clone(),
-                channel: None,
-                published: None,
+                channel: match v.version_type.as_deref() {
+                    Some("release") => Some(Channel::Release),
+                    Some("beta") => Some(Channel::Beta),
+                    Some("alpha") => Some(Channel::Alpha),
+                    _ => None,
+                },
+                published: v.date_published.clone(),
                 game_versions: v.game_versions.clone(),
                 loaders: v.loaders.clone(),
-                size_bytes: None,
+                size_bytes: v.size_bytes,
                 // The library lists versions for this instance's game version and revalidates
                 // the exact version when planning; an incompatible choice fails there with the
                 // library's reason.
@@ -839,9 +854,11 @@ mod tests {
         lib.set_waker(Box::new(move || {
             worker_woke.store(true, Ordering::Release);
         }));
-        let mut doc = ooze_ui::theme_doc::ThemeDoc::default();
-        doc.motion = ooze_ui::theme_doc::Motion::Off;
-        doc.ui_scale = 125;
+        let doc = ooze_ui::theme_doc::ThemeDoc {
+            motion: ooze_ui::theme_doc::Motion::Off,
+            ui_scale: 125,
+            ..Default::default()
+        };
         let op = lib.submit(LibCommand::SaveTheme(doc.clone())).unwrap();
         assert_eq!(wait(&mut lib, op), Ok(LibPayload::Done));
         assert!(woke.load(Ordering::Acquire));

@@ -174,6 +174,14 @@ impl Modrinth {
         Err(network())
     }
     pub fn search(&self, request: &Search, check: &dyn Fn() -> Result<()>) -> Result<SearchPage> {
+        self.search_filtered(request, &SearchOptions::default(), check)
+    }
+    pub fn search_filtered(
+        &self,
+        request: &Search,
+        options: &SearchOptions,
+        check: &dyn Fn() -> Result<()>,
+    ) -> Result<SearchPage> {
         request.target.validate()?;
         if request.query.len() > 256
             || request.query.chars().any(char::is_control)
@@ -181,6 +189,10 @@ impl Modrinth {
             || request.offset > 10000
         {
             return Err(invalid("Invalid content search bounds."));
+        }
+        if options.categories.len() > 8 || options.categories.iter().any(|c| identifier(c).is_err())
+        {
+            return Err(invalid("Invalid content category filter."));
         }
         let mut facets = vec![
             vec![format!("project_type:{}", request.kind.api_name())],
@@ -197,17 +209,39 @@ impl Modrinth {
                 "client_side:optional".into(),
             ]);
         }
+        for category in &options.categories {
+            facets.push(vec![format!("categories:{category}")]);
+        }
         let facets = serde_json::to_string(&facets).map_err(|_| metadata_error())?;
-        self.get(
+        let mut page: SearchPage = self.get(
             "search",
             &[
                 ("query", request.query.clone()),
                 ("facets", facets),
                 ("offset", request.offset.to_string()),
                 ("limit", request.limit.to_string()),
+                (
+                    "index",
+                    match options.order {
+                        SearchOrder::Relevance => "relevance",
+                        SearchOrder::Downloads => "downloads",
+                        SearchOrder::Updated => "updated",
+                    }
+                    .to_owned(),
+                ),
             ],
             check,
-        )
+        )?;
+        page.categories = page
+            .hits
+            .iter()
+            .flat_map(|h| h.categories.iter())
+            .filter(|c| identifier(c).is_ok())
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        Ok(page)
     }
 }
 impl Source for Modrinth {
@@ -237,7 +271,19 @@ impl Source for Modrinth {
                 serde_json::to_string(&[loader]).map_err(|_| metadata_error())?,
             ));
         }
-        self.get(&format!("project/{project}/version"), &query, check)
+        let mut versions: Vec<Version> =
+            self.get(&format!("project/{project}/version"), &query, check)?;
+        for version in &mut versions {
+            let mut primary = version.files.iter().filter(|f| f.primary);
+            let file = primary.next();
+            version.summary.size_bytes = if primary.next().is_none() {
+                file.or_else(|| (version.files.len() == 1).then(|| &version.files[0]))
+                    .map(|f| f.size)
+            } else {
+                None
+            };
+        }
+        Ok(versions)
     }
     fn version(&self, id: &str, check: &dyn Fn() -> Result<()>) -> Result<Version> {
         identifier(id)?;
@@ -610,6 +656,9 @@ mod tests {
                 version_number: "1".into(),
                 game_versions: vec!["1.21.11".into()],
                 loaders: vec!["fabric".into()],
+                version_type: Some("release".into()),
+                date_published: None,
+                size_bytes: None,
             },
             files: vec![VersionFile {
                 url: format!("https://cdn.modrinth.com/data/{project}/versions/{id}/a.jar"),
@@ -710,6 +759,74 @@ mod tests {
             client.search(&request, &|| Ok(())).unwrap();
             client.search(&request, &|| Ok(())).unwrap();
         }
+        worker.join().unwrap();
+    }
+    #[test]
+    fn filtered_search_sends_sort_and_safe_categories_and_retains_real_metadata() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let worker = std::thread::spawn(move || {
+            for order in ["downloads", "updated"] {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut buffer = [0; 8192];
+                let n = stream.read(&mut buffer).unwrap();
+                let raw = std::str::from_utf8(&buffer[..n]).unwrap();
+                let path = raw.split_whitespace().nth(1).unwrap();
+                let url = url::Url::parse(&format!("http://localhost{path}")).unwrap();
+                let query: BTreeMap<_, _> = url.query_pairs().into_owned().collect();
+                assert_eq!(query["index"], order);
+                let facets: Vec<Vec<String>> = serde_json::from_str(&query["facets"]).unwrap();
+                assert!(facets.contains(&vec!["categories:optimization".into()]));
+                assert!(facets.contains(&vec!["categories:fabric".into()]));
+                let body = r#"{"offset":0,"limit":10,"total_hits":1,"hits":[{"project_id":"A","slug":"a","title":"A","description":"Metadata fixture","project_type":"mod","author":"Author","downloads":42,"date_modified":"2026-11-16T00:00:00Z","categories":["optimization","fabric"]}]}"#;
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
+            }
+        });
+        let mut client = Modrinth::new().unwrap();
+        client.base = url::Url::parse(&format!("http://{address}/")).unwrap();
+        let search = Search {
+            query: String::new(),
+            kind: ContentKind::Mod,
+            target: Target::fabric(),
+            offset: 0,
+            limit: 10,
+        };
+        for order in [SearchOrder::Downloads, SearchOrder::Updated] {
+            let page = client
+                .search_filtered(
+                    &search,
+                    &SearchOptions {
+                        order,
+                        categories: vec!["optimization".into()],
+                    },
+                    &|| Ok(()),
+                )
+                .unwrap();
+            assert_eq!(page.hits[0].author.as_deref(), Some("Author"));
+            assert_eq!(page.hits[0].downloads, Some(42));
+            assert_eq!(page.categories, vec!["fabric", "optimization"]);
+        }
+        assert!(
+            client
+                .search_filtered(
+                    &search,
+                    &SearchOptions {
+                        order: SearchOrder::Relevance,
+                        categories: vec!["optimization: OR bad".into()]
+                    },
+                    &|| Ok(())
+                )
+                .is_err()
+        );
         worker.join().unwrap();
     }
     #[test]

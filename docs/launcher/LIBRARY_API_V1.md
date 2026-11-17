@@ -26,6 +26,15 @@ and installation are gated on the selected game directory matching the completed
 API 1 settings; failed saves require an explicit retry. Selection is unavailable
 while API 1 is busy or a game is live. See SOL-L1-END-TO-END.md for actual checks.
 
+`SearchFiltered { search: Search, options: SearchOptions }` adds bounded category
+slugs (at most eight, no facet syntax) and Relevance/Downloads/Updated ordering.
+The original `Search` command retains its default behavior. `search_options` is
+advertised by capabilities. Search hits retain optional author/download/date
+metadata. The page's category list is discovered from its real hits; it is not
+a claim of the complete global category catalog. Version summaries retain
+optional channel/date and the unambiguous primary file's size. The filters map
+to Modrinth's documented [search index and facets](https://docs.modrinth.com/api/operations/searchprojects/).
+
 ## Facade and ownership
 
 `Library::open(data_dir)` performs bounded local startup I/O. Call it off the
