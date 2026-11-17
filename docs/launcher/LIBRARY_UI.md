@@ -144,7 +144,7 @@ Row actions are Select, Rename, Duplicate, Install / Repair and Archive. Each ap
 ## 6. Appearance (themes)
 
 **Controls** (token-based, live preview):
-- **Accent:** a palette of six Ooze accents plus a custom hex value.
+- **Accent:** the Ooze palette's accents (Ink by default, Signal blue, Mint, Amber, Coral; values from the token file) plus a custom hex value.
 - **Contrast:** Standard / High.
 - **Text size:** 90–130 % in 10 % steps.
 - **Interface scale:** the existing L0 setting.
@@ -158,13 +158,13 @@ Row actions are Select, Rename, Duplicate, Install / Repair and Archive. Each ap
 **Contrast guard.** An accent is accepted only if all three hold:
 - accent text (white or ink, whichever is better) reaches **4.5:1** on the accent;
 - the accent reaches **3:1** against the canvas;
-- the focus ring stays at **3:1** or more.
+- the focus ring (Signal blue with its white halo) keeps **3:1** against the canvas; it is not tied to the accent.
 
-Rejected accents say why and keep the last valid value. High contrast replaces soft outlines and secondary text with stronger tokens.
+Rejected accents say why (with the measured ratio) and keep the last valid value. The guard is `ooze_ui::theme_doc`, the same code Sol's library uses before persisting. High contrast replaces soft outlines and secondary text with stronger tokens. Text sizes above 100 % grow control heights with them so labels never clip.
 
 **Import / export.**
 - Format: `ooze.theme/1` JSON via the clipboard.
-- Data only: base theme ID, accent hex, contrast, text size, background, motion.
+- Data only: base theme ID, accent hex, contrast, text size, background, motion, interface scale. Motion and interface scale remain API 1 launcher settings; Apply writes them through `UpdateSettings` and the document carries them so an exported theme restores the whole look.
 - Unknown fields, URLs, paths and out-of-range values are rejected with a reason.
 - The library validates again before persisting.
 

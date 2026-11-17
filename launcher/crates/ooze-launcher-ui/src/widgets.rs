@@ -262,10 +262,12 @@ impl Kit<'_> {
             let galleys: Vec<_> = options
                 .iter()
                 .map(|(_, l)| {
+                    // PLACEHOLDER: the colour is chosen per segment when painting (selected text
+                    // sits on the Ink Gel and must use the on-accent colour).
                     ui.painter().layout_no_wrap(
                         (*l).to_owned(),
                         font(th.text.label),
-                        th.c.text_primary,
+                        Color32::PLACEHOLDER,
                     )
                 })
                 .collect();
@@ -581,6 +583,132 @@ impl Kit<'_> {
                 egui::TextEdit::singleline(value)
                     .font(font(th.text.body))
                     .hint_text(hint)
+                    .desired_width(ui.available_width())
+                    .margin(vec2(th.space.md, th.space.sm)),
+            )
+            .labelled_by(label_resp.id);
+        if resp.has_focus() && self.keyboard {
+            paint_focus_ring(ui.painter(), th, resp.rect, th.shape.radius_sm);
+        }
+        resp
+    }
+}
+
+impl Kit<'_> {
+    /// An on/off switch (AccessKit check box). The label sits to the right and is part of the
+    /// hit area, so the whole row toggles.
+    pub fn switch(&self, ui: &mut Ui, label: &str, value: &mut bool, enabled: bool) -> Response {
+        let th = self.theme;
+        let track = vec2(th.control.height * 1.5, th.control.height * 0.6);
+        let galley = ui.painter().layout(
+            label.to_owned(),
+            font(th.text.body),
+            if enabled {
+                th.c.text_primary
+            } else {
+                th.c.text_disabled
+            },
+            (ui.available_width() - track.x - th.space.sm).max(th.control.min_width),
+        );
+        let height = th.control.height.max(galley.size().y);
+        let width = track.x + th.space.sm + galley.size().x;
+        let sense = if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        };
+        let (rect, mut resp) = ui.allocate_exact_size(vec2(width, height), sense);
+        if resp.clicked() {
+            *value = !*value;
+            resp.mark_changed();
+        }
+        let on = *value;
+        resp.widget_info(|| WidgetInfo::selected(accesskit::Role::Switch, enabled, on, label));
+        if !ui.is_rect_visible(rect) {
+            return resp;
+        }
+        let t = ui.ctx().animate_bool_with_time(
+            resp.id.with("switch"),
+            on,
+            self.motion.tween(&th.motion, th.motion.micro),
+        );
+        let track_rect =
+            Rect::from_min_size(pos2(rect.left(), rect.center().y - track.y / 2.0), track);
+        let painter = ui.painter();
+        let fill = if on {
+            if enabled {
+                th.c.accent
+            } else {
+                th.c.text_disabled
+            }
+        } else {
+            th.c.surface_sunken
+        };
+        painter.rect(
+            track_rect,
+            track.y / 2.0,
+            fill,
+            Stroke::new(th.shape.outline_control, th.c.outline_strong),
+            egui::StrokeKind::Inside,
+        );
+        let r = track.y / 2.0 - th.shape.outline_control * 2.0;
+        let x = track_rect.left() + track.y / 2.0 + t * (track.x - track.y);
+        painter.circle(
+            pos2(x, track_rect.center().y),
+            r,
+            if on {
+                th.c.text_on_accent
+            } else {
+                th.c.surface_raised
+            },
+            Stroke::new(th.shape.outline_hairline, th.c.outline_strong),
+        );
+        painter.galley(
+            pos2(
+                track_rect.right() + th.space.sm,
+                rect.center().y - galley.size().y / 2.0,
+            ),
+            galley,
+            th.c.text_primary,
+        );
+        if resp.has_focus() && self.keyboard {
+            paint_focus_ring(painter, th, track_rect, track.y / 2.0);
+        }
+        resp
+    }
+
+    /// A small status tag. Colour is never the only signal: the text says it.
+    pub fn tag(&self, ui: &mut Ui, text: &str, tone: Option<Tone>) -> Response {
+        let th = self.theme;
+        let (bg, fg) = match tone {
+            None => (th.c.surface_sunken, th.c.text_primary),
+            Some(Tone::Info) => (th.c.info_soft, th.c.text_primary),
+            Some(Tone::Success) => (th.c.success_soft, th.c.text_primary),
+            Some(Tone::Warning) => (th.c.warning_soft, th.c.text_primary),
+            Some(Tone::Danger) => (th.c.danger_soft, th.c.text_primary),
+        };
+        egui::Frame::new()
+            .fill(bg)
+            .stroke(Stroke::new(th.shape.outline_hairline, th.c.outline_soft))
+            .corner_radius(th.shape.radius_sm)
+            .inner_margin(egui::Margin::symmetric(
+                th.space.sm as i8,
+                th.space.xxs as i8,
+            ))
+            .show(ui, |ui| self.text(ui, th.text.caption, fg, text))
+            .inner
+    }
+
+    /// A multi-line plain-text field (paste target for imports).
+    pub fn text_area(&self, ui: &mut Ui, label: &str, value: &mut String, rows: usize) -> Response {
+        let th = self.theme;
+        let label_resp = self.text(ui, th.text.label, th.c.text_primary, label);
+        ui.add_space(th.space.xs);
+        let resp = ui
+            .add(
+                egui::TextEdit::multiline(value)
+                    .font(font(th.text.log))
+                    .desired_rows(rows)
                     .desired_width(ui.available_width())
                     .margin(vec2(th.space.md, th.space.sm)),
             )

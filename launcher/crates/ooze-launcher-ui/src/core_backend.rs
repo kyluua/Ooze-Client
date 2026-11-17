@@ -671,6 +671,36 @@ mod tests {
         }
     }
 
+    /// Sol's review (L0): saving must replace an existing file on Windows too, where a rename
+    /// onto an existing name has different semantics. CI runs this on windows-latest.
+    #[test]
+    fn prefs_save_replaces_an_existing_file_and_leaves_no_temp_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "ooze-ui-prefs-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("launcher-ui.json");
+        let mut prefs = UiPrefs::default();
+        prefs.save(&path).unwrap();
+        prefs.setup_complete = true;
+        prefs.ui_scale_percent = 150;
+        prefs.save(&path).unwrap();
+        let again = UiPrefs::load(&path);
+        assert!(again.setup_complete);
+        assert_eq!(again.ui_scale_percent, 150);
+        assert!(!path.with_extension("json.tmp").exists());
+        // A leftover temp file from an interrupted save does not block the next save.
+        std::fs::write(path.with_extension("json.tmp"), b"partial").unwrap();
+        prefs.ui_scale_percent = 175;
+        prefs.save(&path).unwrap();
+        assert_eq!(UiPrefs::load(&path).ui_scale_percent, 175);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     fn run(m: &mut Mapper, events: Vec<E>) -> Vec<Event> {
         let mut out = Vec::new();
         for e in events {

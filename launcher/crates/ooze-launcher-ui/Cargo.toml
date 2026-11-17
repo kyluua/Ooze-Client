@@ -14,6 +14,9 @@ dev-fixtures = []
 
 [dependencies]
 ooze-launcher-core = { path = "../ooze-launcher-core" }
+# Module catalog, typed settings, presets and profile documents (Claude, std only). One catalog
+# for the game, the library and this interface.
+ooze-ui = { path = "../../../native/crates/ooze-ui" }
 eframe = { version = "=0.37.0", default-features = false, features = ["accesskit", "wgpu", "x11", "wayland"] }
 regex = "1.13"
 rfd = "0.18"

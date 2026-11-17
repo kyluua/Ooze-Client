@@ -21,9 +21,12 @@ compile_error!(
 
 pub mod api;
 pub mod app;
+pub mod appearance;
 pub mod config;
 pub mod core_backend;
 pub mod i18n;
+pub mod library;
+pub mod library_model;
 pub mod motion;
 pub mod paint;
 pub mod redact;
@@ -33,7 +36,11 @@ pub mod widgets;
 
 #[cfg(any(test, feature = "dev-fixtures"))]
 pub mod fixtures;
+#[cfg(any(test, feature = "dev-fixtures"))]
+pub mod library_fixture;
 
+#[cfg(test)]
+mod library_ui_tests;
 #[cfg(test)]
 mod ui_tests;
 

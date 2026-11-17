@@ -2811,11 +2811,16 @@ dependencies = [
  "eframe",
  "egui_kittest",
  "ooze-launcher-core",
+ "ooze-ui",
  "regex",
  "rfd",
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "ooze-ui"
+version = "0.1.0"
 
 [[package]]
 name = "open"

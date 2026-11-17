@@ -13,6 +13,8 @@ use eframe::egui::{
 
 use crate::api::*;
 use crate::i18n::Strings;
+use crate::library::{LibEvent, LibraryBackend};
+use crate::library_model::LibraryModel;
 use crate::motion::{MotionMode, ease_viscous};
 use crate::paint::{Gel, Surface, paint_drip, paint_focus_ring, paint_gel};
 use crate::redact::redact;
@@ -27,9 +29,16 @@ const FONT_STRONG: &[u8] = include_bytes!("../../../resources/fonts/inter/Inter-
 
 const UI_SCALES: [u16; 5] = [100, 125, 150, 175, 200];
 
+mod library_pages;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
     Play,
+    /// Library pages: shown only when the library reports the capability (`LIBRARY_UI.md §2`).
+    Instances,
+    Profile,
+    Content,
+    Appearance,
     Settings,
     Diagnostics,
 }
@@ -74,6 +83,16 @@ pub struct LauncherApp {
     applied_scale: f32,
     live_seq: u64,
     live_text: String,
+    library: Option<Box<dyn LibraryBackend>>,
+    lib: Option<LibraryModel>,
+    lib_events: Vec<LibEvent>,
+    lib_ui: library_pages::LibUi,
+    lib_notice_seq: u64,
+    /// Ooze Classic tokens before the player's appearance is applied.
+    base_theme: Arc<Theme>,
+    /// The contrast guard's base colours (shared validator in `ooze-ui`).
+    guard: Option<ooze_ui::theme_doc::BaseColors>,
+    applied_doc: Option<ooze_ui::theme_doc::ThemeDoc>,
 }
 
 impl LauncherApp {
@@ -83,7 +102,7 @@ impl LauncherApp {
         Self {
             backend,
             model: Model::new(log_cap),
-            theme,
+            theme: Arc::clone(&theme),
             tr: Arc::new(Strings::en_us()),
             options,
             page: Page::Play,
@@ -100,6 +119,69 @@ impl LauncherApp {
             applied_scale: 0.0,
             live_seq: 0,
             live_text: String::new(),
+            library: None,
+            lib: None,
+            lib_events: Vec::new(),
+            lib_ui: library_pages::LibUi::default(),
+            lib_notice_seq: 0,
+            base_theme: theme,
+            guard: ooze_ui::theme_doc::BaseColors::classic(),
+            applied_doc: None,
+        }
+    }
+
+    /// Attach Sol's library (Library API 1). Without it the launcher is the L0 launcher: no
+    /// library page, tab or button is shown.
+    pub fn with_library(mut self, library: Box<dyn LibraryBackend>) -> Self {
+        let model = LibraryModel::new(library.snapshot(), library.open_error());
+        self.lib = Some(model);
+        self.library = Some(library);
+        self
+    }
+
+    /// The design tokens in use (after the player's appearance).
+    pub fn theme(&self) -> &Theme {
+        &self.theme
+    }
+
+    #[cfg(test)]
+    pub(crate) fn library_model_mut_for_tests(&mut self) -> Option<&mut LibraryModel> {
+        self.lib.as_mut()
+    }
+
+    pub fn library_model(&self) -> Option<&LibraryModel> {
+        self.lib.as_ref()
+    }
+
+    pub fn set_page(&mut self, page: Page) {
+        self.page = page;
+    }
+
+    /// Keep the tokens in step with the shown appearance (draft or saved) and keep the page valid
+    /// when a capability disappears.
+    fn sync_library(&mut self) {
+        let doc = self.shown_theme_doc();
+        if doc != self.applied_doc {
+            self.theme = match (&doc, &self.guard) {
+                (Some(d), Some(g)) => Arc::new(crate::appearance::apply(&self.base_theme, d, g)),
+                _ => Arc::clone(&self.base_theme),
+            };
+            self.applied_doc = doc;
+        }
+        let library_page = matches!(
+            self.page,
+            Page::Instances | Page::Profile | Page::Content | Page::Appearance
+        );
+        if library_page && !self.library_pages().contains(&self.page) {
+            self.page = Page::Play;
+        }
+        if let Some(m) = &self.lib
+            && m.notice_seq != self.lib_notice_seq
+        {
+            self.lib_notice_seq = m.notice_seq;
+            if let Some(n) = &m.notice {
+                self.live_text = library_notice_text(&self.tr, n);
+            }
         }
     }
 
@@ -225,6 +307,15 @@ impl LauncherApp {
         for event in self.events.drain(..) {
             self.model.apply(event);
         }
+        if let (Some(library), Some(model)) = (self.library.as_mut(), self.lib.as_mut()) {
+            library.drain_events(&mut self.lib_events);
+            for event in self.lib_events.drain(..) {
+                model.apply(event);
+            }
+            if library.wants_polling() && model.busy() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            }
+        }
         if self.backend.wants_polling() {
             // The real backend has no waker: poll while an operation or the game is active.
             let ms = if self.model.game_live() { 250 } else { 100 };
@@ -260,11 +351,15 @@ impl LauncherApp {
                 }
             }
         });
+        self.sync_library();
+        // A draft appearance previews its interface scale live; otherwise the saved setting.
         let scale = self
-            .model
-            .settings
+            .lib_ui
+            .appearance
             .as_ref()
-            .map_or(100, |s| s.ui_scale_percent) as f32
+            .map(|d| d.ui_scale)
+            .or_else(|| self.model.settings.as_ref().map(|s| s.ui_scale_percent))
+            .unwrap_or(100) as f32
             / 100.0;
         if (scale - self.applied_scale).abs() > f32::EPSILON {
             ctx.set_zoom_factor(scale);
@@ -426,6 +521,10 @@ impl LauncherApp {
                         ui.set_max_width(width);
                         match self.page {
                             Page::Play => self.play_page(ui, kit),
+                            Page::Instances => self.instances_page(ui, kit),
+                            Page::Profile => self.profile_page(ui, kit),
+                            Page::Content => self.content_page(ui, kit),
+                            Page::Appearance => self.appearance_page(ui, kit),
                             Page::Settings => self.settings_page(ui, kit),
                             Page::Diagnostics => self.diagnostics_page(ui, kit),
                         }
@@ -488,6 +587,15 @@ impl LauncherApp {
         ui.horizontal(|ui| {
             self.wordmark(ui, kit);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if let Some(inst) = self.lib.as_ref().and_then(|m| m.snap.selected().cloned())
+                    && self.library_pages().contains(&Page::Instances)
+                {
+                    let label = kit.tr.fmt("instances.chip", &[&inst.name]);
+                    if kit.button(ui, &label, ButtonKind::Quiet, true).clicked() {
+                        self.page = Page::Instances;
+                    }
+                    ui.add_space(th.space.sm);
+                }
                 if let Some(account) = self.model.account.clone() {
                     let label = kit.tr.fmt("account.chip", &[&account.username]);
                     if kit
@@ -506,11 +614,20 @@ impl LauncherApp {
 
     fn nav(&mut self, ui: &mut Ui, kit: &Kit<'_>) {
         let th = kit.theme;
-        let items = [
-            (Page::Play, "nav.play"),
-            (Page::Settings, "nav.settings"),
-            (Page::Diagnostics, "nav.diagnostics"),
-        ];
+        let mut items = vec![(Page::Play, "nav.play")];
+        for page in self.library_pages() {
+            items.push((
+                page,
+                match page {
+                    Page::Instances => "nav.instances",
+                    Page::Profile => "nav.profile",
+                    Page::Content => "nav.content",
+                    _ => "nav.appearance",
+                },
+            ));
+        }
+        items.push((Page::Settings, "nav.settings"));
+        items.push((Page::Diagnostics, "nav.diagnostics"));
         ui.add_space(th.space.md);
         for (page, key) in items {
             let selected = self.page == page;
@@ -634,7 +751,13 @@ impl LauncherApp {
         let card_top = ui.cursor().top();
         kit.card(ui, Surface::Card, |ui| self.play_card(ui, kit));
         let card_bottom = ui.min_rect().bottom();
-        self.drips(ui, kit, card_top, card_bottom);
+        if self
+            .applied_doc
+            .as_ref()
+            .is_none_or(crate::appearance::draws_drips)
+        {
+            self.drips(ui, kit, card_top, card_bottom);
+        }
         // Notices go below the card so the main button never moves under the pointer.
         ui.add_space(th.space.md);
         self.notice_area(ui, kit);
@@ -1827,6 +1950,29 @@ pub fn step_key(step: Step) -> &'static str {
 }
 
 /// Localisation keys (title, body) for each typed error.
+#[cfg(test)]
+pub(crate) fn lib_error_keys_for_tests(
+    kind: crate::library::LibErrorKind,
+) -> (&'static str, &'static str) {
+    library_pages::lib_error_keys(kind)
+}
+
+/// Live-region text for a library notice.
+pub fn library_notice_text(tr: &Strings, n: &crate::library_model::LibNotice) -> String {
+    use crate::library_model::LibNotice as N;
+    match n {
+        N::Error { error, .. } => tr
+            .get(library_pages::lib_error_keys(error.kind).0)
+            .to_owned(),
+        N::Cancelled => tr.get("library.cancelled").to_owned(),
+        N::Installed { .. } => tr.get("content.installed.title").to_owned(),
+        N::ProfileSaved => tr.get("profile.saved").to_owned(),
+        N::ThemeSaved => tr.get("appearance.saved").to_owned(),
+        N::ContentChanged => tr.get("content.changed").to_owned(),
+        N::IntegrityResolved => tr.get("integrity.resolved").to_owned(),
+    }
+}
+
 pub fn error_keys(kind: ErrorKind) -> (&'static str, &'static str) {
     match kind {
         ErrorKind::UnsupportedPlatform => (

@@ -52,7 +52,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     fn source_keys() -> BTreeSet<String> {
-        let re = regex::Regex::new(r#""((?:app|nav|first_run|play|sign_in|account|install|game|step|error|notice|settings|diag|close|a11y|common|preview|about)\.[a-z0-9_.]+)""#).unwrap();
+        let re = regex::Regex::new(r#""((?:app|nav|first_run|play|sign_in|account|install|game|step|error|notice|settings|diag|close|a11y|common|preview|about|library|instance|instances|integrity|profile|content|appearance|loader)\.[a-zA-Z0-9_.]+)""#).unwrap();
         let mut keys = BTreeSet::new();
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
         let mut stack = vec![std::path::PathBuf::from(dir)];
@@ -69,7 +69,108 @@ mod tests {
                 }
             }
         }
+        keys.extend(data_keys());
         keys
+    }
+
+    /// Keys built from data rather than written as literals: the module catalog (names,
+    /// descriptions, setting labels, choice options), fair-play classes, presets, accent swatches,
+    /// loaders, content kinds and library errors.
+    fn data_keys() -> Vec<String> {
+        use crate::library::{ContentKind, LibErrorKind, Loader};
+        use ooze_ui::catalog::{FairPlay, MODULES, VISUAL_SETTINGS};
+        use ooze_ui::profile::PresetId;
+        use ooze_ui::settings::SettingKind;
+        let mut out = Vec::new();
+        let setting = |d: &ooze_ui::settings::SettingDef, out: &mut Vec<String>| {
+            out.push(d.label_key.to_owned());
+            if let SettingKind::Choice { options, .. } = d.kind {
+                out.extend(options.iter().map(|o| format!("{}.{o}", d.label_key)));
+            }
+        };
+        for m in &MODULES {
+            out.push(m.name_key.to_owned());
+            out.push(m.description_key.to_owned());
+            for d in m.settings {
+                setting(d, &mut out);
+            }
+        }
+        for d in &VISUAL_SETTINGS {
+            setting(d, &mut out);
+        }
+        for f in [
+            FairPlay::Cosmetic,
+            FairPlay::Informational,
+            FairPlay::QualityOfLife,
+            FairPlay::Gameplay,
+        ] {
+            out.push(f.key().to_owned());
+        }
+        for p in PresetId::ALL {
+            out.push(p.name_key().to_owned());
+            out.push(format!("{}.description", p.name_key()));
+        }
+        for name in ooze_ui::theme_doc::ACCENT_SWATCHES {
+            out.push(format!("appearance.accent.{name}"));
+        }
+        for l in [
+            Loader::Vanilla,
+            Loader::Fabric,
+            Loader::Quilt,
+            Loader::Forge,
+            Loader::NeoForge,
+        ] {
+            out.push(l.key().to_owned());
+        }
+        for k in ContentKind::ALL {
+            out.push(k.key().to_owned());
+        }
+        for e in [
+            LibErrorKind::Busy,
+            LibErrorKind::GameRunning,
+            LibErrorKind::Incompatible,
+            LibErrorKind::Conflict,
+            LibErrorKind::HashMismatch,
+            LibErrorKind::RateLimited,
+            LibErrorKind::Offline,
+            LibErrorKind::NotFound,
+            LibErrorKind::Config,
+            LibErrorKind::Invalid,
+            LibErrorKind::Stale,
+            LibErrorKind::Cancelled,
+            LibErrorKind::Internal,
+        ] {
+            let (t, b) = crate::app::lib_error_keys_for_tests(e);
+            out.push(t.to_owned());
+            out.push(b.to_owned());
+        }
+        out
+    }
+
+    /// Product wording rules (LIBRARY_UI.md §7, AGENTS.md): no claim that a mode or module is
+    /// cheat-proof, undetectable or server-approved, and no claim that content "works".
+    #[test]
+    fn no_banned_claims_in_any_string() {
+        let banned = [
+            "cheat-proof",
+            "cheat proof",
+            "undetectable",
+            "anticheat",
+            "anti-cheat",
+            "server-approved",
+            "server approved",
+            "safe on all servers",
+            "safe on every server",
+            "guaranteed",
+            "ready to use",
+        ];
+        let strings = Strings::en_us();
+        for k in strings.keys() {
+            let v = strings.get(k).to_lowercase();
+            for b in banned {
+                assert!(!v.contains(b), "{k}: {v:?} contains {b:?}");
+            }
+        }
     }
 
     #[test]
