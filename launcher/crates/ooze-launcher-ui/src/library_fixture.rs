@@ -53,6 +53,11 @@ fn instance(
     target: GameTarget,
     preset: Option<PresetId>,
 ) -> InstanceSummary {
+    let content = if target.loader == Loader::Vanilla {
+        vec![ContentKind::ResourcePack, ContentKind::DataPack]
+    } else {
+        ContentKind::ALL.to_vec()
+    };
     InstanceSummary {
         game_dir: PathBuf::from(format!(
             r"C:\Users\Player\AppData\Roaming\.ooze\instances\{}",
@@ -66,6 +71,7 @@ fn instance(
         mode: IntegrityMode::Custom,
         install: InstallState::Ready,
         actions: ALL_ACTIONS.to_vec(),
+        content,
         running: false,
         revision: 1,
     }

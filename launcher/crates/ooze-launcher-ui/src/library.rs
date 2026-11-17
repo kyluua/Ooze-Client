@@ -92,6 +92,9 @@ pub struct InstanceSummary {
     pub mode: IntegrityMode,
     pub install: InstallState,
     pub actions: Vec<InstanceAction>,
+    /// Content kinds the library can manage for this instance (for example, no mods or shader
+    /// packs for Vanilla). The interface offers the intersection with the capability.
+    pub content: Vec<ContentKind>,
     /// This instance's game is running; mutations are refused until it exits.
     pub running: bool,
     pub revision: u64,

@@ -142,6 +142,24 @@ fn each_page_appears_only_with_its_capability() {
 }
 
 #[test]
+fn content_offers_only_the_kinds_supported_for_the_selected_instance() {
+    let mut snap = fx::snapshot();
+    snap.selected = Some(fx::vanilla_id());
+    let (mut h, _, _) = harness(Some(snap));
+    go(&mut h, "Content");
+    let kinds: Vec<String> = h
+        .query_all_by_role(Role::RadioButton)
+        .filter_map(|n| n.accesskit_node().label())
+        .filter(|l| l.ends_with("packs") || l == "Mods")
+        .collect();
+    assert_eq!(
+        kinds,
+        ["Resource packs", "Data packs"],
+        "no mods or shaders for Vanilla"
+    );
+}
+
+#[test]
 fn create_offers_only_reported_combinations_and_submits_the_exact_target() {
     let mut snap = fx::snapshot();
     snap.capabilities.create = vec![fx::fabric_target()];

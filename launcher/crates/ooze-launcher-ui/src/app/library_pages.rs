@@ -204,7 +204,7 @@ impl LauncherApp {
         if caps.profiles && sel.is_some_and(|i| i.target.ooze) {
             out.push(Page::Profile);
         }
-        if !caps.content.is_empty() && sel.is_some() {
+        if sel.is_some_and(|i| i.content.iter().any(|k| caps.content.contains(k))) {
             out.push(Page::Content);
         }
         if caps.themes {
@@ -1417,11 +1417,15 @@ impl LauncherApp {
         let Some(inst) = self.selected_instance() else {
             return;
         };
-        let kinds = self
+        // Only kinds the library supports for this particular instance.
+        let kinds: Vec<ContentKind> = self
             .lib
             .as_ref()
             .map(|m| m.caps().content.clone())
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|k| inst.content.contains(k))
+            .collect();
         if kinds.is_empty() {
             return;
         }
