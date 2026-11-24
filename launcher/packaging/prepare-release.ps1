@@ -131,6 +131,8 @@ Full authenticated Play and in-game module hooks are not established by this rev
 Only the version/loader combinations actually listed in the interface are offered.
 
 Default storage: %LOCALAPPDATA%\OozeLauncher. The CLI is included for diagnostics and automation.
+Use the CLI's export-diagnostics command with a new absolute ZIP path to save package metadata
+and the latest redacted launcher game log.
 This is an unsigned review build. Checksums and actual acceptance evidence are in the handoff.
 '@ | Set-Content -LiteralPath (Join-Path $outputRoot 'README.txt') -Encoding utf8NoBOM
 # Remove only the scratch directory created above, after verifying its resolved absolute confinement.

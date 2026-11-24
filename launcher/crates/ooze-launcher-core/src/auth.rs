@@ -10,7 +10,7 @@ use oauth2::{
 };
 use serde_json::{Value, json};
 use std::{
-    io::{BufRead, BufReader, Read, Write},
+    io::{Read, Write},
     net::{TcpListener, TcpStream},
     time::{Duration, Instant},
 };
@@ -217,18 +217,31 @@ fn wait_callback(
                 if !remote.ip().is_loopback() {
                     continue;
                 }
-                let result = callback(&mut stream, port, state);
-                let body = if result.is_ok() {
-                    "Sign-in received. You can return to Ooze."
-                } else {
-                    "Ooze could not validate this sign-in. Return to Ooze and retry."
+                let request_deadline = deadline.min(Instant::now() + Duration::from_secs(2));
+                let result = read_callback_request(&mut stream, request_deadline)
+                    .map_or(Ok(None), |request| parse_callback(&request, port, state));
+                check()?;
+                let (status, body) = match &result {
+                    Ok(Some(_)) => ("200 OK", "Sign-in received. You can return to Ooze."),
+                    Ok(None) => ("404 Not Found", "There is no Ooze sign-in callback here."),
+                    Err(_) => (
+                        "400 Bad Request",
+                        "Ooze could not complete this sign-in. Return to Ooze and retry.",
+                    ),
                 };
                 let reply = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nContent-Security-Policy: default-src 'none'\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
+                    "HTTP/1.1 {status}\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nContent-Security-Policy: default-src 'none'\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
                     body.len()
                 );
-                let _ = stream.write_all(reply.as_bytes());
-                return result;
+                if stream
+                    .set_write_timeout(Some(Duration::from_millis(250)))
+                    .is_ok()
+                {
+                    let _ = stream.write_all(reply.as_bytes());
+                }
+                if let Some(code) = result? {
+                    return Ok(code);
+                }
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(40))
@@ -241,31 +254,25 @@ fn wait_callback(
         "Sign-in timed out after three minutes. Retry when ready.",
     ))
 }
-fn callback(stream: &mut TcpStream, port: u16, state: &CsrfToken) -> Result<String> {
-    stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .map_err(|_| auth_error())?;
-    let mut reader = BufReader::new(stream).take(8193);
-    let mut bytes = Vec::new();
-    loop {
-        let before = bytes.len();
-        let n = reader
-            .read_until(b'\n', &mut bytes)
-            .map_err(|_| auth_error())?;
-        if n == 0 || bytes.len() > 8192 {
-            return Err(auth_error());
+fn read_callback_request(stream: &mut TcpStream, deadline: Instant) -> Option<String> {
+    let mut bytes = [0; 8192];
+    let mut end = 0;
+    while end < bytes.len() {
+        let remaining = deadline.checked_duration_since(Instant::now())?;
+        stream.set_read_timeout(Some(remaining)).ok()?;
+        let count = stream.read(&mut bytes[end..]).ok()?;
+        if count == 0 {
+            return None;
         }
-        if &bytes[before..] == b"\r\n" {
-            break;
+        let start = end.saturating_sub(3);
+        end += count;
+        if let Some(found) = bytes[start..end].windows(4).position(|b| b == b"\r\n\r\n") {
+            return String::from_utf8(bytes[..start + found + 4].to_vec()).ok();
         }
     }
-    parse_callback(
-        &String::from_utf8(bytes).map_err(|_| auth_error())?,
-        port,
-        state,
-    )
+    None
 }
-fn parse_callback(request: &str, port: u16, state: &CsrfToken) -> Result<String> {
+fn parse_callback(request: &str, port: u16, state: &CsrfToken) -> Result<Option<String>> {
     let mut lines = request.split("\r\n");
     let words = lines
         .next()
@@ -277,14 +284,14 @@ fn parse_callback(request: &str, port: u16, state: &CsrfToken) -> Result<String>
         || !words[1].starts_with("/callback?")
         || words[2] != "HTTP/1.1"
     {
-        return Err(auth_error());
+        return Ok(None);
     }
     let host = format!("localhost:{port}");
     if !lines.any(|line| {
         line.split_once(':')
             .is_some_and(|(k, v)| k.eq_ignore_ascii_case("host") && v.trim() == host)
     }) {
-        return Err(auth_error());
+        return Ok(None);
     }
     let url =
         url::Url::parse(&format!("http://localhost{}", words[1])).map_err(|_| auth_error())?;
@@ -298,11 +305,22 @@ fn parse_callback(request: &str, port: u16, state: &CsrfToken) -> Result<String>
         }
     };
     let returned = CsrfToken::new(value("state").ok_or_else(auth_error)?);
-    if returned != *state || params.iter().any(|(k, _)| k == "error") {
+    if returned != *state {
         return Err(auth_error());
+    }
+    if params.iter().any(|(k, _)| k == "error") {
+        return Err(if value("error").as_deref() == Some("access_denied") {
+            error(
+                ErrorCode::Authentication,
+                "Microsoft sign-in was declined. Sign in again when ready.",
+            )
+        } else {
+            auth_error()
+        });
     }
     value("code")
         .filter(|v| !v.is_empty() && v.len() < 4096)
+        .map(Some)
         .ok_or_else(auth_error)
 }
 fn post(http: &Http, service: AuthService, body: &Value) -> Result<Value> {
@@ -510,7 +528,7 @@ mod tests {
             |query: &str| format!("GET /callback?{query} HTTP/1.1\r\nHost: localhost:1234\r\n\r\n");
         assert_eq!(
             parse_callback(&request("state=expected&code=code"), 1234, &state).unwrap(),
-            "code"
+            Some("code".into())
         );
         for query in [
             "state=wrong&code=x",
@@ -520,7 +538,54 @@ mod tests {
         ] {
             assert!(parse_callback(&request(query), 1234, &state).is_err());
         }
-        assert!(parse_callback(&request("state=expected&code=x"), 2222, &state).is_err());
+        assert_eq!(
+            parse_callback(&request("state=expected&code=x"), 2222, &state).unwrap(),
+            None
+        );
+        let declined = parse_callback(&request("state=expected&error=access_denied"), 1234, &state)
+            .unwrap_err();
+        assert_eq!(declined.code, ErrorCode::Authentication);
+        assert!(declined.message.contains("declined"));
+    }
+    #[test]
+    fn unrelated_connections_do_not_consume_the_callback() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let worker = std::thread::spawn(move || {
+            let start = Instant::now();
+            wait_callback(
+                &listener,
+                addr.port(),
+                &CsrfToken::new("expected".into()),
+                &|| {
+                    if start.elapsed() > Duration::from_secs(5) {
+                        Err(auth_error())
+                    } else {
+                        Ok(())
+                    }
+                },
+            )
+        });
+        drop(TcpStream::connect(addr).unwrap());
+        let submit = |target: &str| {
+            let mut stream = TcpStream::connect(addr).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            write!(
+                stream,
+                "GET {target} HTTP/1.1\r\nHost: localhost:{}\r\n\r\n",
+                addr.port()
+            )
+            .unwrap();
+            let mut reply = String::new();
+            stream.read_to_string(&mut reply).unwrap();
+            reply
+        };
+        assert!(submit("/favicon.ico").starts_with("HTTP/1.1 404"));
+        assert!(submit("/callback?state=expected&code=fixture").starts_with("HTTP/1.1 200"));
+        assert_eq!(worker.join().unwrap().unwrap(), "fixture");
     }
     #[test]
     fn entitlement_and_profile_require_real_fields() {

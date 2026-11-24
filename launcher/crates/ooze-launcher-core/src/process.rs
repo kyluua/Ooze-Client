@@ -104,15 +104,28 @@ fn validate_properties(success: bool, text: &str) -> Result<()> {
     }
     Ok(())
 }
+pub(crate) const MAX_GAME_LOG_BYTES: usize = 16 * 1024 * 1024;
+
 pub(crate) struct Redactor {
     secret: Zeroizing<String>,
     patterns: Vec<Regex>,
 }
 impl Redactor {
-    fn new(token: &str) -> Result<Self> {
-        Ok(Self{secret:Zeroizing::new(token.to_owned()),patterns:vec![Regex::new(r"(?i)(authorization\s*[:=]\s*)([^\r\n]+)").map_err(|_|metadata_error())?,Regex::new(r#"(?i)((?:access[_-]?token|refresh[_-]?token|identityToken|--accessToken)[\s\"':=]+)([^\s\",}]+)"#).map_err(|_|metadata_error())?,Regex::new(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b").map_err(|_|metadata_error())?]})
+    pub(crate) fn new(token: &str) -> Result<Self> {
+        let patterns = [
+            r#"(?i)(\b(?:authorization["']?\s*[:=]\s*|identitytoken(?:["']?\s*[:=]\s*|\s+)))([^\r\n]+)"#,
+            r#"(?i)(\b(?:access[_-]?token|refresh[_-]?token|id[_-]?token)[\s"':=]+)([^\s",}]+)"#,
+            r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
+        ]
+        .into_iter()
+        .map(|pattern| Regex::new(pattern).map_err(|_| metadata_error()))
+        .collect::<Result<Vec<_>>>()?;
+        Ok(Self {
+            secret: Zeroizing::new(token.to_owned()),
+            patterns,
+        })
     }
-    fn line(&self, line: &str) -> String {
+    pub(crate) fn line(&self, line: &str) -> String {
         let mut text = if self.secret.is_empty() {
             line.to_owned()
         } else {
@@ -335,7 +348,7 @@ fn emit_line(
     };
     let text = format!("[{label}] {text}");
     if let Ok(mut log) = log.lock()
-        && log.1 + text.len() < 16 * 1024 * 1024
+        && log.1 + text.len() < MAX_GAME_LOG_BYTES
     {
         let _ = writeln!(log.0, "{text}");
         log.1 += text.len() + 1;

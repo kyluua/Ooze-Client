@@ -33,6 +33,9 @@ enum Action {
     Install,
     Repair,
     Play,
+    ExportDiagnostics {
+        destination: PathBuf,
+    },
     Settings {
         #[arg(long)]
         instance: Option<PathBuf>,
@@ -230,6 +233,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Action::Install => LauncherCommand::Install,
         Action::Repair => LauncherCommand::Repair,
         Action::Play => LauncherCommand::Launch,
+        Action::ExportDiagnostics { destination } => {
+            LauncherCommand::ExportDiagnostics(destination)
+        }
         Action::Settings {
             instance,
             java,

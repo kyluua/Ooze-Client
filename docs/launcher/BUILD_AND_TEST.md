@@ -99,6 +99,7 @@ Rust, MSVC, Gradle or developer JDK. Distribution signing is not implemented.
 ./ooze-launcher-cli.exe settings --managed-java
 ./ooze-launcher-cli.exe sign-in
 ./ooze-launcher-cli.exe play
+./ooze-launcher-cli.exe export-diagnostics "$PWD\ooze-diagnostics.zip"
 ./ooze-launcher-cli.exe sign-out
 ```
 
@@ -112,6 +113,9 @@ game normally; the CLI waits for it and reports nonzero exits. Claude should
 keep the desktop backend alive while hiding its window if desired. A persisted
 PID/start-time guard prevents repair/relaunch if the desktop process exits while
 the game remains alive; no process command lines are inspected for that check.
+The export command writes a new ZIP with the latest launcher-owned redacted game
+log and package metadata. Review the contents before sharing. Choose a new path
+to export again.
 
 ## Windows game adapter gate (separate from launcher authentication)
 

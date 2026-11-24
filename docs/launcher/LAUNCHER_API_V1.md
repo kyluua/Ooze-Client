@@ -40,13 +40,26 @@ GameStarted means Java spawned, not that the title screen was reached.
 GameExited precedes Completed on success, or Failed on a nonzero exit.
 
 SignIn opens the system browser and validates PKCE/state on a loopback callback;
-it completes only after Minecraft entitlement and profile validation. SignOut
+it completes only after Minecraft entitlement and profile validation. Unrelated
+loopback requests leave the callback pending within the original deadline. An
+explicit browser denial with matching state returns Authentication with a
+declined-sign-in message. SignOut
 deletes the backend's stored credential and remembered summary. Switch account by
 signing out and signing in (Microsoft account selection is requested). Launch
 refreshes/revalidates authorization and verifies the installation before spawning
 the production Fabric game. Install/Repair may work before sign-in. SaveSettings
 validates memory (1024–16384 MiB), Java/instance paths, and saves without starting
 an installation. None for java_path selects the manifest-pinned managed Java 21.
+
+The additive `ExportDiagnostics(PathBuf)` command writes a ZIP to a new absolute
+local `.zip` path selected by the caller. It uses the normal worker and terminal
+events. On completion, the archive contains `diagnostics.json` (schema 1,
+launcher version, platform and package metadata) and, when available, the latest
+launcher-owned `game-<timestamp>.log` as `game.log`. The worker bounds the log
+read and reapplies credential redaction before publishing the archive. The
+archive excludes account settings, credential storage, the launch command and
+Minecraft and mod log directories. Game logs can include player names, paths,
+and other game output. The command writes locally and preserves existing files.
 
 Only AccountSummary crosses into UI state. A remembered summary does not prove
 live authorization. No access/refresh token, Xbox identity token, provider body or

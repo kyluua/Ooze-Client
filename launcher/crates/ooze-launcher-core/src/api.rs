@@ -47,6 +47,8 @@ pub enum LauncherCommand {
     Install,
     Repair,
     Launch,
+    /// Export the latest launcher-owned redacted game log and release metadata.
+    ExportDiagnostics(PathBuf),
     SaveSettings(Settings),
 }
 

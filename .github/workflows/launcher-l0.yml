@@ -103,6 +103,31 @@ jobs:
           & "$package/ooze-launcher-cli.exe" --data-dir $testData status
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           ./launcher/packaging/test-targets.ps1 -PackageDirectory $package -DataDirectory $testData
+      - name: Verify packaged diagnostics export
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP 'Ooze diagnostics with spaces'
+          $logs = New-Item -ItemType Directory -Path (Join-Path $data 'logs')
+          @(
+            'OOZE_READY v1 screen=title engine=LOADED'
+            'Authorization: Bearer test-bearer-only'
+            '{"identityToken":"XBL3.0 x=user;test-xsts-only"}'
+          ) | Set-Content -LiteralPath (Join-Path $logs.FullName 'game-1.log') -Encoding utf8NoBOM
+          $archivePath = Join-Path $data 'diagnostics.zip'
+          ./launcher/dist/ooze-l0-windows-x64/ooze-launcher-cli.exe --data-dir $data export-diagnostics $archivePath
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
+          try {
+            $log = $archive.GetEntry('game.log')
+            if ($archive.Entries.Count -ne 2 -or !$log -or !$archive.GetEntry('diagnostics.json')) { throw 'Unexpected diagnostics entries' }
+            $reader = [IO.StreamReader]::new($log.Open())
+            try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            if ($text -notmatch 'OOZE_READY v1 screen=title engine=LOADED' -or
+                $text -match 'test-(bearer|xsts)-only' -or
+                [Regex]::Matches($text, '\[REDACTED\]').Count -ne 2) {
+              throw 'Packaged diagnostics did not preserve readiness and redact credentials'
+            }
+          } finally { $archive.Dispose() }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ooze-launcher-windows-x64

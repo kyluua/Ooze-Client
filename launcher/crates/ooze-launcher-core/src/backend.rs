@@ -288,6 +288,9 @@ impl Context {
             auth::forget(&self.credential_key()?)?;
             return self.set_account(None);
         }
+        if let LauncherCommand::ExportDiagnostics(path) = command {
+            return crate::diagnostics::export(&self.inner.config, &path, &|| self.check());
+        }
         let http = Http::new()?;
         if matches!(command, LauncherCommand::SignIn) {
             self.progress(Stage::Authorizing, 0, None);
