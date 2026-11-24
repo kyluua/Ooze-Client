@@ -7,9 +7,15 @@ the public Rust UI API. Minecraft itself receives its required game session.
 
 ## Current status
 
-Owner update, 2026-11-16: the owner reports submitting the AppID Review request.
-Approval and Minecraft Services access remain unconfirmed. Do not submit a
-duplicate request or repeatedly retry real sign-in while awaiting the result.
+On 2026-11-23, the packaged Windows x64 CLI completed live sign-in with the
+Ooze-owned application ID. Minecraft Services accepted the login, and the
+launcher validated the Java Edition entitlement and Minecraft profile. Direct
+Play, saved-session refresh after Play, and the desktop UI still need separate
+verification. See [the live sign-in handoff](../handoffs/SOL-L0-AUTH-RECHECK-2026-11-23.md).
+
+On 2026-11-16 the owner reported submitting the AppID Review request. The live
+sign-in confirms access for the tested account and app. Formal review status
+has not been independently verified.
 
 On 2026-11-15 the owner supplied public application ID
 `359e0deb-13e8-4616-978f-0fc1f8e273d2` after creating the Microsoft registration.
@@ -21,9 +27,8 @@ Ooze and completed the Microsoft code exchange and protected refresh-token save,
 then a later authentication-service request returned HTTP 403. The corrected
 CLI from f254af5 then refreshed the saved Microsoft session and passed Xbox
 user/XSTS authentication, but Minecraft's `/authentication/login_with_xbox`
-returned HTTP 403. Full Minecraft sign-in, entitlement, profile and Play remain
-**unverified**. See `SOL-L0-AUTH-SERVICE-DIAGNOSTICS.md` for the verified artifact
-and follow-up. No external application was created, submitted or approved by Sol.
+returned HTTP 403 in that test. See `SOL-L0-AUTH-SERVICE-DIAGNOSTICS.md` for
+the artifact and earlier follow-up.
 
 ## 1. Register the developer-owned application
 
@@ -226,14 +231,12 @@ mod log files.
 No owned client ID was configured at implementation start; the owner has since
 supplied the public ID above. OAuth callback/state, denial, cancellation,
 refresh-error handling, entitlement parsing and redaction have controlled tests.
-The latest live Windows test additionally proves browser callback, Microsoft
-code exchange, saved-session refresh and Xbox/XSTS success before Minecraft
-sign-in HTTP 403. It does not prove Minecraft service access, entitlement/profile
-or an online launcher game session. SOL-L0 and the later auth handoffs record
-the exact executed checks. ServiceAccess diagnoses the refusing Minecraft stage
-without exposing the response body; it does not assert every 403 is an approval
-problem. Approval being absent is a plausible cause for this new app, not a
-cause conclusively established by the HTTP status alone.
+The 2026-11-23 live Windows CLI test completed browser authorization, Microsoft
+and Xbox/XSTS authentication, Minecraft sign-in, entitlement and profile checks.
+The next acceptance check is an authenticated launch through to `OOZE_READY`.
+SOL-L0 and the later auth handoffs record the exact checks. When Minecraft
+refuses a request, ServiceAccess identifies the service and HTTP status without
+exposing the response body. The status alone cannot identify the approval state.
 
 Primary sources inspected:
 
