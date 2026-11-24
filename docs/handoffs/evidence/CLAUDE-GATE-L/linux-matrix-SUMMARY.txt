@@ -1,0 +1,8 @@
+host: Linux x86_64
+native resources: release ooze_jni.dll (sha256 e12b118eef886ed70a4efe4930aab58936b80a8659dd29fd960b94016a0fd29b) + native.properties extracted from the e82b598 package JAR
+dev-default                  PASS             state=UNSUPPORTED_PLATFORM
+dev-missing_library          PASS             state=MISSING_LIBRARY
+dev-incompatible             PASS             state=INCOMPATIBLE
+dev-load_failed              PASS             state=LOAD_FAILED
+prod-default                 PASS             state=UNSUPPORTED_PLATFORM
+prod-fault-ignored           PASS             state=UNSUPPORTED_PLATFORM

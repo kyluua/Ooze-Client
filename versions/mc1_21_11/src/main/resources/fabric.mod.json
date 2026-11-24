@@ -3,7 +3,7 @@
   "id": "oozeclient",
   "version": "${version}",
   "name": "Ooze Client",
-  "description": "A glossy, customisable Minecraft Java Edition client. Loaded by the official Minecraft Launcher through Fabric; it has no account system of its own.",
+  "description": "A glossy, customisable Minecraft Java Edition client for Fabric. It has no account system of its own: the launcher that starts it (the Ooze Launcher or another Fabric launcher) signs you in.",
   "authors": ["kyluua"],
   "contact": {
     "sources": "https://github.com/kyluua/Ooze-Client",

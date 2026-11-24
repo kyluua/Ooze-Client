@@ -156,7 +156,23 @@ tasks.register<net.fabricmc.loom.task.prod.ClientProductionRunTask>("runProducti
     providers.gradleProperty("oozeExpectEngineState").orNull?.let { jvmArgs.add("-Doozeclient.test.expectEngineState=$it") }
     // Passing a fault here proves release builds IGNORE developer fault injection (expect NOT_BUNDLED).
     providers.gradleProperty("oozeEngineFault").orNull?.let { jvmArgs.add("-Doozeclient.dev.engineFault=$it") }
-    mods.from(tasks.named("remapJar"), remapGametestJar, productionRuntimeMods)
+    // -PoozeProductionJar=<abs path> runs an already-packaged mod JAR (for example the one inside a
+    // verified launcher package) instead of this checkout's build, so acceptance can name the exact
+    // artifact that was tested.
+    val packagedJar = providers.gradleProperty("oozeProductionJar").orNull
+    if (packagedJar != null) {
+        val jar = file(packagedJar)
+        require(jar.isFile) { "oozeProductionJar does not exist: $packagedJar" }
+        inputs.file(jar)
+        mods.from(jar, remapGametestJar, productionRuntimeMods)
+        doFirst {
+            val digest = MessageDigest.getInstance("SHA-256").digest(jar.readBytes())
+                .joinToString("") { "%02x".format(it) }
+            logger.lifecycle("Production run uses packaged mod JAR {} (sha256 {})", jar, digest)
+        }
+    } else {
+        mods.from(tasks.named("remapJar"), remapGametestJar, productionRuntimeMods)
+    }
     runDir = layout.buildDirectory.dir("run/productionClientGameTest")
 }
 

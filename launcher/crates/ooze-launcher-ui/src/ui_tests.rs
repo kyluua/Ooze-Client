@@ -9,7 +9,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use crate::api::*;
-use crate::app::{AppOptions, LauncherApp};
+use crate::app::{AppOptions, LauncherApp, Page};
 use crate::fixtures::{FixtureBackend, FixtureHandle, account, snapshot};
 
 fn harness(
@@ -719,4 +719,125 @@ fn generic_service_and_auth_failures_get_neutral_copy_with_the_safe_detail() {
             code == lc::ErrorCode::Authentication
         );
     }
+}
+
+/// Gate L step 2: cancel the browser sign-in once, then sign in again and reach Play.
+#[test]
+fn sign_in_can_be_retried_after_cancellation_and_reaches_play() {
+    let (mut h, handle) = harness(snapshot(), MotionPreference::Off);
+    settle(&mut h);
+    let first = handle.next_op();
+    h.get_by_role_and_label(Role::Button, "Sign in").click();
+    settle(&mut h);
+    push_all(
+        &mut h,
+        &handle,
+        vec![Event::Started {
+            op: first,
+            kind: OperationKind::SignIn,
+        }],
+    );
+    h.get_by_role_and_label(Role::Button, "Cancel").click();
+    settle(&mut h);
+    push_all(
+        &mut h,
+        &handle,
+        vec![Event::Finished {
+            op: first,
+            outcome: Outcome::Cancelled,
+        }],
+    );
+    assert!(shows(&h, "Sign-in cancelled"));
+    let second = handle.next_op();
+    h.get_by_role_and_label(Role::Button, "Sign in").click();
+    settle(&mut h);
+    assert_eq!(
+        count(&handle, |c| matches!(c, Command::SignIn { .. })),
+        2,
+        "a fresh sign-in is submitted after the cancellation"
+    );
+    push_all(
+        &mut h,
+        &handle,
+        vec![
+            Event::Started {
+                op: second,
+                kind: OperationKind::SignIn,
+            },
+            Event::AccountChanged(Some(account())),
+            Event::Finished {
+                op: second,
+                outcome: Outcome::Succeeded(Payload::None),
+            },
+        ],
+    );
+    assert!(!shows(&h, "Sign-in cancelled"), "the old notice is gone");
+    assert!(
+        h.query_by_role_and_label(Role::Button, "Sign in").is_none(),
+        "signed in: the main action is no longer Sign in"
+    );
+    assert!(shows(&h, &account().username));
+}
+
+/// Gate L step 4: Repair from Settings shows real progress on Play and a completion notice; the
+/// interface states what repair never touches.
+#[test]
+fn repair_from_settings_reports_progress_and_completion() {
+    let (mut h, handle) = harness(ready(), MotionPreference::Off);
+    settle(&mut h);
+    h.get_by_role_and_label(Role::Tab, "Settings").click();
+    settle(&mut h);
+    assert!(shows(
+        &h,
+        "Worlds, screenshots, resource packs, shader packs and options are never touched"
+    ));
+    let repair = h.get_by_role_and_label(Role::Button, "Repair");
+    repair.scroll_to_me();
+    h.run_steps(20);
+    let op = handle.next_op();
+    h.get_by_role_and_label(Role::Button, "Repair").click();
+    settle(&mut h);
+    assert_eq!(
+        count(&handle, |c| *c == Command::Prepare { repair: true }),
+        1
+    );
+    assert_eq!(
+        h.state().page(),
+        Page::Play,
+        "repair progress is shown on Play"
+    );
+    push_all(
+        &mut h,
+        &handle,
+        vec![
+            Event::Started {
+                op,
+                kind: OperationKind::Prepare { repair: true },
+            },
+            Event::Progress {
+                op,
+                progress: Progress {
+                    step: Step::Verifying,
+                    done: 120,
+                    total: Some(480),
+                    unit: ProgressUnit::Files,
+                },
+            },
+        ],
+    );
+    let bar = h.get_by_role(Role::ProgressIndicator);
+    assert_eq!(bar.accesskit_node().numeric_value(), Some(25.0));
+    push_all(
+        &mut h,
+        &handle,
+        vec![
+            Event::InstallChanged(InstallStatus::Ready),
+            Event::Finished {
+                op,
+                outcome: Outcome::Succeeded(Payload::None),
+            },
+        ],
+    );
+    assert!(h.query_by_role(Role::ProgressIndicator).is_none());
+    shot(&mut h, "14-repair-finished");
 }

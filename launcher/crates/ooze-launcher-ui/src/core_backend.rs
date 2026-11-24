@@ -100,6 +100,44 @@ impl UiPrefs {
     }
 }
 
+/// True only for the Ooze mod's own readiness line, logged on the render thread as the whole
+/// message: `[…] [Render thread/INFO]: OOZE_READY v1 screen=title engine=<STATE>` (optionally with
+/// Fabric's `(logger)` tag, and the backend's `[stdout]` prefix). Chat lines (`[CHAT] …`), other
+/// threads, and text that merely contains the marker never count, so a server message or another
+/// mod cannot make the launcher claim the title screen was reached.
+pub fn is_ready_marker(line: &str) -> bool {
+    const THREAD: &str = "[Render thread/INFO]";
+    const MARKER: &str = "OOZE_READY v1 screen=title engine=";
+    let Some(at) = line.find(THREAD) else {
+        return false;
+    };
+    let mut rest = line[at + THREAD.len()..].trim_start();
+    if let Some(r) = rest.strip_prefix(':') {
+        rest = r.trim_start();
+    }
+    if rest.starts_with('(')
+        && let Some(close) = rest.find(')')
+    {
+        let tag = &rest[1..close];
+        if tag.is_empty()
+            || !tag
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+        {
+            return false;
+        }
+        rest = rest[close + 1..].trim_start();
+        if let Some(r) = rest.strip_prefix(':') {
+            rest = r.trim_start();
+        }
+    }
+    let Some(state) = rest.strip_prefix(MARKER) else {
+        return false;
+    };
+    let state = state.trim_end();
+    !state.is_empty() && state.bytes().all(|b| b.is_ascii_uppercase() || b == b'_')
+}
+
 pub const MEMORY: MemoryBounds = MemoryBounds {
     min_mib: 1024,
     max_mib: 16384,
@@ -221,8 +259,7 @@ impl Mapper {
                 } else {
                     LogLevel::Info
                 };
-                let ready =
-                    session.is_some() && !self.title_screen_seen && line.contains("OOZE_READY v1");
+                let ready = session.is_some() && !self.title_screen_seen && is_ready_marker(&line);
                 out.push(Event::Log(vec![LogLine {
                     level,
                     source,
@@ -701,12 +738,71 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn readiness_requires_the_mods_own_render_thread_line() {
+        for ok in [
+            "[stdout] [12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED",
+            "[12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=UNSUPPORTED_PLATFORM",
+            "[12:00:02] [Render thread/INFO] (oozeclient) OOZE_READY v1 screen=title engine=MISSING_LIBRARY",
+            "[stdout] [12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED\r",
+        ] {
+            assert!(is_ready_marker(ok), "{ok}");
+        }
+        for bad in [
+            // A server or player chat message (also how a Vanilla instance could be fooled).
+            "[12:01:00] [Render thread/INFO]: [CHAT] <Steve> OOZE_READY v1 screen=title engine=LOADED",
+            "[12:01:00] [Render thread/INFO]: [System] [CHAT] OOZE_READY v1 screen=title engine=LOADED",
+            // Another thread or level, or the marker inside other text.
+            "[12:00:02] [Worker-Main-1/INFO]: OOZE_READY v1 screen=title engine=LOADED",
+            "[12:00:02] [Render thread/WARN]: OOZE_READY v1 screen=title engine=LOADED",
+            "[12:00:02] [Render thread/INFO]: mod says OOZE_READY v1 screen=title engine=LOADED",
+            "[12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=loaded; rm",
+            "[12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=",
+            "OOZE_READY v1 screen=title engine=LOADED",
+        ] {
+            assert!(!is_ready_marker(bad), "{bad}");
+        }
+    }
+
     fn run(m: &mut Mapper, events: Vec<E>) -> Vec<Event> {
         let mut out = Vec::new();
         for e in events {
             m.map(e, None, &mut out);
         }
         out
+    }
+
+    /// Gate L review: a chat message (or another mod) printing the marker must not make the
+    /// launcher claim the title screen, for example in a Vanilla instance that has no Ooze mod.
+    #[test]
+    fn chat_text_never_marks_the_title_screen() {
+        let mut m = Mapper::default();
+        m.track(Id(5), OperationKind::Launch);
+        let out = run(
+            &mut m,
+            vec![
+                E::Started { id: Id(5) },
+                E::GameStarted { id: Id(5), pid: 7 },
+                E::LogLine {
+                    id: Id(5),
+                    line: "[stdout] [12:05:00] [Render thread/INFO]: [CHAT] <Steve> OOZE_READY v1 screen=title engine=LOADED".into(),
+                },
+                E::LogLine {
+                    id: Id(5),
+                    line: "[stdout] [12:05:01] [Render thread/INFO]: [System] [CHAT] OOZE_READY v1 screen=title engine=LOADED".into(),
+                },
+            ],
+        );
+        assert!(
+            !out.iter().any(|e| matches!(
+                e,
+                Event::Game {
+                    state: GameState::Running { title_screen: true },
+                    ..
+                }
+            )),
+            "{out:?}"
+        );
     }
 
     #[test]
