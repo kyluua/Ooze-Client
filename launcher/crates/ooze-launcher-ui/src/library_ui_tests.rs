@@ -1174,3 +1174,141 @@ fn live_window_shows_real_modrinth_results_for_a_fabric_instance() {
     shot(&mut h, "live-instances");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// RC1 B3: at the smallest window and 200 % interface scale, every New Instance choice stays
+/// inside the window (long choices stack and wrap instead of running past the card).
+#[test]
+fn new_instance_choices_fit_at_the_minimum_window_and_200_percent_scale() {
+    let mut lib = fx::snapshot();
+    lib.theme.ui_scale = 200;
+    let mut snap = snapshot();
+    snap.account = Some(account());
+    snap.install = InstallStatus::Ready;
+    snap.settings.motion = MotionPreference::Off;
+    snap.settings.ui_scale_percent = 200;
+    if let Some(selected) = lib.selected() {
+        snap.settings.install_root = Some(selected.game_dir.clone());
+    }
+    let (backend, _handle) = FixtureBackend::manual(snap);
+    let (library, _lh) = LibraryFixture::manual(lib);
+    let app =
+        LauncherApp::new(Box::new(backend), AppOptions::default()).with_library(Box::new(library));
+    let [w, h_min] = crate::theme::Theme::embedded().control.window_min;
+    let mut h = Harness::builder()
+        .with_size(vec2(w, h_min))
+        .with_pixels_per_point(1.0)
+        .build_ui_state(|ui, app: &mut LauncherApp| app.frame(ui), app);
+    h.set_render_cursor(false);
+    h.run_steps(8);
+    go(&mut h, "Instances");
+    click(&mut h, Role::Button, "New instance");
+    h.run_steps(6);
+    // The Name field spans the card's full inner width: the choices must stay within it.
+    let card = h
+        .get_by_role_and_label(Role::TextInput, "Name")
+        .accesskit_node()
+        .bounding_box()
+        .expect("name field bounds");
+    let mut checked = 0;
+    for node in h.query_all_by_role(Role::RadioButton) {
+        let label = node.accesskit_node().label().unwrap_or_default();
+        if !label.contains("Minecraft 1.21.11") {
+            continue;
+        }
+        let b = node.accesskit_node().bounding_box().expect("choice bounds");
+        assert!(
+            b.x0 >= card.x0 - 0.5 && b.x1 <= card.x1 + 0.5,
+            "{label:?} runs outside the card: {b:?} vs {card:?}"
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 2, "both Fabric and Vanilla choices are present");
+    h.query_all_by_role(Role::RadioButton)
+        .find(|n| {
+            n.accesskit_node()
+                .label()
+                .is_some_and(|l| l.contains("Vanilla"))
+        })
+        .expect("vanilla choice")
+        .scroll_to_me();
+    h.run_steps(20);
+    shot(&mut h, "new-instance-min-200");
+}
+
+/// RC1 B3: at the smallest window and 200 % interface scale, no control on any page extends past
+/// the window's right edge (accessibility: large scales must stay usable).
+#[test]
+fn no_control_runs_off_screen_at_the_minimum_window_and_200_percent_scale() {
+    let mut lib = fx::snapshot();
+    lib.theme.ui_scale = 200;
+    let mut snap = snapshot();
+    snap.account = Some(account());
+    snap.install = InstallStatus::Ready;
+    snap.settings.motion = MotionPreference::Off;
+    snap.settings.ui_scale_percent = 200;
+    if let Some(selected) = lib.selected() {
+        snap.settings.install_root = Some(selected.game_dir.clone());
+    }
+    let (backend, _handle) = FixtureBackend::manual(snap);
+    let (library, _lh) = LibraryFixture::manual(lib);
+    let app =
+        LauncherApp::new(Box::new(backend), AppOptions::default()).with_library(Box::new(library));
+    let [w, h_min] = crate::theme::Theme::embedded().control.window_min;
+    let mut h = Harness::builder()
+        .with_size(vec2(w, h_min))
+        .with_pixels_per_point(1.0)
+        .build_ui_state(|ui, app: &mut LauncherApp| app.frame(ui), app);
+    h.set_render_cursor(false);
+    h.run_steps(8);
+    let mut offenders = Vec::new();
+    for page in [
+        "Play",
+        "Instances",
+        "Content",
+        "Appearance",
+        "Settings",
+        "Diagnostics",
+    ] {
+        h.get_by_role_and_label(Role::Tab, page).click();
+        h.run_steps(8);
+        for role in [
+            Role::Button,
+            Role::RadioButton,
+            Role::TextInput,
+            Role::Switch,
+            Role::Tab,
+        ] {
+            for node in h.query_all_by_role(role) {
+                let n = node.accesskit_node();
+                if let Some(b) = n.bounding_box()
+                    && b.x1 > f64::from(w) + 0.5
+                {
+                    offenders.push(format!("{page}: {role:?} {:?} x1={}", n.label(), b.x1));
+                }
+            }
+        }
+    }
+    assert!(offenders.is_empty(), "{offenders:#?}");
+    // The header chips must not cover the wordmark.
+    let mark = h
+        // The wordmark's text is "ooze"; its accessible name is the app name.
+        .query_all_by_label_contains(crate::i18n::Strings::en_us().get("app.wordmark"))
+        .filter(|n| {
+            let n = n.accesskit_node();
+            n.role() == Role::Label
+                && n.label().as_deref() == Some(crate::i18n::Strings::en_us().get("app.name"))
+        })
+        .find_map(|n| n.accesskit_node().bounding_box())
+        .expect("wordmark bounds");
+    let chip = h
+        .get_by_role_and_label(Role::Button, &account().username)
+        .accesskit_node()
+        .bounding_box()
+        .expect("account chip bounds");
+    let overlap_x = chip.x0 < mark.x1 && mark.x0 < chip.x1;
+    let overlap_y = chip.y0 < mark.y1 && mark.y0 < chip.y1;
+    assert!(
+        !(overlap_x && overlap_y),
+        "chip {chip:?} covers wordmark {mark:?}"
+    );
+}

@@ -459,7 +459,7 @@ impl LauncherApp {
             ui.add_space(th.space.sm);
             let name = self.lib_ui.create_name.trim().to_owned();
             let valid = (1..=48).contains(&name.chars().count());
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if kit
                     .button(
                         ui,
@@ -546,7 +546,7 @@ impl LauncherApp {
             let hint = kit.t("instances.name.hint");
             kit.text_field(ui, kit.t("instances.name"), &mut name, hint);
             let ok = (1..=48).contains(&name.trim().chars().count());
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if kit
                     .button(ui, kit.t("common.save"), ButtonKind::Primary, ok && !busy)
                     .clicked()
@@ -976,7 +976,7 @@ impl LauncherApp {
                     true,
                 );
             }
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if kit
                     .button(
                         ui,
@@ -1142,7 +1142,7 @@ impl LauncherApp {
         ui.add_space(th.space.md);
         kit.text_area(ui, kit.t("profile.import.paste"), &mut text, 6);
         let mut close = false;
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if kit
                 .button(
                     ui,
@@ -1435,7 +1435,7 @@ impl LauncherApp {
         let th = kit.theme;
         kit.text(ui, th.text.label, th.c.text_primary, label);
         let mut out = (false, false);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             out.0 = kit
                 .button(
                     ui,
@@ -1602,7 +1602,7 @@ impl LauncherApp {
             );
         }
         self.lib_ui.sort = Some(sort);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if (kit
                 .button(ui, kit.t("content.search.go"), ButtonKind::Secondary, !busy)
                 .clicked()
@@ -1769,7 +1769,7 @@ impl LauncherApp {
         let has_next = page.query.offset + shown < page.total && shown > 0;
         if has_prev || has_next {
             ui.add_space(th.space.sm);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if has_prev
                     && kit
                         .button(
@@ -2041,7 +2041,7 @@ impl LauncherApp {
             }
             kit.caption(ui, kit.t("content.plan.verified_note"));
             ui.add_space(th.space.sm);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if kit
                     .button(
                         ui,
@@ -2403,7 +2403,7 @@ impl LauncherApp {
             );
             kit.body(ui, kit.t("appearance.preview.body"));
             kit.secondary(ui, kit.t("appearance.preview.secondary"));
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 let _ = kit.button(
                     ui,
                     kit.t("appearance.preview.primary"),
@@ -2472,7 +2472,7 @@ impl LauncherApp {
             ui.add_space(th.space.sm);
             kit.text_area(ui, kit.t("appearance.import.paste"), &mut text, 6);
             let mut keep = true;
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if kit
                     .button(
                         ui,

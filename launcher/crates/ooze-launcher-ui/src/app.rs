@@ -518,7 +518,7 @@ impl LauncherApp {
                         .inner_margin(Margin::symmetric(th.space.lg as i8, th.space.xs as i8)),
                 )
                 .show(ui, |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         kit.icon(ui, Icon::Warning, th.c.warning);
                         kit.text(
                             ui,
@@ -587,7 +587,7 @@ impl LauncherApp {
                 .frame(Frame::new().fill(th.c.canvas))
                 .show(ui, |ui| {
                     self.centered(ui, kit, |_, ui, kit| {
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             kit.spinner(ui, kit.t("app.connecting"));
                             kit.body(ui, kit.t("app.connecting"));
                         });
@@ -654,7 +654,7 @@ impl LauncherApp {
         let width = th.control.content_max_width.min(ui.available_width());
         let left = (ui.available_width() - width) / 2.0;
         ui.add_space(th.space.xxxl);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.add_space(left.max(0.0));
             ui.vertical(|ui| {
                 ui.set_width(width);
@@ -696,32 +696,58 @@ impl LauncherApp {
 
     fn header(&mut self, ui: &mut Ui, kit: &Kit<'_>) {
         let th = kit.theme;
+        // Narrow windows (small window or a large interface scale): the chips go on their own
+        // wrapped row under the wordmark instead of overlapping it.
+        if ui.available_width() < th.control.window_min[0] * 0.75 {
+            self.wordmark(ui, kit);
+            ui.horizontal_wrapped(|ui| self.header_chips(ui, kit));
+            return;
+        }
         ui.horizontal(|ui| {
             self.wordmark(ui, kit);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if let Some(inst) = self.lib.as_ref().and_then(|m| m.snap.selected().cloned())
-                    && self.library_pages().contains(&Page::Instances)
-                {
-                    let label = kit.tr.fmt("instances.chip", &[&inst.name]);
-                    if kit.button(ui, &label, ButtonKind::Quiet, true).clicked() {
-                        self.page = Page::Instances;
-                    }
-                    ui.add_space(th.space.sm);
-                }
-                if let Some(account) = self.model.account.clone() {
-                    let label = kit.tr.fmt("account.chip", &[&account.username]);
-                    if kit
-                        .button(ui, &label, ButtonKind::Secondary, true)
-                        .clicked()
-                    {
-                        self.page = Page::Settings;
-                    }
-                } else if self.model.sign_in_op().is_none() {
-                    kit.secondary(ui, kit.t("account.not_signed_in"));
-                }
-                ui.add_space(th.space.sm);
+                self.header_chips(ui, kit);
             });
         });
+    }
+
+    /// The selected-instance and account chips. In the wide header they are laid out right to
+    /// left (instance chip rightmost); in the narrow header left to right (account first).
+    fn header_chips(&mut self, ui: &mut Ui, kit: &Kit<'_>) {
+        let th = kit.theme;
+        let rtl = ui.layout().main_dir() == egui::Direction::RightToLeft;
+        let instance = self
+            .lib
+            .as_ref()
+            .and_then(|m| m.snap.selected().cloned())
+            .filter(|_| self.library_pages().contains(&Page::Instances));
+        let instance_chip = |this: &mut Self, ui: &mut Ui| {
+            if let Some(inst) = &instance {
+                let label = kit.tr.fmt("instances.chip", &[&inst.name]);
+                if kit.button(ui, &label, ButtonKind::Quiet, true).clicked() {
+                    this.page = Page::Instances;
+                }
+                ui.add_space(th.space.sm);
+            }
+        };
+        if rtl {
+            instance_chip(self, ui);
+        }
+        if let Some(account) = self.model.account.clone() {
+            let label = kit.tr.fmt("account.chip", &[&account.username]);
+            if kit
+                .button(ui, &label, ButtonKind::Secondary, true)
+                .clicked()
+            {
+                self.page = Page::Settings;
+            }
+        } else if self.model.sign_in_op().is_none() {
+            kit.secondary(ui, kit.t("account.not_signed_in"));
+        }
+        ui.add_space(th.space.sm);
+        if !rtl {
+            instance_chip(self, ui);
+        }
     }
 
     fn nav(&mut self, ui: &mut Ui, kit: &Kit<'_>) {
@@ -823,7 +849,7 @@ impl LauncherApp {
                 app.error_banner(ui, kit, OperationKind::SetInstallRoot, &error);
                 ui.add_space(th.space.md);
             }
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 let path = app.install_path.trim().to_owned();
                 let can = !busy && !path.is_empty();
                 if kit
@@ -955,7 +981,7 @@ impl LauncherApp {
                 kit.body(ui, kit.t("account.sign_in_to_play"));
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let (icon, color, key) = match self.model.install {
                 InstallStatus::Ready => (Icon::Check, th.c.success, "install.status.ready"),
                 InstallStatus::NotInstalled => {
@@ -1054,7 +1080,7 @@ impl LauncherApp {
         ui.add_space(th.space.sm);
         let step = progress.map_or(Step::WaitingForBrowser, |p| p.step);
         kit.label_step(ui, step, progress);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let waiting = step == Step::WaitingForBrowser;
             if self.model.capabilities().reopen_browser
                 && kit
@@ -1117,13 +1143,13 @@ impl LauncherApp {
         };
         match state {
             GameState::Starting => {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     kit.spinner(ui, kit.t("game.starting"));
                     kit.body(ui, kit.t("game.starting"));
                 });
             }
             GameState::Running { title_screen } => {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     kit.icon(ui, Icon::Check, th.c.success);
                     kit.body(
                         ui,
@@ -1464,7 +1490,7 @@ impl LauncherApp {
                         "settings.unsaved"
                     }),
                 );
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     save = kit
                         .button(ui, kit.t("settings.save"), ButtonKind::Primary, !busy)
                         .clicked();
@@ -1651,7 +1677,7 @@ impl LauncherApp {
                     &mut self.java_path,
                     kit.t("settings.java.path_hint"),
                 );
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let candidate = PathBuf::from(self.java_path.trim());
                     let check = Command::CheckJava {
                         path: candidate.clone(),
@@ -1691,13 +1717,13 @@ impl LauncherApp {
                 }
                 match self.model.java_check.clone() {
                     Some(JavaCheckView::Checking(_)) => {
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             kit.spinner(ui, kit.t("settings.java.checking"));
                             kit.secondary(ui, kit.t("settings.java.checking"));
                         });
                     }
                     Some(JavaCheckView::Valid(info)) => {
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             kit.icon(ui, Icon::Check, th.c.success);
                             kit.secondary(
                                 ui,
@@ -1708,7 +1734,7 @@ impl LauncherApp {
                         draft.java = JavaChoice::Custom(info.path.clone());
                     }
                     Some(JavaCheckView::Invalid(e)) => {
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             kit.icon(ui, Icon::Error, th.c.danger);
                             let (title, _) = error_keys(e.kind);
                             kit.secondary(ui, kit.t(title));
@@ -1998,7 +2024,7 @@ impl LauncherApp {
                     kit.title(ui, kit.t(title));
                     kit.body(ui, kit.t(body));
                     ui.add_space(th.space.lg);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         let keep =
                             kit.button(ui, kit.t("close.keep_open"), ButtonKind::Primary, true);
                         if ui.memory(|m| m.focused().is_none()) {
@@ -2067,7 +2093,7 @@ impl Kit<'_> {
     fn label_step(&self, ui: &mut Ui, step: Step, progress: Option<Progress>) {
         let th = self.theme;
         let label = self.t(step_key(step));
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             self.text(ui, th.text.label, th.c.text_primary, label);
             if let Some(p) = progress
                 && let Some(total) = p.total

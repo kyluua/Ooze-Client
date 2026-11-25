@@ -259,11 +259,11 @@ impl Kit<'_> {
             let ids: Vec<egui::Id> = (0..options.len())
                 .map(|i| ui.scope_id().with((id_salt, i)))
                 .collect();
-            let galleys: Vec<_> = options
+            // PLACEHOLDER colour: it is chosen per segment when painting (selected text sits on
+            // the Ink Gel and must use the on-accent colour).
+            let one_line: Vec<_> = options
                 .iter()
                 .map(|(_, l)| {
-                    // PLACEHOLDER: the colour is chosen per segment when painting (selected text
-                    // sits on the Ink Gel and must use the on-accent colour).
                     ui.painter().layout_no_wrap(
                         (*l).to_owned(),
                         font(th.text.label),
@@ -271,11 +271,55 @@ impl Kit<'_> {
                     )
                 })
                 .collect();
-            let seg_w =
-                galleys.iter().map(|g| g.size().x).fold(0.0f32, f32::max) + 2.0 * th.control.pad_x;
-            let height = th.control.height;
             let pad = th.space.xxs * 1.5;
-            let total = vec2(seg_w * options.len() as f32 + 2.0 * pad, height + 2.0 * pad);
+            let widest = one_line.iter().map(|g| g.size().x).fold(0.0f32, f32::max);
+            let row_seg_w = widest + 2.0 * th.control.pad_x;
+            let available = ui.available_width();
+            // One row when every option fits; otherwise stack the options, full width, with
+            // wrapped labels, so long choices never run past their card at small window sizes
+            // or large interface scales.
+            let stacked = row_seg_w * options.len() as f32 + 2.0 * pad > available;
+            let (galleys, rects_rel, total) = if stacked {
+                let seg_w = (available - 2.0 * pad).max(th.control.min_width);
+                let wrap = (seg_w - 2.0 * th.control.pad_x).max(1.0);
+                let galleys: Vec<_> = options
+                    .iter()
+                    .map(|(_, l)| {
+                        ui.painter().layout(
+                            (*l).to_owned(),
+                            font(th.text.label),
+                            Color32::PLACEHOLDER,
+                            wrap,
+                        )
+                    })
+                    .collect();
+                let mut y = pad;
+                let mut rects = Vec::with_capacity(galleys.len());
+                for g in &galleys {
+                    let h = th.control.height.max(g.size().y + 2.0 * th.space.xs);
+                    rects.push(Rect::from_min_size(pos2(pad, y), vec2(seg_w, h)));
+                    y += h;
+                }
+                (galleys, rects, vec2(seg_w + 2.0 * pad, y + pad))
+            } else {
+                let height = th.control.height;
+                let rects = (0..options.len())
+                    .map(|i| {
+                        Rect::from_min_size(
+                            pos2(pad + row_seg_w * i as f32, pad),
+                            vec2(row_seg_w, height),
+                        )
+                    })
+                    .collect();
+                (
+                    one_line,
+                    rects,
+                    vec2(
+                        row_seg_w * options.len() as f32 + 2.0 * pad,
+                        height + 2.0 * pad,
+                    ),
+                )
+            };
             let (track, _) = ui.allocate_exact_size(total, Sense::hover());
             let group = ui.new_child(UiBuilder::new().max_rect(track).id_salt((id_salt, "group")));
             ui.ctx().accesskit_node_builder(group.unique_id(), |n| {
@@ -292,10 +336,7 @@ impl Kit<'_> {
             let selected_index = options.iter().position(|(v, _)| *v == *value);
             let mut move_to: Option<usize> = None;
             for (i, ((v, l), galley)) in options.iter().zip(galleys).enumerate() {
-                let rect = Rect::from_min_size(
-                    pos2(track.left() + pad + seg_w * i as f32, track.top() + pad),
-                    vec2(seg_w, height),
-                );
+                let rect = rects_rel[i].translate(track.min.to_vec2());
                 let selected = Some(i) == selected_index;
                 let tab_stop = selected || (selected_index.is_none() && i == 0);
                 let sense = if tab_stop {
