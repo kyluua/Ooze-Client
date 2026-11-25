@@ -86,3 +86,16 @@ Its Fabric JAR is 349,022 bytes, SHA-256
 `9a8ed200b7f19f2dfc5edb12eebfa600e347c5f5d1a448c1023184c54332feea`.
 These are preflight bytes, before the combined UI-READY candidate. The final
 pack must use the combined package's JAR.
+
+Windows preflight passed 54 backend tests, 99 ordinary UI tests and both live
+Modrinth UI tests. CI now runs the UI renderer tests serially on DX12 and runs
+the two live cases separately. Prism Launcher 11.1.1 opened the preflight pack
+in the import dialog under a new isolated root. Actual creation and Play in
+Prism are separate from the archive-format checks.
+
+The local Codex Git runtime contains Bash as `sh.exe`, but lacks helper
+executables required by `tools/launch-tests.sh` (including `dd`, `tee` and
+`cygpath`). Automatic approval review blocked the Portable Git download and
+extractor command with “blocked by policy.” The existing Windows PowerShell
+adapter matrix can run separately. Its evidence is distinguishable from the
+requested Git Bash invocation.
