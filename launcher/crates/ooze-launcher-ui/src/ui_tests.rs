@@ -950,3 +950,60 @@ fn play_card_reports_when_the_engine_is_off_in_the_running_game() {
     assert!(shows(&h, "Repair the installation"));
     shot(&mut h, "15-engine-off");
 }
+
+/// RC1 B6: the backend's real sign-in failures (browser decline, three-minute timeout, callback
+/// bind failure; all Authentication with a specific safe message) show neutral copy, keep the
+/// detail, and offer "Sign in" again.
+#[test]
+fn declined_and_timed_out_sign_ins_are_neutral_and_retryable() {
+    use ooze_launcher_core as lc;
+    for detail in [
+        "Microsoft sign-in was declined. Sign in again when ready.",
+        "Sign-in timed out after three minutes. Retry when ready.",
+        "Couldn't open the localhost sign-in callback. Retry and check the Windows firewall.",
+    ] {
+        let (mut h, handle) = harness(real_profile(snapshot()), MotionPreference::Off);
+        settle(&mut h);
+        h.get_by_role_and_label(Role::Button, "Sign in").click();
+        settle(&mut h);
+        let mapped = crate::core_backend::map_error(
+            &lc::LauncherError {
+                code: lc::ErrorCode::Authentication,
+                message: detail.into(),
+                retryable: true,
+            },
+            Some(OperationKind::SignIn),
+        );
+        push_all(
+            &mut h,
+            &handle,
+            vec![
+                Event::Started {
+                    op: OperationId(1),
+                    kind: OperationKind::SignIn,
+                },
+                Event::Finished {
+                    op: OperationId(1),
+                    outcome: Outcome::Failed(mapped),
+                },
+            ],
+        );
+        assert!(shows(&h, "Sign-in couldn't be completed"), "{detail}");
+        assert!(shows(&h, detail), "the safe detail stays visible");
+        for bad in ["expired", "isn't approved", "password", "offline"] {
+            assert!(!shows(&h, bad), "{detail}: {bad}");
+        }
+        let again = h
+            .query_all_by_role_and_label(Role::Button, "Sign in")
+            .next()
+            .expect("Sign in is offered again");
+        assert!(!again.accesskit_node().is_disabled(), "{detail}");
+        again.click();
+        settle(&mut h);
+        assert_eq!(
+            count(&handle, |c| matches!(c, Command::SignIn { .. })),
+            2,
+            "{detail}: a fresh sign-in is submitted"
+        );
+    }
+}
