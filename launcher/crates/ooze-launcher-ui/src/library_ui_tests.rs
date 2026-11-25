@@ -1420,3 +1420,39 @@ fn the_first_created_instance_is_ready_for_play_without_another_click() {
         "Play is pointed at the newly selected instance"
     );
 }
+
+/// RC1 B5: Repair needs no sign-in (LAUNCHER_API_V1), so it is available while signed out for
+/// the instance Play is pointed at; the install location stays locked to the instance.
+#[test]
+fn repair_is_available_while_signed_out_for_the_selected_instance() {
+    let lib = fx::snapshot();
+    let dir = lib.selected().unwrap().game_dir.clone();
+    let mut snap = snapshot();
+    snap.account = None;
+    snap.install = InstallStatus::Ready;
+    snap.settings.motion = MotionPreference::Off;
+    snap.settings.install_root = Some(dir);
+    let (backend, handle) = FixtureBackend::manual(snap);
+    let (library, _lh) = LibraryFixture::manual(lib);
+    let app =
+        LauncherApp::new(Box::new(backend), AppOptions::default()).with_library(Box::new(library));
+    let mut h = Harness::builder()
+        .with_size(vec2(1120.0, 900.0))
+        .with_pixels_per_point(1.0)
+        .build_ui_state(|ui, app: &mut LauncherApp| app.frame(ui), app);
+    h.set_render_cursor(false);
+    h.run_steps(8);
+    go(&mut h, "Settings");
+    assert!(enabled(&h, "Repair"), "Repair works before sign-in");
+    assert!(
+        !enabled(&h, "Change location…"),
+        "the location belongs to the instance"
+    );
+    click(&mut h, Role::Button, "Repair");
+    assert!(
+        handle
+            .submitted()
+            .iter()
+            .any(|c| *c == Command::Prepare { repair: true })
+    );
+}

@@ -1615,8 +1615,11 @@ impl LauncherApp {
         ui.add_space(th.space.sm);
         let busy = self.model.prepare_op().is_some()
             || self.model.launch_op().is_some()
-            || self.model.game_live()
-            || self.selected_instance().is_some();
+            || self.model.game_live();
+        // With library instances the location belongs to the selected instance, so it can't be
+        // changed here. Repair is still available (it needs no sign-in, LAUNCHER_API_V1) for the
+        // instance Play is pointed at.
+        let location_locked = busy || self.selected_instance().is_some();
         ui.horizontal_wrapped(|ui| {
             if self.model.capabilities().open_folders
                 && kit
@@ -1635,7 +1638,7 @@ impl LauncherApp {
                     ui,
                     kit.t("install.change_location"),
                     ButtonKind::Secondary,
-                    !busy && self.pick.is_none(),
+                    !location_locked && self.pick.is_none(),
                 )
                 .clicked()
             {
@@ -1656,7 +1659,9 @@ impl LauncherApp {
                 ui,
                 kit.t("install.repair_action"),
                 ButtonKind::Secondary,
-                !busy && self.model.may_submit(&Command::Prepare { repair: true }),
+                !busy
+                    && self.selection_ready()
+                    && self.model.may_submit(&Command::Prepare { repair: true }),
             )
             .clicked()
         {
