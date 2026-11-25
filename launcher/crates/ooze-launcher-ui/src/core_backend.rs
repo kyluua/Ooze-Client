@@ -100,42 +100,47 @@ impl UiPrefs {
     }
 }
 
-/// True only for the Ooze mod's own readiness line, logged on the render thread as the whole
-/// message: `[…] [Render thread/INFO]: OOZE_READY v1 screen=title engine=<STATE>` (optionally with
-/// Fabric's `(logger)` tag, and the backend's `[stdout]` prefix). Chat lines (`[CHAT] …`), other
-/// threads, and text that merely contains the marker never count, so a server message or another
-/// mod cannot make the launcher claim the title screen was reached.
+/// Engine states the mod can report in its readiness line (`EngineStatus.State` in
+/// `versions/mc1_21_11`). Anything else is not the mod's marker.
+pub const ENGINE_STATES: [&str; 5] = [
+    "LOADED",
+    "MISSING_LIBRARY",
+    "UNSUPPORTED_PLATFORM",
+    "INCOMPATIBLE",
+    "LOAD_FAILED",
+];
+
+/// The engine state from the Ooze mod's own readiness line, or `None` for any other line.
+///
+/// The whole line must be, from its first byte: an optional `[stdout] ` (the backend's stream
+/// label), the vanilla log prefix `[HH:MM:SS] [Render thread/INFO]: `, then exactly
+/// `OOZE_READY v1 screen=title engine=<STATE>` with a state from [`ENGINE_STATES`]. Chat lines,
+/// other threads or levels, a header quoted inside message text, and unknown states never match,
+/// so a server message or another mod cannot make the launcher claim the title screen.
+pub fn ready_marker_state(line: &str) -> Option<&'static str> {
+    const PREFIX: &str = "[Render thread/INFO]: OOZE_READY v1 screen=title engine=";
+    let rest = line.strip_prefix("[stdout] ").unwrap_or(line);
+    // "[HH:MM:SS] "
+    let b = rest.as_bytes();
+    let time_ok = b.len() > 11
+        && b[0] == b'['
+        && b[3] == b':'
+        && b[6] == b':'
+        && b[9] == b']'
+        && b[10] == b' '
+        && [1, 2, 4, 5, 7, 8].iter().all(|&k| b[k].is_ascii_digit());
+    if !time_ok {
+        return None;
+    }
+    let state = rest[11..]
+        .strip_prefix(PREFIX)?
+        .trim_end_matches(['\r', '\n']);
+    ENGINE_STATES.iter().copied().find(|s| *s == state)
+}
+
+/// See [`ready_marker_state`].
 pub fn is_ready_marker(line: &str) -> bool {
-    const THREAD: &str = "[Render thread/INFO]";
-    const MARKER: &str = "OOZE_READY v1 screen=title engine=";
-    let Some(at) = line.find(THREAD) else {
-        return false;
-    };
-    let mut rest = line[at + THREAD.len()..].trim_start();
-    if let Some(r) = rest.strip_prefix(':') {
-        rest = r.trim_start();
-    }
-    if rest.starts_with('(')
-        && let Some(close) = rest.find(')')
-    {
-        let tag = &rest[1..close];
-        if tag.is_empty()
-            || !tag
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
-        {
-            return false;
-        }
-        rest = rest[close + 1..].trim_start();
-        if let Some(r) = rest.strip_prefix(':') {
-            rest = r.trim_start();
-        }
-    }
-    let Some(state) = rest.strip_prefix(MARKER) else {
-        return false;
-    };
-    let state = state.trim_end();
-    !state.is_empty() && state.bytes().all(|b| b.is_ascii_uppercase() || b == b'_')
+    ready_marker_state(line).is_some()
 }
 
 pub const MEMORY: MemoryBounds = MemoryBounds {
@@ -739,29 +744,72 @@ mod tests {
     }
 
     #[test]
-    fn readiness_requires_the_mods_own_render_thread_line() {
-        for ok in [
-            "[stdout] [12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED",
-            "[12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=UNSUPPORTED_PLATFORM",
-            "[12:00:02] [Render thread/INFO] (oozeclient) OOZE_READY v1 screen=title engine=MISSING_LIBRARY",
-            "[stdout] [12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED\r",
+    fn readiness_requires_the_mods_own_anchored_render_thread_line() {
+        for (line, state) in [
+            (
+                "[stdout] [12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED",
+                "LOADED",
+            ),
+            (
+                "[12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=UNSUPPORTED_PLATFORM",
+                "UNSUPPORTED_PLATFORM",
+            ),
+            (
+                "[stdout] [23:59:59] [Render thread/INFO]: OOZE_READY v1 screen=title engine=MISSING_LIBRARY\r",
+                "MISSING_LIBRARY",
+            ),
         ] {
-            assert!(is_ready_marker(ok), "{ok}");
+            assert_eq!(ready_marker_state(line), Some(state), "{line}");
         }
         for bad in [
-            // A server or player chat message (also how a Vanilla instance could be fooled).
-            "[12:01:00] [Render thread/INFO]: [CHAT] <Steve> OOZE_READY v1 screen=title engine=LOADED",
+            // A header quoted inside a chat message (Sol's Gate L finding).
+            "[stdout] [12:01:00] [Render thread/INFO]: [CHAT] <Steve> [12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED",
+            "[stdout] [12:01:00] [Render thread/INFO]: <Steve> [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED",
+            // Chat, other threads or levels, other streams, embedded text.
             "[12:01:00] [Render thread/INFO]: [System] [CHAT] OOZE_READY v1 screen=title engine=LOADED",
-            // Another thread or level, or the marker inside other text.
             "[12:00:02] [Worker-Main-1/INFO]: OOZE_READY v1 screen=title engine=LOADED",
             "[12:00:02] [Render thread/WARN]: OOZE_READY v1 screen=title engine=LOADED",
+            "[stderr] [12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED",
+            "[stdout] x [12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED",
             "[12:00:02] [Render thread/INFO]: mod says OOZE_READY v1 screen=title engine=LOADED",
-            "[12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=loaded; rm",
+            // Fabric's dev-only logger tag is not the production format.
+            "[12:00:02] [Render thread/INFO] (oozeclient) OOZE_READY v1 screen=title engine=LOADED",
+            // Unknown, lower-case, extended or missing states; malformed time.
+            "[12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=READY",
+            "[12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=loaded",
+            "[12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED extra",
             "[12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=",
+            "[1:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED",
+            "[ab:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED",
             "OOZE_READY v1 screen=title engine=LOADED",
+            "",
         ] {
-            assert!(!is_ready_marker(bad), "{bad}");
+            assert_eq!(ready_marker_state(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn engine_states_match_the_mods_enum() {
+        let java = include_str!(
+            "../../../../versions/mc1_21_11/src/main/java/io/github/kyluua/ooze/mc/v1_21_11/engine/EngineStatus.java"
+        );
+        let body = &java[java.find("public enum State {").unwrap()..];
+        let body = &body[..body.find(';').unwrap()];
+        let names: Vec<&str> = body
+            .lines()
+            .map(str::trim)
+            .filter(|l| {
+                !l.is_empty()
+                    && !l.starts_with("/**")
+                    && !l.starts_with('*')
+                    && !l.starts_with("public")
+            })
+            .map(|l| l.trim_end_matches(','))
+            .collect();
+        assert_eq!(
+            names, ENGINE_STATES,
+            "keep ENGINE_STATES in step with EngineStatus.State"
+        );
     }
 
     fn run(m: &mut Mapper, events: Vec<E>) -> Vec<Event> {
