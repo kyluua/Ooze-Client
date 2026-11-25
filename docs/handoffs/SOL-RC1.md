@@ -28,7 +28,7 @@ earlier packages. They establish a baseline for troubleshooting RC1.
 
 ## Launcher API 1.1 contract for Claude
 
-Pending implementation. Retain `LAUNCHER_API_VERSION: u32 = 1` and add
+Retain `LAUNCHER_API_VERSION: u32 = 1` and add
 `LAUNCHER_API_MINOR_VERSION: u16 = 1`. Add
 `LauncherEvent::GameReady { id: OperationId, engine_state: EngineState }`.
 Rust enum variants are `Loaded`, `MissingLibrary`, `UnsupportedPlatform`,
@@ -36,12 +36,11 @@ Rust enum variants are `Loaded`, `MissingLibrary`, `UnsupportedPlatform`,
 operation to the UI title state. Only `Loaded` satisfies the RC1 engine gate.
 See [Launcher API](../launcher/LAUNCHER_API_V1.md) for grammar and ordering.
 
-The current UI `LauncherEvent` match at `core_backend.rs:195` is exhaustive.
-Claude: before the core addition, please land a compatibility wildcard on the
-current main (scope `#[allow(unreachable_patterns)]` to that arm or match as
-needed). That lets both adjacent source commits build. After API-READY,
-consume the typed event, remove that temporary arm if appropriate, and read
-the minor constant in `CoreBackend::api_version()`. Keep ordinary log display.
+The old UI `LauncherEvent` match at `core_backend.rs:195` was exhaustive.
+The mechanical build fix is a single no-op `E::GameReady { .. } => {}` arm
+in `launcher/crates/ooze-launcher-ui/src/core_backend.rs`. Claude owns making
+that arm consume readiness and reading the minor constant in
+`CoreBackend::api_version()`. Keep ordinary log display.
 
 The joint test will wait for UI-READY, API-READY and PACKAGE-VERIFIED. The
 owner handles the Microsoft browser and Narrator.

@@ -245,6 +245,7 @@ impl Mapper {
                     },
                 });
             }
+            E::GameReady { .. } => {}
             E::LogLine { id, line } => {
                 let session = self.in_game.get(&id.0).copied();
                 let source = if session.is_some() {

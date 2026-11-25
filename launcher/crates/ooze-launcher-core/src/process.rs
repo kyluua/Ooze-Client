@@ -1,5 +1,5 @@
 use crate::{
-    api::{ErrorCode, Settings},
+    api::{EngineState, ErrorCode, Settings},
     auth::Session,
     install::Prepared,
     metadata,
@@ -162,7 +162,7 @@ pub(crate) fn launch(
     client_id: &str,
     data: &Path,
     on_started: impl Fn(u32),
-    on_line: impl Fn(String) + Send + Sync + 'static,
+    on_line: impl Fn(String, Option<EngineState>) + Send + Sync + 'static,
 ) -> Result<Option<i32>> {
     let install = &prepared.installation;
     let root = &prepared.root;
@@ -292,7 +292,7 @@ pub(crate) fn launch(
     crate::game_guard::clear(&settings.instance_dir, pid)?;
     Ok(status.code())
 }
-fn stream<R: Read + Send + 'static, F: Fn(String) + Send + Sync + 'static>(
+fn stream<R: Read + Send + 'static, F: Fn(String, Option<EngineState>) + Send + Sync + 'static>(
     input: R,
     label: &'static str,
     log: Arc<Mutex<(fs::File, usize)>>,
@@ -339,7 +339,7 @@ fn emit_line(
     label: &str,
     log: &Mutex<(fs::File, usize)>,
     redactor: &Redactor,
-    callback: &impl Fn(String),
+    callback: &impl Fn(String, Option<EngineState>),
 ) {
     let text = if oversized {
         "[oversize output omitted]".to_owned()
@@ -353,7 +353,14 @@ fn emit_line(
         let _ = writeln!(log.0, "{text}");
         log.1 += text.len() + 1;
     }
-    callback(text);
+    let ready = if label == "stdout" && !oversized {
+        std::str::from_utf8(line)
+            .ok()
+            .and_then(crate::readiness::parse)
+    } else {
+        None
+    };
+    callback(text, ready);
 }
 
 #[cfg(test)]
@@ -429,7 +436,7 @@ mod tests {
                     "test-only",
                     dir.path(),
                     |pid| assert!(pid > 0),
-                    |line| assert!(!line.contains("private-test-token"))
+                    |line, _| assert!(!line.contains("private-test-token"))
                 )
                 .unwrap(),
                 Some(7)

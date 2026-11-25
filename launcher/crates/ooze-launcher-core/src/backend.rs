@@ -353,6 +353,7 @@ impl Context {
             }
             let tx = self.inner.events.clone();
             let id = self.id;
+            let ready_sent = AtomicBool::new(false);
             let code = process::launch(
                 &prepared,
                 &settings,
@@ -365,8 +366,8 @@ impl Context {
                     }
                     self.control(LauncherEvent::GameStarted { id, pid });
                 },
-                move |line| {
-                    let _ = tx.try_send(LauncherEvent::LogLine { id, line });
+                move |line, engine_state| {
+                    publish_game_line(&tx, id, line, engine_state, &ready_sent);
                 },
             )?;
             self.control(LauncherEvent::GameExited { id, code });
@@ -380,6 +381,21 @@ impl Context {
         Ok(())
     }
 }
+fn publish_game_line(
+    events: &SyncSender<LauncherEvent>,
+    id: OperationId,
+    line: String,
+    engine_state: Option<EngineState>,
+    ready_sent: &AtomicBool,
+) {
+    let _ = events.try_send(LauncherEvent::LogLine { id, line });
+    if let Some(engine_state) = engine_state
+        && !ready_sent.swap(true, Ordering::Relaxed)
+    {
+        let _ = events.send(LauncherEvent::GameReady { id, engine_state });
+    }
+}
+
 fn validate_settings(settings: &Settings) -> Result<()> {
     if !(1024..=16384).contains(&settings.memory_mib) {
         return Err(error(
@@ -397,6 +413,39 @@ fn validate_settings(settings: &Settings) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ready_event_survives_a_full_log_queue_and_is_emitted_once() {
+        let (tx, rx) = mpsc::sync_channel(1);
+        let id = OperationId(7);
+        tx.send(LauncherEvent::Started { id }).unwrap();
+        let sent = Arc::new(AtomicBool::new(false));
+        let worker_flag = sent.clone();
+        let worker = std::thread::spawn(move || {
+            for _ in 0..2 {
+                publish_game_line(
+                    &tx,
+                    id,
+                    "ready".into(),
+                    Some(EngineState::Loaded),
+                    &worker_flag,
+                );
+            }
+        });
+        // Wait for the worker to attempt readiness with no spare queue capacity.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !sent.load(Ordering::Relaxed) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "worker did not reach the control send"
+            );
+            std::thread::yield_now();
+        }
+        let ready: Vec<_> = rx.into_iter().filter(|event| {
+            matches!(event, LauncherEvent::GameReady { id: event_id, engine_state: EngineState::Loaded } if *event_id == id)
+        }).collect();
+        worker.join().unwrap();
+        assert_eq!(ready.len(), 1);
+    }
     #[test]
     #[cfg(windows)]
     fn repeated_play_busy_and_cancel_are_bounded() {

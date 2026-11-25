@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 /// Independent of the in-game JNI ABI (currently 1).
 pub const LAUNCHER_API_VERSION: u32 = 1;
+pub const LAUNCHER_API_MINOR_VERSION: u16 = 1;
 
 #[derive(Clone, Debug)]
 pub struct LauncherConfig {
@@ -39,6 +40,16 @@ pub struct StateSnapshot {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct OperationId(pub u64);
+
+/// Names and semantics correspond to Fabric's EngineStatus.State.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EngineState {
+    Loaded,
+    MissingLibrary,
+    UnsupportedPlatform,
+    Incompatible,
+    LoadFailed,
+}
 
 #[derive(Clone, Debug)]
 pub enum LauncherCommand {
@@ -82,6 +93,11 @@ pub enum LauncherEvent {
     GameStarted {
         id: OperationId,
         pid: u32,
+    },
+    /// The mod's title marker was observed. Delivered once, before GameExited.
+    GameReady {
+        id: OperationId,
+        engine_state: EngineState,
     },
     GameExited {
         id: OperationId,

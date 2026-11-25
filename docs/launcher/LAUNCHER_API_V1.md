@@ -41,7 +41,7 @@ GameExited precedes Completed on success, or Failed on a nonzero exit.
 
 ### API 1.1 readiness addition
 
-Pending the RC1 API-READY checkpoint. The major constant stays 1 and
+The major constant stays 1 and
 `LAUNCHER_API_MINOR_VERSION: u16` becomes 1. The additive control event is
 `GameReady { id: OperationId, engine_state: EngineState }`. It carries no
 log text. The backend recognizes only the complete stdout marker with an
