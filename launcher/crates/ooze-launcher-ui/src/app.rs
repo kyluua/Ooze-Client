@@ -1160,6 +1160,19 @@ impl LauncherApp {
                         }),
                     );
                 });
+                // The mod reached its title screen but reported its engine off: say so plainly.
+                if let Some((engine_session, false, state)) = self.model.game_engine
+                    && Some(engine_session) == self.model.game.as_ref().map(|(s, _)| *s)
+                {
+                    let reason = kit.t(engine_off_key(state));
+                    kit.banner(
+                        ui,
+                        Tone::Warning,
+                        kit.t("game.engine_off.title"),
+                        &kit.tr.fmt("game.engine_off.body", &[reason]),
+                        &[],
+                    );
+                }
                 kit.caption(ui, kit.t("game.running_note"));
             }
             GameState::Exited { .. } | GameState::Crashed { .. } => {}
@@ -2131,6 +2144,16 @@ fn level_tag(level: LogLevel) -> &'static str {
         LogLevel::Info => "INFO ",
         LogLevel::Warn => "WARN ",
         LogLevel::Error => "ERROR",
+    }
+}
+
+/// Localised reason for an engine state other than LOADED.
+fn engine_off_key(state: &str) -> &'static str {
+    match state {
+        "MISSING_LIBRARY" => "game.engine_off.missing_library",
+        "UNSUPPORTED_PLATFORM" => "game.engine_off.unsupported_platform",
+        "INCOMPATIBLE" => "game.engine_off.incompatible",
+        _ => "game.engine_off.load_failed",
     }
 }
 

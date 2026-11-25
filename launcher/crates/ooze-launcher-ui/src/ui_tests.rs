@@ -912,3 +912,41 @@ fn export_diagnostics_saves_to_the_chosen_zip_and_reveals_it() {
         Some(&Command::RevealFile(expected))
     );
 }
+
+/// RC1 B7: the Play card says plainly when the game reached its title screen with the Ooze engine
+/// off, and says nothing extra when the engine loaded.
+#[test]
+fn play_card_reports_when_the_engine_is_off_in_the_running_game() {
+    let (mut h, handle) = harness(ready(), MotionPreference::Off);
+    settle(&mut h);
+    let session = GameSessionId(1);
+    push_all(
+        &mut h,
+        &handle,
+        vec![
+            Event::Game {
+                session,
+                state: GameState::Running { title_screen: true },
+            },
+            Event::GameEngine {
+                session,
+                loaded: true,
+                state: "LOADED",
+            },
+        ],
+    );
+    assert!(shows(&h, "reached its title screen"));
+    assert!(!shows(&h, "Ooze Client is off in this game"));
+    push_all(
+        &mut h,
+        &handle,
+        vec![Event::GameEngine {
+            session,
+            loaded: false,
+            state: "MISSING_LIBRARY",
+        }],
+    );
+    assert!(shows(&h, "Ooze Client is off in this game"));
+    assert!(shows(&h, "Repair the installation"));
+    shot(&mut h, "15-engine-off");
+}

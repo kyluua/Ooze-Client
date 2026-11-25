@@ -616,5 +616,11 @@
   "integrity.problem.baseline": "Ooze's release manifest couldn't be verified, so managed files can't be checked against it.",
   "diag.export_note": "Export diagnostics saves a ZIP with release details and the latest game log from this launcher. Sign-in data is removed, but the game log can include your player name and folder paths, so check the file before you share it.",
   "diag.export_pick_title": "Save diagnostics",
-  "diag.export_bad_path": "Choose a new .zip file in a folder on this PC."
+  "diag.export_bad_path": "Choose a new .zip file in a folder on this PC.",
+  "game.engine_off.title": "Ooze Client is off in this game",
+  "game.engine_off.body": "Minecraft reached its title screen and works normally, but {0} The game shows the same notice.",
+  "game.engine_off.missing_library": "the Ooze engine file is missing from this installation. Repair the installation to restore it.",
+  "game.engine_off.unsupported_platform": "this PC isn't a supported Ooze platform yet.",
+  "game.engine_off.incompatible": "the Ooze engine doesn't match this version of the mod. Repair the installation.",
+  "game.engine_off.load_failed": "the Ooze engine couldn't start. Export diagnostics from the Diagnostics page if it keeps happening."
 }

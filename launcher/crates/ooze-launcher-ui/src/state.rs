@@ -122,6 +122,8 @@ pub struct Model {
     pub account: Option<AccountSummary>,
     pub install: InstallStatus,
     pub game: Option<(GameSessionId, GameState)>,
+    /// Engine report for the current game session: `(session, loaded, state name)`.
+    pub game_engine: Option<(GameSessionId, bool, &'static str)>,
     pub notice: Option<Notice>,
     pub logs: VecDeque<LogLine>,
     pub java_check: Option<JavaCheckView>,
@@ -144,6 +146,7 @@ impl Model {
             account: None,
             install: InstallStatus::Unknown,
             game: None,
+            game_engine: None,
             notice: None,
             logs: VecDeque::new(),
             java_check: None,
@@ -423,7 +426,17 @@ impl Model {
             }
             Event::InstallChanged(status) => self.install = status,
             Event::SettingsChanged(settings) => self.settings = Some(settings),
-            Event::Game { session, state } => self.apply_game(session, state),
+            Event::Game { session, state } => {
+                if self.game_engine.is_some_and(|(s, ..)| s != session) {
+                    self.game_engine = None;
+                }
+                self.apply_game(session, state)
+            }
+            Event::GameEngine {
+                session,
+                loaded,
+                state,
+            } => self.game_engine = Some((session, loaded, state)),
             Event::Log(lines) => {
                 for mut line in lines {
                     if let std::borrow::Cow::Owned(clean) = redact(&line.text) {

@@ -431,6 +431,14 @@ pub enum Event {
         session: GameSessionId,
         state: GameState,
     },
+    /// The Ooze mod's engine state as reported with its title-screen marker. `loaded` false means
+    /// the game reached its title screen with Ooze Client switched off (vanilla still works).
+    GameEngine {
+        session: GameSessionId,
+        loaded: bool,
+        /// The mod's `EngineStatus.State` name, for example `MISSING_LIBRARY`.
+        state: &'static str,
+    },
     Log(Vec<LogLine>),
 }
 

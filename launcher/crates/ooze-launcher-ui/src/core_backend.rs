@@ -138,6 +138,16 @@ pub fn ready_marker_state(line: &str) -> Option<&'static str> {
     ENGINE_STATES.iter().copied().find(|s| *s == state)
 }
 
+fn engine_state_name(state: lc::EngineState) -> &'static str {
+    match state {
+        lc::EngineState::Loaded => "LOADED",
+        lc::EngineState::MissingLibrary => "MISSING_LIBRARY",
+        lc::EngineState::UnsupportedPlatform => "UNSUPPORTED_PLATFORM",
+        lc::EngineState::Incompatible => "INCOMPATIBLE",
+        lc::EngineState::LoadFailed => "LOAD_FAILED",
+    }
+}
+
 /// See [`ready_marker_state`].
 pub fn is_ready_marker(line: &str) -> bool {
     ready_marker_state(line).is_some()
@@ -212,6 +222,9 @@ pub struct Mapper {
     in_game: HashMap<u64, GameSessionId>,
     next_session: u64,
     title_screen_seen: bool,
+    /// The backend delivers `GameReady` (Launcher API 1.1): readiness comes only from that event,
+    /// and the log-line parser is not used. False only for older backends (and the pure tests).
+    pub typed_ready: bool,
     /// Pending interface-side follow-up when an operation completes.
     pending_settings: HashMap<u64, Settings>,
     pending_exports: HashMap<u64, PathBuf>,
@@ -300,7 +313,23 @@ impl Mapper {
                     },
                 });
             }
-            E::GameReady { .. } => {}
+            E::GameReady { id, engine_state } => {
+                if let Some(session) = self.in_game.get(&id.0).copied() {
+                    if !self.title_screen_seen {
+                        self.title_screen_seen = true;
+                        out.push(Event::Game {
+                            session,
+                            state: GameState::Running { title_screen: true },
+                        });
+                    }
+                    let state = engine_state_name(engine_state);
+                    out.push(Event::GameEngine {
+                        session,
+                        loaded: engine_state == lc::EngineState::Loaded,
+                        state,
+                    });
+                }
+            }
             E::LogLine { id, line } => {
                 let session = self.in_game.get(&id.0).copied();
                 let source = if session.is_some() {
@@ -315,7 +344,10 @@ impl Mapper {
                 } else {
                     LogLevel::Info
                 };
-                let ready = session.is_some() && !self.title_screen_seen && is_ready_marker(&line);
+                let ready = !self.typed_ready
+                    && session.is_some()
+                    && !self.title_screen_seen
+                    && is_ready_marker(&line);
                 out.push(Event::Log(vec![LogLine {
                     level,
                     source,
@@ -489,7 +521,10 @@ impl CoreBackend {
         let prefs = UiPrefs::load(&prefs_path);
         let mut this = Self {
             launcher,
-            mapper: Mapper::default(),
+            mapper: Mapper {
+                typed_ready: lc::LAUNCHER_API_MINOR_VERSION >= 1,
+                ..Mapper::default()
+            },
             prefs,
             prefs_path,
             data_dir,
@@ -619,7 +654,7 @@ impl Backend for CoreBackend {
     fn api_version(&self) -> (u16, u16) {
         (
             u16::try_from(lc::LAUNCHER_API_VERSION).unwrap_or(u16::MAX),
-            0,
+            lc::LAUNCHER_API_MINOR_VERSION,
         )
     }
 
@@ -935,6 +970,104 @@ mod tests {
         assert!(!valid_export_path(
             &dir.join("no-such-folder-ooze").join("a.zip")
         ));
+    }
+
+    /// RC1 B7: with Launcher API 1.1 the typed GameReady event is the only readiness source; a
+    /// marker log line no longer marks the title screen, and the engine state is reported.
+    #[test]
+    fn typed_game_ready_marks_the_title_once_and_reports_the_engine() {
+        let mut m = Mapper {
+            typed_ready: true,
+            ..Mapper::default()
+        };
+        m.track(Id(21), OperationKind::Launch);
+        let marker =
+            "[stdout] [12:00:02] [Render thread/INFO]: OOZE_READY v1 screen=title engine=LOADED";
+        let out = run(
+            &mut m,
+            vec![
+                E::Started { id: Id(21) },
+                E::GameStarted { id: Id(21), pid: 9 },
+                E::LogLine {
+                    id: Id(21),
+                    line: marker.into(),
+                },
+            ],
+        );
+        let titled = |out: &[Event]| {
+            out.iter()
+                .filter(|e| {
+                    matches!(
+                        e,
+                        Event::Game {
+                            state: GameState::Running { title_screen: true },
+                            ..
+                        }
+                    )
+                })
+                .count()
+        };
+        assert_eq!(
+            titled(&out),
+            0,
+            "the log line alone is not readiness on API 1.1"
+        );
+        let out = run(
+            &mut m,
+            vec![
+                E::GameReady {
+                    id: Id(21),
+                    engine_state: lc::EngineState::Loaded,
+                },
+                E::GameReady {
+                    id: Id(21),
+                    engine_state: lc::EngineState::Loaded,
+                },
+            ],
+        );
+        assert_eq!(titled(&out), 1);
+        assert!(out.iter().any(|e| matches!(
+            e,
+            Event::GameEngine {
+                loaded: true,
+                state: "LOADED",
+                ..
+            }
+        )));
+        // A GameReady for an operation that isn't a live game is ignored.
+        let out = run(
+            &mut m,
+            vec![E::GameReady {
+                id: Id(99),
+                engine_state: lc::EngineState::Loaded,
+            }],
+        );
+        assert!(out.is_empty());
+
+        let mut m = Mapper {
+            typed_ready: true,
+            ..Mapper::default()
+        };
+        m.track(Id(22), OperationKind::Launch);
+        let out = run(
+            &mut m,
+            vec![
+                E::GameStarted { id: Id(22), pid: 9 },
+                E::GameReady {
+                    id: Id(22),
+                    engine_state: lc::EngineState::MissingLibrary,
+                },
+            ],
+        );
+        assert_eq!(titled(&out), 1, "the title screen was reached");
+        assert!(out.iter().any(|e| matches!(
+            e,
+            Event::GameEngine {
+                loaded: false,
+                state: "MISSING_LIBRARY",
+                ..
+            }
+        )));
     }
 
     /// Gate L review: a chat message (or another mod) printing the marker must not make the
