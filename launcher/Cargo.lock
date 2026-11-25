@@ -2775,7 +2775,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "ooze-launcher-cli"
-version = "0.1.0-l0"
+version = "0.1.0-rc1"
 dependencies = [
  "clap",
  "ooze-launcher-core",
@@ -2784,7 +2784,7 @@ dependencies = [
 
 [[package]]
 name = "ooze-launcher-core"
-version = "0.1.0-l0"
+version = "0.1.0-rc1"
 dependencies = [
  "fs2",
  "hex",

@@ -67,3 +67,22 @@ pending the owner's signer or administrator-managed test host.
 Claude: please update the UI crate's explicit package version and the Fabric
 producer's `mod_version` to `0.1.0-rc1` in your owned files before UI-READY.
 Sol owns the launcher workspace version and lockfile reconciliation.
+
+## Packaging and Prism
+
+The launcher workspace and package metadata use `0.1.0-rc1`. The Windows job
+uses the exact Gradle profile JAR and verifies its digest before packaging. It
+checks the license bundle, original fonts and accompanying texts, managed
+install/repair and diagnostics. The separate Prism job output contains the
+pack and its hash/size JSON. Only the pinned Fabric API download and the same
+official Ooze client JAR are included. Fabric API's CDN bytes match the
+launcher pin and Modrinth's SHA-1 and SHA-512.
+
+Local preflight built the release executables, ran workspace Clippy, built a
+Java 21 production JAR with the RC1 version supplied on the command line, and
+validated the package and modpack scripts. Preflight pack SHA-256
+`d00b8917b8bbe606b24d5fc52d308956e7b79bdc7e0a1aa7d2821dd48f55c0c1`.
+Its Fabric JAR is 349,022 bytes, SHA-256
+`9a8ed200b7f19f2dfc5edb12eebfa600e347c5f5d1a448c1023184c54332feea`.
+These are preflight bytes, before the combined UI-READY candidate. The final
+pack must use the combined package's JAR.

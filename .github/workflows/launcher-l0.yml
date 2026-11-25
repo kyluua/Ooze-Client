@@ -1,9 +1,9 @@
 name: Ooze Launcher
 on:
   push:
-    paths: ['launcher/**', 'native/crates/ooze-ui/**', 'docs/tokens/**', 'rust-toolchain.toml', 'docs/launcher/**', '.github/workflows/launcher-l0.yml']
+    paths: ['launcher/**', 'native/**', 'bridge-java/**', 'versions/**', '*.gradle.kts', 'gradle.properties', 'docs/tokens/**', 'rust-toolchain.toml', 'docs/launcher/**', 'docs/handoffs/CLAUDE-RC1.md', '.github/workflows/launcher-l0.yml']
   pull_request:
-    paths: ['launcher/**', 'native/crates/ooze-ui/**', 'docs/tokens/**', 'rust-toolchain.toml', 'docs/launcher/**', '.github/workflows/launcher-l0.yml']
+    paths: ['launcher/**', 'native/**', 'bridge-java/**', 'versions/**', '*.gradle.kts', 'gradle.properties', 'docs/tokens/**', 'rust-toolchain.toml', 'docs/launcher/**', 'docs/handoffs/CLAUDE-RC1.md', '.github/workflows/launcher-l0.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -83,9 +83,15 @@ jobs:
       - name: Prepare portable review package and exercise install/repair
         shell: pwsh
         run: |
-          ./launcher/packaging/prepare-release.ps1 -OozeJar './build/dist/ooze-client-0.1.0-alpha.0+mc1.21.11.jar' -CliExe './launcher/target/release/ooze-launcher-cli.exe' -GuiExe './launcher/target/release/ooze-launcher.exe' -OutputDirectory './launcher/dist/ooze-l0-windows-x64'
-          $package = (Resolve-Path './launcher/dist/ooze-l0-windows-x64').Path
-          ./launcher/packaging/prepare-release.ps1 -OozeJar './build/dist/ooze-client-0.1.0-alpha.0+mc1.21.11.jar' -CliExe './launcher/target/release/ooze-launcher-cli.exe' -GuiExe './launcher/target/release/ooze-launcher.exe' -OutputDirectory './launcher/dist/pinned-repeat' -PinnedPackageDirectory $package
+          $profile = Get-Content -Raw -LiteralPath './build/dist/ooze-launcher-profile.json' | ConvertFrom-Json
+          $mod = @($profile.mods | Where-Object id -eq 'oozeclient')
+          if ($profile.schema -ne 'oozelauncher.profile/1' -or $mod.Count -ne 1 -or
+              $mod[0].file -notmatch '^ooze-client-[A-Za-z0-9.+-]+\.jar$') { throw 'Unexpected Fabric build profile' }
+          $jar = Join-Path './build/dist' $mod[0].file
+          if ((Get-FileHash -LiteralPath $jar).Hash -ne $mod[0].sha256) { throw 'Fabric build profile hash mismatch' }
+          ./launcher/packaging/prepare-release.ps1 -OozeJar $jar -CliExe './launcher/target/release/ooze-launcher-cli.exe' -GuiExe './launcher/target/release/ooze-launcher.exe' -OutputDirectory './launcher/dist/ooze-rc1-windows-x64'
+          $package = (Resolve-Path './launcher/dist/ooze-rc1-windows-x64').Path
+          ./launcher/packaging/prepare-release.ps1 -OozeJar $jar -CliExe './launcher/target/release/ooze-launcher-cli.exe' -GuiExe './launcher/target/release/ooze-launcher.exe' -OutputDirectory './launcher/dist/pinned-repeat' -PinnedPackageDirectory $package
           foreach ($file in (Get-ChildItem -LiteralPath $package -File -Recurse)) {
             $relative = [IO.Path]::GetRelativePath($package,$file.FullName)
             $repeat = Join-Path './launcher/dist/pinned-repeat' $relative
@@ -114,7 +120,7 @@ jobs:
             '{"identityToken":"XBL3.0 x=user;test-xsts-only"}'
           ) | Set-Content -LiteralPath (Join-Path $logs.FullName 'game-1.log') -Encoding utf8NoBOM
           $archivePath = Join-Path $data 'diagnostics.zip'
-          ./launcher/dist/ooze-l0-windows-x64/ooze-launcher-cli.exe --data-dir $data export-diagnostics $archivePath
+          ./launcher/dist/ooze-rc1-windows-x64/ooze-launcher-cli.exe --data-dir $data export-diagnostics $archivePath
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
           try {
@@ -128,11 +134,26 @@ jobs:
               throw 'Packaged diagnostics did not preserve readiness and redact credentials'
             }
           } finally { $archive.Dispose() }
+      - name: Export and validate the Prism fallback
+        shell: pwsh
+        run: |
+          $profile = Get-Content -Raw -LiteralPath './build/dist/ooze-launcher-profile.json' | ConvertFrom-Json
+          $mod = $profile.mods | Where-Object id -eq 'oozeclient'
+          if ($mod.version -ne '0.1.0-rc1+mc1.21.11') {
+            Write-Output 'The Fabric source is still a pre-RC1 build. The fallback will be generated from the RC1 JAR.'
+            return
+          }
+          ./launcher/packaging/prepare-mrpack.ps1 -PackageDirectory './launcher/dist/ooze-rc1-windows-x64' -OutputDirectory './launcher/dist/ooze-rc1-mrpack'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ooze-launcher-windows-x64
-          path: launcher/dist/ooze-l0-windows-x64/
+          path: launcher/dist/ooze-rc1-windows-x64/
           if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ooze-base-rc1-prism
+          path: launcher/dist/ooze-rc1-mrpack/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
