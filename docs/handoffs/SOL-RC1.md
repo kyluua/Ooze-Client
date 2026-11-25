@@ -3,6 +3,7 @@
 ## Status log
 
 - STARTED 7dd54d73f5897dcd2900241865e8dbac56d271ff
+- API-READY 120be4fb35e06e5a0fec38e7828389694fb8fcf7
 
 Owner Sol. Target Windows x64, Fabric 1.21.11, Java 21 and the bundled Rust
 engine. Gate L is open. The previous Windows runs in `SOL-GATE-L.md` cover
