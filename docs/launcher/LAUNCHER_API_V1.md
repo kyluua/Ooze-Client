@@ -39,11 +39,31 @@ Progress totals are optional, stage-local counts, not a fabricated global percen
 GameStarted means Java spawned, not that the title screen was reached.
 GameExited precedes Completed on success, or Failed on a nonzero exit.
 
+### API 1.1 readiness addition
+
+The major constant stays 1 and
+`LAUNCHER_API_MINOR_VERSION: u16` becomes 1. The additive control event is
+`GameReady { id: OperationId, engine_state: EngineState }`. It carries no
+log text. The backend recognizes only the complete stdout marker with an
+optional `[stdout] ` prefix, a valid `[HH:MM:SS]` timestamp and the exact
+` [Render thread/INFO]: OOZE_READY v1 screen=title engine=` prefix. A line
+terminator ends the record. The only accepted state spellings are `LOADED`,
+`MISSING_LIBRARY`, `UNSUPPORTED_PLATFORM`, `INCOMPATIBLE` and `LOAD_FAILED`,
+mapped to `Loaded`, `MissingLibrary`, `UnsupportedPlatform`, `Incompatible`
+and `LoadFailed`.
+
+For a launch id, the first valid marker is delivered between GameStarted and
+GameExited through the reliable control send. Keep draining the event queue
+while a game is running. LogLine delivery remains best effort. Map readiness
+only to the current live operation. RC1 acceptance additionally requires
+`Loaded` and the observed game title screen.
+
 SignIn opens the system browser and validates PKCE/state on a loopback callback;
 it completes only after Minecraft entitlement and profile validation. Unrelated
 loopback requests leave the callback pending within the original deadline. An
 explicit browser denial with matching state returns Authentication with a
-declined-sign-in message. SignOut
+declined-sign-in message. The registered localhost redirect is served on IPv4
+and, where supported, IPv6 loopback on the same ephemeral port. SignOut
 deletes the backend's stored credential and remembered summary. Switch account by
 signing out and signing in (Microsoft account selection is requested). Launch
 refreshes/revalidates authorization and verifies the installation before spawning

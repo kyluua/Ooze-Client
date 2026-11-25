@@ -75,7 +75,7 @@ if ($PinnedPackageDirectory) {
     $javaFolder = $runtime.version.openjdk_version.Split('+')[0]
     $javaRelative = 'jdk-'+$javaFolder+'+'+$runtime.version.build+'-jre/bin/java.exe'
     $release = @{
-        schema=1; id='ooze-l0-mc1.21.11'; minecraft='1.21.11';loader='0.20.1'
+        schema=1; minecraft='1.21.11';loader='0.20.1'
         minecraft_metadata=(Local-Artifact $minecraftPath 'metadata/minecraft.json')
         fabric_profile=(Local-Artifact $fabricPath 'metadata/fabric.json')
         fabric_libraries=$libraries;fabric_api=$fabricApi
@@ -90,6 +90,7 @@ Copy-Item -LiteralPath $OozeJar -Destination (Join-Path $outputRoot 'ooze-client
 Copy-Item -LiteralPath $CliExe -Destination (Join-Path $outputRoot 'ooze-launcher-cli.exe')
 Copy-Item -LiteralPath $GuiExe -Destination (Join-Path $outputRoot 'ooze-launcher.exe')
 $release.ooze = Local-Artifact (Join-Path $outputRoot 'ooze-client.jar') 'ooze-client.jar'
+$release.id = 'ooze-0.1.0-rc1-mc1.21.11'
 Write-Json (Join-Path $outputRoot 'release.json') $release
 Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $outputRoot 'LICENSE')
 $licenseRoot = Join-Path $outputRoot 'licenses'
@@ -110,8 +111,21 @@ Write-Json (Join-Path $licenseRoot 'dependencies.json') $notices
 foreach ($license in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'native\licenses') -File)) { Copy-Item -LiteralPath $license.FullName -Destination (Join-Path $licenseRoot ('rust-'+$license.Name)) }
 $fontsRoot = Join-Path $repoRoot 'launcher\resources\fonts'
 Copy-Item -LiteralPath $fontsRoot -Destination (Join-Path $licenseRoot 'fonts') -Recurse
+foreach ($fontFile in Get-ChildItem -LiteralPath $fontsRoot -File -Recurse) {
+    $relative = [IO.Path]::GetRelativePath($fontsRoot, $fontFile.FullName)
+    $shipped = Join-Path $licenseRoot (Join-Path 'fonts' $relative)
+    if ((Get-FileHash -LiteralPath $fontFile.FullName).Hash -ne (Get-FileHash -LiteralPath $shipped).Hash) {
+        throw "Packaged font or its license changed: $relative"
+    }
+}
+foreach ($notice in @('dependencies.json','rust-RUST-LICENSE-MIT','rust-RUST-LICENSE-APACHE','rust-RUST-COPYRIGHT')) {
+    if ((Get-Item -LiteralPath (Join-Path $licenseRoot $notice)).Length -le 0) {
+        throw "Missing packaged license information: $notice"
+    }
+}
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'RELEASE_NOTES_RC1.md') -Destination (Join-Path $outputRoot 'RELEASE-NOTES.md')
 @'
-Ooze Launcher review package — Windows x64. Start ooze-launcher.exe for the desktop interface.
+Ooze Launcher 0.1.0-rc1 for Windows x64. Start ooze-launcher.exe for the desktop interface.
 Extract the entire ZIP into a folder and keep release.json, metadata and ooze-client.jar beside it.
 Players do not need Rust, Gradle or a developer JDK; the package installs its verified Java 21.
 
@@ -126,9 +140,8 @@ installing a pack does not turn it on in Minecraft. Appearance is saved globally
 
 Ooze's public application ID is configured in this build; players do not register an application.
 Minecraft Services access for that application is an external prerequisite. If access is denied,
-the launcher reports the service error. The owner has submitted review; approval is not confirmed.
-Full authenticated Play and in-game module hooks are not established by this review package.
-Only the version/loader combinations actually listed in the interface are offered.
+the launcher reports the service error. This base candidate includes the bundled Rust engine.
+In-game modules are pending. See RELEASE-NOTES.md and the SOL-RC1 and CLAUDE-RC1 handoffs.
 
 Default storage: %LOCALAPPDATA%\OozeLauncher. The CLI is included for diagnostics and automation.
 Use the CLI's export-diagnostics command with a new absolute ZIP path to save package metadata

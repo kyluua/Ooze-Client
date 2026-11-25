@@ -56,10 +56,10 @@ dependency notices and unmodified font/OFL files. It is an unsigned review build
 ./native/tools/build-g0.ps1 -JavaHome $env:JAVA_HOME_21_X64
 ./gradlew.bat build buildAll --no-daemon --console=plain
 ./launcher/packaging/prepare-release.ps1 `
-  -OozeJar './build/dist/ooze-client-0.1.0-alpha.0+mc1.21.11.jar' `
+  -OozeJar './build/dist/ooze-client-0.1.0-rc1+mc1.21.11.jar' `
   -CliExe './launcher/target/release/ooze-launcher-cli.exe' `
   -GuiExe './launcher/target/release/ooze-launcher.exe' `
-  -OutputDirectory './launcher/dist/ooze-l0-windows-x64'
+  -OutputDirectory './launcher/dist/ooze-rc1-windows-x64'
 ```
 
 The script requires a new output directory; it never overwrites an existing
@@ -88,6 +88,23 @@ texts and SHA256SUMS. Claude supplies the desktop UI as the next consumer of API
 Minecraft game files are downloaded, never bundled. Managed Java is a vendor
 JRE archive with its legal notices retained after extraction. End users need no
 Rust, MSVC, Gradle or developer JDK. Distribution signing is not implemented.
+
+The Prism fallback uses the same production JAR and pins as the launcher ZIP.
+After preparing the RC1 package, run:
+
+```powershell
+./launcher/packaging/prepare-mrpack.ps1 `
+  -PackageDirectory './launcher/dist/ooze-rc1-windows-x64' `
+  -OutputDirectory './launcher/dist/ooze-rc1-mrpack'
+```
+
+The exporter checks the downloaded Fabric API against both the launcher pin
+and the Modrinth SHA-1 and SHA-512. It validates the final archive's only two
+entries, the Modrinth index and the official Ooze JAR under client overrides.
+The JSON sidecar records lengths and hashes for independent verification.
+Prism handles sign-in, Java selection and launch. Use Java 21 and Windows x64
+for the bundled engine. See [the Modrinth format](https://support.modrinth.com/en/articles/8802351-modrinth-modpack-format-mrpack)
+and [Prism's import instructions](https://prismlauncher.org/wiki/help-pages/zip-import/).
 
 ## Exercise the package outside a developer shell
 
