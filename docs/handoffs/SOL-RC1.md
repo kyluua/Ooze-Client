@@ -4,6 +4,7 @@
 
 - STARTED 7dd54d73f5897dcd2900241865e8dbac56d271ff
 - API-READY 120be4fb35e06e5a0fec38e7828389694fb8fcf7
+- Preflight tested through 3a1ad9cb0ba37c611a8caede266322ea9a85b0b6. Waiting for UI-READY.
 
 Owner Sol. Target Windows x64, Fabric 1.21.11, Java 21 and the bundled Rust
 engine. Gate L is open. The previous Windows runs in `SOL-GATE-L.md` cover
@@ -89,9 +90,9 @@ pack must use the combined package's JAR.
 
 Windows preflight passed 54 backend tests, 99 ordinary UI tests and both live
 Modrinth UI tests. CI now runs the UI renderer tests serially on DX12 and runs
-the two live cases separately. Prism Launcher 11.1.1 opened the preflight pack
-in the import dialog under a new isolated root. Actual creation and Play in
-Prism are separate from the archive-format checks.
+the two live cases separately. Prism Launcher 11.1.1 parsed the preflight pack
+and staged the exact Ooze JAR under a new isolated root. Its trust prompt for
+the bundled JAR remains pending. Instance creation and Play were not reached.
 
 The local Codex Git runtime contains Bash as `sh.exe`, but lacks helper
 executables required by `tools/launch-tests.sh` (including `dd`, `tee` and
@@ -99,3 +100,43 @@ executables required by `tools/launch-tests.sh` (including `dd`, `tee` and
 extractor command with “blocked by policy.” The existing Windows PowerShell
 adapter matrix can run separately. Its evidence is distinguishable from the
 requested Git Bash invocation.
+
+## Windows native preflight
+
+Source `3a1ad9cb0ba37c611a8caede266322ea9a85b0b6`. **Built** the fresh
+Windows x64 G0 DLL and **Headless-tested** 4 core, 1 JNI and 24 product model
+tests. The Java 21 JNI harness passed 20,323 assertions. DLL SHA-256
+`48fb9e40d4f0252d3650b19b63238b22770ee44240bfdc1399ee73eec3a85c09`.
+
+**Game-launched**, the local PowerShell adapter matrix passed all five
+preflight cases. Dev and production reached the title screen with
+`OOZE_READY v1 screen=title engine=LOADED`. Real missing DLL reached
+`MISSING_LIBRARY`; corrupt and ABI mismatch reached `INCOMPATIBLE`. Each
+ran on Windows 11 Pro build 26300, AMD Ryzen 7 9800X3D, Radeon RX 6900 XT and
+Temurin Java 21.0.12.1+1 x64. Evidence is in the ignored local directory
+`launcher/test-data/rc1-native-preflight-matrix/`. This DLL and matrix are
+preflight evidence, separate from the ZIP used for W1–W14.
+
+## Remaining checkpoints
+
+The Windows preflight package is unsigned. The CLI and GUI Authenticode
+statuses were both NotSigned. The package bundled 332 dependency notice
+records and hash-checked the shipped fonts and their notices. The backend and
+packaging source through `3a1ad9c` is on main. Windows CI for that intermediate source is
+[run 45558530051](https://github.com/kyluua/Ooze-Client/actions/runs/45558530051).
+The original main worktree retains the owner's staged LICENSE and README
+deletions. No normal launcher or Prism profile was used.
+
+Sol changed core `api.rs`, `auth.rs`, `backend.rs`, `lib.rs`, `process.rs` and
+`readiness.rs` plus the launcher workspace manifest and lock. Packaging
+changes are in `launcher/packaging/` and `.github/workflows/launcher-l0.yml`.
+The one mechanical UI line is recorded
+above. Contract, trust and build docs are in `docs/launcher/`. The final
+handoff checkpoint is the latest commit of this file.
+
+Wait for Claude's `UI-READY`, review the incoming diff, then build and verify
+the green combined Windows CI package. Record its hashes and the matching
+Prism artifact, publish `PACKAGE-READY`, and wait for `PACKAGE-VERIFIED`.
+There is no RC1 acceptance hash yet. W1–W14 and the exact RC1 adapter matrix
+remain open. W3 and W14 require the owner for browser sign-in/decline and
+Narrator. B6 is deferred until its prerequisite checks pass.
