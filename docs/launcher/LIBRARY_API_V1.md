@@ -48,10 +48,15 @@ Integrity reports add the same checked content; legacy issue strings remain.
 and returns a refreshed integrity report. Other-world copies are not repaired.
 The older project repair keeps its existing all-project-receipts behavior.
 
-`ConvertToManaged(instance)` refuses unless the pinned installation verifies and
-the managed content policy has no failures. It does not delete/move extra files.
-Per-file repair is offered for Custom receipts; managed baseline repair stays in
-Launcher API 1. Automatic quarantine is not implemented and never offered.
+## Single instance contract (2026-11-25)
+
+`Command::Create { name, target, preset }` creates a normal instance.
+`ConvertToManaged`, `ConvertToCustom`, the public instance mode and
+`IntegrityReport.managed` are retired. The Launcher API 1 and JNI ABI 1
+interfaces are unchanged. `Verify` retains `baseline_verified` to report
+verification of the game installation generation. A fresh instance without
+an installation reports false. Per-file repair is available for registered
+content. Launcher API 1 handles game installation and Repair.
 
 ## Facade and ownership
 
@@ -103,8 +108,13 @@ reader bound), with 512 content receipts. No absolute path is stored in portable
 profiles/themes. `Snapshot` deliberately includes local game_dir for API 1 use.
 
 Instance configuration records game version, loader/version, Java requirement,
-Ooze availability, preset and overrides, theme, mode, content receipts and
-revision. Internal paths derive from IDs. Duplicate creates a new identity and
+Ooze availability, preset and overrides, theme, content receipts and revision.
+Both schema 1 legacy mode strings (`managed` and `custom`) load with normal
+instance behavior. The private field serializes as `custom` on new manifests
+and ordinary atomic saves so older readers can parse them. Opening the library
+does not rewrite a record or increment its revision. IDs, selection, receipts,
+themes and game files are preserved. Internal paths derive from IDs.
+Duplicate creates a new identity and
 copies configuration/registered content, not worlds, screenshots or options.
 Archive marks its manifest archived, clears selection and preserves all files
 in place. There is no permanent-delete command. Mutations are rejected while
@@ -193,15 +203,13 @@ unrelated data; modified registered files require explicit repair handling.
 
 ## Integrity and trust
 
-Custom mode verifies content downloads and reports registered-file integrity;
-it carries no fair-play assertion. Managed mode is rooted in a distributed,
-trusted release manifest, never a manifest approved by arbitrary UI input.
-It verifies all relevant managed artifacts, rejects unexpected executable mods,
-unapproved packs and prohibited launch configuration, and never deletes those
-files automatically. Conversion to Custom is explicit. There is no name-only
-cheat detector, kernel component, system-wide scan, ban system or server
-attestation. Hashes identify bytes, not whether a mod is ethical or server-allowed.
-Client-only checks cannot prevent modification by a hostile local user.
+Downloads are hash-verified against trusted metadata. Verify checks the game
+installation receipt and registered content, and Play retains the recorded-file
+integrity check. Unregistered mods and packs are outside receipt verification.
+Compatible Modrinth content can be planned and installed in either legacy
+instance. Game-install Repair and per-record content repair retain their
+separate scopes. The instance game guard prevents repair and content
+mutations while Minecraft is running.
 
 ## References
 
