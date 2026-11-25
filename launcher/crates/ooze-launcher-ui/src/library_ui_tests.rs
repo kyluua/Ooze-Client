@@ -1452,7 +1452,6 @@ fn repair_is_available_while_signed_out_for_the_selected_instance() {
     assert!(
         handle
             .submitted()
-            .iter()
-            .any(|c| *c == Command::Prepare { repair: true })
+            .contains(&Command::Prepare { repair: true })
     );
 }
