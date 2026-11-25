@@ -60,7 +60,12 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cargo clippy --manifest-path launcher/Cargo.toml --locked --workspace --all-targets -- -D warnings
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          cargo test --manifest-path launcher/Cargo.toml --locked --workspace
+          cargo test --manifest-path launcher/Cargo.toml --locked --workspace -- --test-threads=1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Live launcher interface and Modrinth tests
+        shell: pwsh
+        run: |
+          cargo test --manifest-path launcher/Cargo.toml --locked -p ooze-launcher-ui --lib -- --ignored --test-threads=1
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Build portable backend and desktop executables
         shell: pwsh
