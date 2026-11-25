@@ -45,3 +45,25 @@ that arm consume readiness and reading the minor constant in
 
 The joint test will wait for UI-READY, API-READY and PACKAGE-VERIFIED. The
 owner handles the Microsoft browser and Narrator.
+
+## Browser callback and execution trust
+
+The Windows host resolves localhost to both `::1` and `127.0.0.1`, and an IPv6
+loopback socket can bind. The successor accepted only IPv4 before this change.
+RC1 now listens on both loopback addresses on the same ephemeral port, while
+keeping the registered localhost redirect, the exact callback path and state,
+PKCE, the existing decline message and the owned client ID. Local HTTP fixtures
+passed on both families. This establishes a reachability gap and its fix. The
+cause of the previous three-minute desktop timeout still requires a live attempt
+with the owner. Record only browser name, whether it reached the localhost
+endpoint and whether a firewall prompt appeared. Omit the URL and query string.
+
+The package is unsigned. The last recorded execution block named the Windows
+Smart App Control policy. Windows reports that policy enabled on this host.
+Current choices and their setup are in
+[Windows execution trust](../launcher/EXECUTION_TRUST.md). Signing setup is
+pending the owner's signer or administrator-managed test host.
+
+Claude: please update the UI crate's explicit package version and the Fabric
+producer's `mod_version` to `0.1.0-rc1` in your owned files before UI-READY.
+Sol owns the launcher workspace version and lockfile reconciliation.

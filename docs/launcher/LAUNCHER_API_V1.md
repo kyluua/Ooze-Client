@@ -62,7 +62,8 @@ SignIn opens the system browser and validates PKCE/state on a loopback callback;
 it completes only after Minecraft entitlement and profile validation. Unrelated
 loopback requests leave the callback pending within the original deadline. An
 explicit browser denial with matching state returns Authentication with a
-declined-sign-in message. SignOut
+declined-sign-in message. The registered localhost redirect is served on IPv4
+and, where supported, IPv6 loopback on the same ephemeral port. SignOut
 deletes the backend's stored credential and remembered summary. Switch account by
 signing out and signing in (Microsoft account selection is requested). Launch
 refreshes/revalidates authorization and verifies the installation before spawning

@@ -140,14 +140,7 @@ pub(crate) fn authenticate(
         );
     check()?;
     let token = if interactive {
-        let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|_| {
-            error(
-                ErrorCode::Authentication,
-                "Couldn't open a local sign-in callback. Check your firewall.",
-            )
-        })?;
-        listener.set_nonblocking(true).map_err(|_| auth_error())?;
-        let port = listener.local_addr().map_err(|_| auth_error())?.port();
+        let (port, listeners) = bind_callback()?;
         let redirect = format!("http://localhost:{port}/callback");
         let client = client.set_redirect_uri(RedirectUrl::new(redirect).map_err(|_| auth_error())?);
         let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
@@ -165,7 +158,7 @@ pub(crate) fn authenticate(
             )
         })?;
         browser_wait();
-        let code = wait_callback(&listener, port, &state, check)?;
+        let code = wait_callback(&listeners, port, &state, check)?;
         check()?;
         client
             .exchange_code(AuthorizationCode::new(code))
@@ -203,8 +196,37 @@ pub(crate) fn authenticate(
     }
     exchange(http, token.access_token().secret(), check)
 }
+fn bind_callback() -> Result<(u16, Vec<TcpListener>)> {
+    let bind_error = || {
+        error(
+            ErrorCode::Authentication,
+            "Couldn't open the localhost sign-in callback. Retry and check the Windows firewall.",
+        )
+    };
+    for _ in 0..4 {
+        let ipv4 = TcpListener::bind(("127.0.0.1", 0)).map_err(|_| bind_error())?;
+        let port = ipv4.local_addr().map_err(|_| bind_error())?.port();
+        let mut listeners = vec![ipv4];
+        match TcpListener::bind(("::1", port)) {
+            Ok(ipv6) => listeners.push(ipv6),
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => continue,
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::AddrNotAvailable | std::io::ErrorKind::Unsupported
+                ) || (cfg!(windows) && e.raw_os_error() == Some(10047)) => {}
+            Err(_) => return Err(bind_error()),
+        }
+        for listener in &listeners {
+            listener.set_nonblocking(true).map_err(|_| bind_error())?;
+        }
+        return Ok((port, listeners));
+    }
+    Err(bind_error())
+}
+
 fn wait_callback(
-    listener: &TcpListener,
+    listeners: &[TcpListener],
     port: u16,
     state: &CsrfToken,
     check: &impl Fn() -> Result<()>,
@@ -212,42 +234,42 @@ fn wait_callback(
     let deadline = Instant::now() + Duration::from_secs(180);
     while Instant::now() < deadline {
         check()?;
-        match listener.accept() {
-            Ok((mut stream, remote)) => {
-                if !remote.ip().is_loopback() {
-                    continue;
-                }
-                let request_deadline = deadline.min(Instant::now() + Duration::from_secs(2));
-                let result = read_callback_request(&mut stream, request_deadline)
-                    .map_or(Ok(None), |request| parse_callback(&request, port, state));
-                check()?;
-                let (status, body) = match &result {
-                    Ok(Some(_)) => ("200 OK", "Sign-in received. You can return to Ooze."),
-                    Ok(None) => ("404 Not Found", "There is no Ooze sign-in callback here."),
-                    Err(_) => (
-                        "400 Bad Request",
-                        "Ooze could not complete this sign-in. Return to Ooze and retry.",
-                    ),
-                };
-                let reply = format!(
-                    "HTTP/1.1 {status}\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nContent-Security-Policy: default-src 'none'\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
-                    body.len()
-                );
-                if stream
-                    .set_write_timeout(Some(Duration::from_millis(250)))
-                    .is_ok()
-                {
-                    let _ = stream.write_all(reply.as_bytes());
-                }
-                if let Some(code) = result? {
-                    return Ok(code);
-                }
+        for listener in listeners {
+            let (mut stream, remote) = match listener.accept() {
+                Ok(accepted) => accepted,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+                Err(_) => return Err(auth_error()),
+            };
+            if !remote.ip().is_loopback() || stream.set_nonblocking(false).is_err() {
+                continue;
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(40))
+            let request_deadline = deadline.min(Instant::now() + Duration::from_secs(2));
+            let result = read_callback_request(&mut stream, request_deadline)
+                .map_or(Ok(None), |request| parse_callback(&request, port, state));
+            check()?;
+            let (status, body) = match &result {
+                Ok(Some(_)) => ("200 OK", "Sign-in received. You can return to Ooze."),
+                Ok(None) => ("404 Not Found", "There is no Ooze sign-in callback here."),
+                Err(_) => (
+                    "400 Bad Request",
+                    "Ooze could not complete this sign-in. Return to Ooze and retry.",
+                ),
+            };
+            let reply = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nContent-Security-Policy: default-src 'none'\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            if stream
+                .set_write_timeout(Some(Duration::from_millis(250)))
+                .is_ok()
+            {
+                let _ = stream.write_all(reply.as_bytes());
             }
-            Err(_) => return Err(auth_error()),
+            if let Some(code) = result? {
+                return Ok(code);
+            }
         }
+        std::thread::sleep(Duration::from_millis(40));
     }
     Err(error(
         ErrorCode::Authentication,
@@ -501,7 +523,7 @@ mod tests {
     fn browser_wait_cancellation_and_refresh_failure_are_controlled() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let err = wait_callback(&listener, 1234, &CsrfToken::new("test".into()), &|| {
+        let err = wait_callback(&[listener], 1234, &CsrfToken::new("test".into()), &|| {
             Err(error(ErrorCode::Cancelled, "cancelled"))
         })
         .unwrap_err();
@@ -555,7 +577,7 @@ mod tests {
         let worker = std::thread::spawn(move || {
             let start = Instant::now();
             wait_callback(
-                &listener,
+                &[listener],
                 addr.port(),
                 &CsrfToken::new("expected".into()),
                 &|| {
@@ -586,6 +608,41 @@ mod tests {
         assert!(submit("/favicon.ico").starts_with("HTTP/1.1 404"));
         assert!(submit("/callback?state=expected&code=fixture").starts_with("HTTP/1.1 200"));
         assert_eq!(worker.join().unwrap().unwrap(), "fixture");
+    }
+
+    #[test]
+    fn localhost_callback_is_served_over_each_available_loopback_family() {
+        let ipv6_available = TcpListener::bind(("::1", 0)).is_ok();
+        for address in ["127.0.0.1", "::1"] {
+            if address == "::1" && !ipv6_available {
+                continue;
+            }
+            let (port, listeners) = bind_callback().unwrap();
+            let worker = std::thread::spawn(move || {
+                let deadline = Instant::now() + Duration::from_secs(5);
+                wait_callback(
+                    &listeners,
+                    port,
+                    &CsrfToken::new("test-state".into()),
+                    &|| {
+                        if Instant::now() >= deadline {
+                            Err(auth_error())
+                        } else {
+                            Ok(())
+                        }
+                    },
+                )
+            });
+            let mut browser = TcpStream::connect((address, port)).unwrap();
+            browser
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            write!(browser, "GET /callback?state=test-state&code=fixture HTTP/1.1\r\nHost: localhost:{port}\r\n\r\n").unwrap();
+            let mut reply = String::new();
+            browser.read_to_string(&mut reply).unwrap();
+            assert!(reply.starts_with("HTTP/1.1 200"));
+            assert_eq!(worker.join().unwrap().unwrap(), "fixture");
+        }
     }
     #[test]
     fn entitlement_and_profile_require_real_fields() {
