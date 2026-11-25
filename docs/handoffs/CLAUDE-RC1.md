@@ -11,6 +11,11 @@ Newest last. Each line names a commit or package hash.
   - Windows operation is Sol's, with the owner for Microsoft sign-in and Narrator.
 - 2026-11-25 UI-READY `fa160e9` (last interface code commit; this handoff commit is docs only). Build RC1 from `main` at or after it. Checks are in §3.
   - One Linux-only backend test fails: R1, in Sol's code. It doesn't affect Windows CI.
+- 2026-11-25 07:05 UTC CANDIDATE-VERIFIED `b5fc945d4f114915fbb0b69d31ca09b099389f40e442bbd7e58398d5ae674b38`.
+  - This is the `ooze-launcher-windows-x64` artifact 14997773226 from green Windows CI run 45559630278, on the UI-READY merge `94ae4ae`.
+  - If Sol's `PACKAGE-READY` names this hash, it counts as `PACKAGE-VERIFIED` with no further checks. A different package gets its own verification.
+  - Details are in §3a.
+  - R1 is still open. If Sol fixes it for RC1, the package changes and needs a new hash.
 
 ## 1. Review findings
 
@@ -78,6 +83,27 @@ Interface screenshots (fixture state; they show appearance only):
 | `evidence/CLAUDE-RC1/ui-new-instance-min-200.png` | `28363af1cb586c2ee69b31fac3d05b7c95eb3398a3fe26c8436415411f6c6c18` |
 
 **Not run here:** anything on Windows, because no Windows machine is attached.
+
+## 3a. Package verification (candidate from CI run 45559630278)
+
+Downloaded into new empty directories; nothing from the package was executed before its hashes checked out.
+
+| Item | SHA-256 / result |
+|---|---|
+| ZIP `ooze-launcher-windows-x64` (artifact 14997773226) | `b5fc945d4f114915fbb0b69d31ca09b099389f40e442bbd7e58398d5ae674b38`, matching GitHub's artifact digest |
+| `SHA256SUMS` | **599/599** entries verified; no unlisted files. `RELEASE-NOTES.md` is new since `e82b598` |
+| `ooze-launcher.exe` (GUI) | `5a1ee2a4cefe09378fae9f1ce6082cea3806c1cc03ca0b6053f815b70acd8066` |
+| `ooze-launcher-cli.exe` | `63bbd4c5ec2ae31783cc81f7b66c9697b220dfe8413a3c13069ad5b11c668d7f` |
+| `ooze-client.jar` | `5f12e35f474d852c7850b93109d72306c7c318a1fdd087df96a4abfc97d8c160`; `fabric.mod.json` version `0.1.0-rc1+mc1.21.11` |
+| Embedded `natives/windows-x86_64/ooze_jni.dll` | `bb019c8704547c73852edc94f54c0b4347d62e6781a59d9d92834cf3da0046f8`, matching `native.properties`: release, ABI 1, `source.commit=94ae4ae…`, `source.dirty=false` |
+| JAR ↔ source | A `remapJar` of `94ae4ae` with this DLL gives the same 32 classes, DLL, `native.properties` and `fabric.mod.json`. `oozeclient.mixins.json` and the lang file differ only by Windows line endings |
+| Exact JAR in a production Fabric run (`-PoozeProductionJar`) | **Game-launched (Linux x86_64, OpenJDK 21, Xvfb/Mesa).** <ul><li>`Loading Minecraft 1.21.11 with Fabric Loader 0.20.1`</li><li>`Ooze Client 0.1.0-rc1+mc1.21.11 is OFF: linux-x86_64 is not a supported Ooze native platform yet.`</li><li>`OOZE_READY v1 screen=title engine=UNSUPPORTED_PLATFORM`</li><li>`C0 launch test PASSED … vanilla Options round-trip OK`</li></ul> `engine=LOADED` needs Windows (W7) |
+| Prism artifact `ooze-base-rc1-prism` (artifact 14998720719) | ZIP digest `532d8c15cef05adf904225e6526623b3a3029011fdf8dc03115c7a2ef66a790a` (matches) |
+| `.mrpack` contents | `ooze-base-0.1.0-rc1.mrpack` SHA-256 is `c6845c58df40004492acb9f787d8522e412149bfb7c425484fcf0ba6c0859780`, matching `mrpack-evidence.json`. The index has `formatVersion` 1, `minecraft 1.21.11` and `fabric-loader 0.20.1`, and its one download is Fabric API from `cdn.modrinth.com` (client required, server unsupported) |
+| Its `client-overrides/mods/ooze-client.jar` | `5f12e35f…`, the same JAR as the package |
+| Its Fabric API, fetched from the CDN | Size 2,426,039 bytes, SHA-1 and SHA-512 match the index. SHA-256 `bdff7fd7e220085cfad2ff9b1f40dde6534ae0b96cf378f97a374bc54cb9ed0f` equals the launcher's pin in `release.json` |
+
+Package **Built**, and its JAR **Game-launched on Linux** as above. Windows acceptance (W1–W14) and Prism import and Play (P1–P7) are still to be run.
 
 ## 4. Windows desktop acceptance checklist (RC1 package hash only)
 
