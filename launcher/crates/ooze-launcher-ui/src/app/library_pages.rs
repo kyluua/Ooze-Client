@@ -411,7 +411,14 @@ impl LauncherApp {
         }
         for inst in &snap.instances {
             let inst = self.with_running_state(inst.clone());
-            let selected = snap.selected.as_ref() == Some(&inst.id);
+            // "Selected for Play" only when the library selection and API 1's saved directory
+            // agree; otherwise the row offers Select (RC1 B4).
+            let selected = snap.selected.as_ref() == Some(&inst.id)
+                && self
+                    .model
+                    .settings
+                    .as_ref()
+                    .is_some_and(|s| s.install_root.as_ref() == Some(&inst.game_dir));
             kit.card(ui, crate::paint::Surface::Card, |ui| {
                 self.instance_row(ui, kit, &inst, selected, busy, &snap.capabilities);
             });

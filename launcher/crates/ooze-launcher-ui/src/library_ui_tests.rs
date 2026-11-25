@@ -9,7 +9,8 @@ use ooze_ui::profile::{PresetId, Profile};
 use ooze_ui::theme_doc::{BaseColors, ThemeDoc};
 
 use crate::api::{
-    Command, Event, GameSessionId, GameState, InstallStatus, MotionPreference, Outcome,
+    Command, ErrorKind, Event, GameSessionId, GameState, InstallStatus, LauncherError,
+    MotionPreference, OperationId, Outcome,
 };
 use crate::app::{AppOptions, LauncherApp, Page};
 use crate::appearance::rgb;
@@ -1310,5 +1311,112 @@ fn no_control_runs_off_screen_at_the_minimum_window_and_200_percent_scale() {
     assert!(
         !(overlap_x && overlap_y),
         "chip {chip:?} covers wordmark {mark:?}"
+    );
+}
+
+/// RC1 B4: the library selected an instance that API 1 isn't pointed at (for example, the first
+/// instance created is selected by the library). The list doesn't claim "Selected for Play" until
+/// API 1 has saved that directory; the window reconciles once on its own, and a failed save is
+/// not retried in a loop (the player can still use Select).
+#[test]
+fn selection_reconciles_once_and_the_list_agrees_with_play() {
+    let lib = fx::snapshot();
+    let fabric_dir = lib.selected().unwrap().game_dir.clone();
+    let mut snap = snapshot();
+    snap.account = Some(account());
+    snap.install = InstallStatus::Ready;
+    snap.settings.motion = MotionPreference::Off;
+    let legacy = std::path::PathBuf::from(r"C:\Users\Player\AppData\Roaming\.ooze");
+    snap.settings.install_root = Some(legacy.clone());
+    let (backend, handle) = FixtureBackend::manual(snap.clone());
+    let (library, _lh) = LibraryFixture::manual(lib);
+    let app =
+        LauncherApp::new(Box::new(backend), AppOptions::default()).with_library(Box::new(library));
+    let mut h = Harness::builder()
+        .with_size(vec2(1120.0, 900.0))
+        .with_pixels_per_point(1.0)
+        .build_ui_state(|ui, app: &mut LauncherApp| app.frame(ui), app);
+    h.set_render_cursor(false);
+    h.run_steps(8);
+    let saves = |handle: &FixtureHandle| {
+        handle
+            .submitted()
+            .iter()
+            .filter(|c| matches!(c, Command::UpdateSettings(s) if s.install_root.as_ref() == Some(&fabric_dir)))
+            .count()
+    };
+    assert_eq!(saves(&handle), 1, "reconciled without a click");
+    go(&mut h, "Instances");
+    assert!(
+        !shows(&h, "Selected for Play"),
+        "not claimed before API 1 saved the directory"
+    );
+
+    // The save fails: no automatic retry loop, and Select stays available.
+    let op = OperationId(handle.next_op().0 - 1);
+    handle.push(Event::Finished {
+        op,
+        outcome: Outcome::Failed(LauncherError {
+            kind: ErrorKind::Io,
+            detail: "fixture: settings folder is read-only".into(),
+            retryable: true,
+        }),
+    });
+    h.run_steps(12);
+    assert_eq!(
+        saves(&handle),
+        1,
+        "a failed save is not retried automatically"
+    );
+    assert!(has_button(&h, "Select for Play"));
+
+    // An explicit Select saves again; once API 1 reports the directory, the list and Play agree.
+    h.get_all_by_role_and_label(Role::Button, "Select for Play")
+        .next()
+        .unwrap()
+        .click();
+    steps(&mut h);
+    let mut saved = snap.settings.clone();
+    saved.install_root = Some(fabric_dir.clone());
+    handle.push(Event::SettingsChanged(saved));
+    h.run_steps(8);
+    assert!(shows(&h, "Selected for Play"));
+}
+
+/// RC1 B4 (Sol's Windows observation): creating the first instance makes the library select it;
+/// the window points Play at it without asking the player to select it again.
+#[test]
+fn the_first_created_instance_is_ready_for_play_without_another_click() {
+    let mut empty = fx::snapshot();
+    let created = empty.instances[0].clone();
+    empty.instances.clear();
+    empty.selected = None;
+    let mut snap = snapshot();
+    snap.account = Some(account());
+    snap.install = InstallStatus::Ready;
+    snap.settings.motion = MotionPreference::Off;
+    snap.settings.install_root = Some(std::path::PathBuf::from(
+        r"C:\Users\Player\AppData\Roaming\.ooze",
+    ));
+    let (backend, handle) = FixtureBackend::manual(snap);
+    let (library, lh) = LibraryFixture::manual(empty.clone());
+    let app =
+        LauncherApp::new(Box::new(backend), AppOptions::default()).with_library(Box::new(library));
+    let mut h = Harness::builder()
+        .with_size(vec2(1120.0, 900.0))
+        .with_pixels_per_point(1.0)
+        .build_ui_state(|ui, app: &mut LauncherApp| app.frame(ui), app);
+    h.set_render_cursor(false);
+    h.run_steps(8);
+    let mut after = empty;
+    after.instances = vec![created.clone()];
+    after.selected = Some(created.id.clone());
+    lh.push(LibEvent::Changed(after));
+    h.run_steps(8);
+    assert!(
+        handle.submitted().iter().any(
+            |c| matches!(c, Command::UpdateSettings(s) if s.install_root.as_ref() == Some(&created.game_dir))
+        ),
+        "Play is pointed at the newly selected instance"
     );
 }

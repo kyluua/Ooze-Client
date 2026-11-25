@@ -102,6 +102,9 @@ pub struct LauncherApp {
     /// Select must finish successfully before API 1 may change the Play directory.
     pending_selection: Option<(crate::library::LibOpId, crate::library::InstanceId)>,
     bind_initial_selection: bool,
+    /// The last (instance, directory) the window saved to API 1 on its own; never retried
+    /// automatically, so a failed save cannot loop (the Play page then offers Select).
+    reconciled: Option<(crate::library::InstanceId, PathBuf)>,
 }
 
 impl LauncherApp {
@@ -141,6 +144,7 @@ impl LauncherApp {
             applied_doc: None,
             pending_selection: None,
             bind_initial_selection: false,
+            reconciled: None,
         }
     }
 
@@ -402,12 +406,33 @@ impl LauncherApp {
             self.bind_initial_selection = false;
             selected = selected.or_else(|| self.lib.as_ref().and_then(|m| m.snap.selected.clone()));
         }
+        // The library can change its selection without the Select flow (for example, creating
+        // the first instance selects it). Point Play at it when that is safe: connected, idle, no
+        // game running, setup done, and not already attempted for this instance and directory.
+        if selected.is_none()
+            && let Some(inst) = self.lib.as_ref().and_then(|m| m.snap.selected().cloned())
+            && self.model.connected()
+            && !self.model.busy()
+            && !self.model.game_live()
+            && self.pending_selection.is_none()
+            && !self.lib_busy()
+            && !inst.running
+            && self.model.settings.as_ref().is_some_and(|s| {
+                s.install_root.is_some() && s.install_root.as_ref() != Some(&inst.game_dir)
+            })
+            && self.reconciled.as_ref() != Some(&(inst.id.clone(), inst.game_dir.clone()))
+        {
+            self.reconciled = Some((inst.id.clone(), inst.game_dir.clone()));
+            selected = Some(inst.id);
+        }
         if let Some(id) = selected
             && let Some(instance) = self.lib.as_ref().and_then(|m| m.snap.instance(&id))
             && let Some(mut settings) = self.model.settings.clone()
             && settings.install_root.as_ref() != Some(&instance.game_dir)
         {
             settings.install_root = Some(instance.game_dir.clone());
+            // Remember the attempt: the automatic path never repeats it (Select still can).
+            self.reconciled = Some((id.clone(), instance.game_dir.clone()));
             self.submit(Command::UpdateSettings(settings));
         }
         if let Some((instance, kind)) = refresh_content {
