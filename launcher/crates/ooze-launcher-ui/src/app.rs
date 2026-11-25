@@ -48,6 +48,8 @@ enum PickTarget {
     InstallRoot,
     SettingsInstallRoot,
     Java,
+    /// Save dialog for an exported diagnostics ZIP.
+    DiagnosticsZip,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,6 +86,9 @@ pub struct LauncherApp {
     applied_scale: f32,
     live_seq: u64,
     live_text: String,
+    /// Tests answer the next file dialog without opening one.
+    #[cfg(test)]
+    pick_for_tests: Option<Option<PathBuf>>,
     library: Option<Box<dyn LibraryBackend>>,
     lib: Option<LibraryModel>,
     lib_events: Vec<LibEvent>,
@@ -124,6 +129,8 @@ impl LauncherApp {
             applied_scale: 0.0,
             live_seq: 0,
             live_text: String::new(),
+            #[cfg(test)]
+            pick_for_tests: None,
             library: None,
             lib: None,
             lib_events: Vec::new(),
@@ -192,6 +199,12 @@ impl LauncherApp {
                 self.live_text = library_notice_text(&self.tr, n);
             }
         }
+    }
+
+    /// The next file or folder dialog returns `picked` immediately (tests only).
+    #[cfg(test)]
+    pub(crate) fn answer_next_dialog_for_tests(&mut self, picked: Option<PathBuf>) {
+        self.pick_for_tests = Some(picked);
     }
 
     pub fn model(&self) -> &Model {
@@ -1186,7 +1199,9 @@ impl LauncherApp {
                 actions.push((kit.t("common.dismiss"), ButtonKind::Quiet));
                 match kit.banner(ui, tone, &title, &body, &actions) {
                     Some(0) if matches!(other, Notice::Exported(_)) => {
-                        self.submit(Command::OpenFolder(Folder::Diagnostics))
+                        if let Notice::Exported(path) = other {
+                            self.submit(Command::RevealFile(path.clone()));
+                        }
                     }
                     Some(_) => self.model.dismiss_notice(),
                     None => {}
@@ -1746,6 +1761,9 @@ impl LauncherApp {
         ui.add_space(th.space.md);
         self.notice_area(ui, kit);
         kit.secondary(ui, kit.t("diag.redaction_note"));
+        if self.model.capabilities().export_diagnostics {
+            kit.caption(ui, kit.t("diag.export_note"));
+        }
         ui.add_space(th.space.sm);
         ui.horizontal_wrapped(|ui| {
             if kit
@@ -1773,11 +1791,14 @@ impl LauncherApp {
                         ui,
                         kit.t("diag.export"),
                         ButtonKind::Secondary,
-                        self.model.may_submit(&Command::ExportDiagnostics),
+                        self.pick.is_none()
+                            && self.model.may_submit(&Command::ExportDiagnostics {
+                                destination: PathBuf::new(),
+                            }),
                     )
                     .clicked()
             {
-                self.submit(Command::ExportDiagnostics);
+                self.start_pick(PickTarget::DiagnosticsZip);
             }
             if caps.open_folders
                 && kit
@@ -1843,17 +1864,29 @@ impl LauncherApp {
 
     fn start_pick(&mut self, target: PickTarget) {
         let (tx, rx) = std::sync::mpsc::channel();
+        #[cfg(test)]
+        if let Some(picked) = self.pick_for_tests.take() {
+            let _ = tx.send(picked);
+            self.pick = Some((target, rx));
+            return;
+        }
         let title = self
             .tr
             .get(match target {
                 PickTarget::Java => "settings.java.pick_title",
+                PickTarget::DiagnosticsZip => "diag.export_pick_title",
                 _ => "first_run.pick_title",
             })
             .to_owned();
+        let file_name = diagnostics_file_name();
         std::thread::spawn(move || {
             let dialog = rfd::FileDialog::new().set_title(title);
             let picked = match target {
                 PickTarget::Java => dialog.add_filter("Java", &["exe", ""]).pick_file(),
+                PickTarget::DiagnosticsZip => dialog
+                    .add_filter("ZIP", &["zip"])
+                    .set_file_name(file_name)
+                    .save_file(),
                 _ => dialog.pick_folder(),
             };
             let _ = tx.send(picked);
@@ -1876,6 +1909,14 @@ impl LauncherApp {
                             self.submit(Command::SetInstallRoot { path })
                         }
                         PickTarget::Java => self.java_path = path.display().to_string(),
+                        PickTarget::DiagnosticsZip => {
+                            let destination = with_zip_extension(path);
+                            if crate::core_backend::valid_export_path(&destination) {
+                                self.submit(Command::ExportDiagnostics { destination });
+                            } else {
+                                self.live_text = self.tr.get("diag.export_bad_path").to_owned();
+                            }
+                        }
                     }
                 }
             }
@@ -2067,6 +2108,29 @@ fn level_tag(level: LogLevel) -> &'static str {
     }
 }
 
+/// Suggested name for an exported diagnostics file: `ooze-diagnostics-<unix seconds>.zip`.
+fn diagnostics_file_name() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    format!("ooze-diagnostics-{secs}.zip")
+}
+
+/// A save dialog may return a name without the extension; exports are always `.zip`.
+fn with_zip_extension(path: PathBuf) -> PathBuf {
+    if path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("zip"))
+    {
+        path
+    } else {
+        let mut os = path.into_os_string();
+        os.push(".zip");
+        PathBuf::from(os)
+    }
+}
+
 fn retry_command(during: OperationKind) -> Option<Command> {
     match during {
         OperationKind::SignIn => Some(Command::SignIn {
@@ -2074,7 +2138,7 @@ fn retry_command(during: OperationKind) -> Option<Command> {
         }),
         OperationKind::Prepare { repair } => Some(Command::Prepare { repair }),
         OperationKind::Launch => Some(Command::Play),
-        OperationKind::ExportDiagnostics => Some(Command::ExportDiagnostics),
+        // A retry needs a new destination: the player chooses it again with Export diagnostics.
         _ => None,
     }
 }

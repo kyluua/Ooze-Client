@@ -196,7 +196,7 @@
   "about.profile": "Profile: Minecraft {0}, Fabric Loader {1}, Fabric API {2}, Ooze {3}",
   "about.fonts": "Bubblegum Sans (Sudtipos) and Inter (The Inter Project Authors) are used under the SIL Open Font License 1.1.",
   "about.not_affiliated": "Ooze is not an official Minecraft product and is not approved by or associated with Mojang or Microsoft.",
-  "diag.redaction_note": "Sign-in tokens and personal folder names are removed from everything shown, copied or exported here.",
+  "diag.redaction_note": "Sign-in tokens and personal folder names are removed from everything shown or copied here.",
   "diag.copy": "Copy log",
   "diag.copied": "Log copied to the clipboard.",
   "diag.export": "Export diagnostics",
@@ -613,5 +613,8 @@
   "content.updated": "updated {0}",
   "content.version_games": "Minecraft {0}",
   "content.size_mb": "{0} MB",
-  "integrity.problem.baseline": "Ooze's release manifest couldn't be verified, so managed files can't be checked against it."
+  "integrity.problem.baseline": "Ooze's release manifest couldn't be verified, so managed files can't be checked against it.",
+  "diag.export_note": "Export diagnostics saves a ZIP with release details and the latest game log from this launcher. Sign-in data is removed, but the game log can include your player name and folder paths, so check the file before you share it.",
+  "diag.export_pick_title": "Save diagnostics",
+  "diag.export_bad_path": "Choose a new .zip file in a folder on this PC."
 }

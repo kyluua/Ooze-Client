@@ -298,13 +298,13 @@ impl Model {
                         .running(|k| k == OperationKind::UpdateSettings)
                         .is_none()
             }
-            Command::ExportDiagnostics => {
+            Command::ExportDiagnostics { .. } => {
                 caps.export_diagnostics
                     && self
                         .running(|k| k == OperationKind::ExportDiagnostics)
                         .is_none()
             }
-            Command::OpenFolder(_) => caps.open_folders,
+            Command::OpenFolder(_) | Command::RevealFile(_) => caps.open_folders,
         }
     }
 
@@ -572,8 +572,8 @@ pub fn kind_of(command: &Command) -> OperationKind {
         Command::Play => OperationKind::Launch,
         Command::Cancel { .. } | Command::UpdateSettings(_) => OperationKind::UpdateSettings,
         Command::CheckJava { .. } => OperationKind::CheckJava,
-        Command::ExportDiagnostics => OperationKind::ExportDiagnostics,
-        Command::OpenFolder(_) => OperationKind::OpenFolder,
+        Command::ExportDiagnostics { .. } => OperationKind::ExportDiagnostics,
+        Command::OpenFolder(_) | Command::RevealFile(_) => OperationKind::OpenFolder,
     }
 }
 

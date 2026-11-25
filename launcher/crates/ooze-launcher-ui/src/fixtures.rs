@@ -234,33 +234,86 @@ impl FixtureBackend {
         self.later(None, 0, vec![Event::Started { op, kind }]);
         match command {
             Command::SetInstallRoot { path } => {
-                let mut settings = lock(&self.inner).settings.clone().unwrap_or_else(|| snapshot().settings);
+                let mut settings = lock(&self.inner)
+                    .settings
+                    .clone()
+                    .unwrap_or_else(|| snapshot().settings);
                 settings.install_root = Some(path.clone());
-                self.later(s, 400, vec![Event::SettingsChanged(settings), Event::InstallChanged(InstallStatus::NotInstalled), ok(Payload::None)]);
+                self.later(
+                    s,
+                    400,
+                    vec![
+                        Event::SettingsChanged(settings),
+                        Event::InstallChanged(InstallStatus::NotInstalled),
+                        ok(Payload::None),
+                    ],
+                );
             }
             Command::SignIn { .. } => {
-                self.later(s, 50, vec![p(Step::WaitingForBrowser, 0, None, ProgressUnit::Steps), log("[fixture] opened the system browser (simulated)")]);
+                self.later(
+                    s,
+                    50,
+                    vec![
+                        p(Step::WaitingForBrowser, 0, None, ProgressUnit::Steps),
+                        log("[fixture] opened the system browser (simulated)"),
+                    ],
+                );
                 match scenario {
                     Scenario::AuthNotConfigured => self.later(
                         s,
                         700,
-                        vec![fail(ErrorKind::AuthNotConfigured, "fixture: this build has no Microsoft client ID", false)],
+                        vec![fail(
+                            ErrorKind::AuthNotConfigured,
+                            "fixture: this build has no Microsoft client ID",
+                            false,
+                        )],
                     ),
                     Scenario::AppNotApproved => {
-                        self.later(s, 2200, vec![p(Step::XboxLive, 1, Some(4), ProgressUnit::Steps)]);
-                        self.later(s, 2800, vec![p(Step::MinecraftServices, 2, Some(4), ProgressUnit::Steps)]);
-                        self.later(s, 3400, vec![fail(ErrorKind::AuthAppNotApproved, "fixture: HTTP 403 Invalid app registration", false)]);
+                        self.later(
+                            s,
+                            2200,
+                            vec![p(Step::XboxLive, 1, Some(4), ProgressUnit::Steps)],
+                        );
+                        self.later(
+                            s,
+                            2800,
+                            vec![p(Step::MinecraftServices, 2, Some(4), ProgressUnit::Steps)],
+                        );
+                        self.later(
+                            s,
+                            3400,
+                            vec![fail(
+                                ErrorKind::AuthAppNotApproved,
+                                "fixture: HTTP 403 Invalid app registration",
+                                false,
+                            )],
+                        );
                     }
                     _ => {
-                        let steps = [Step::XboxLive, Step::MinecraftServices, Step::CheckingOwnership, Step::LoadingProfile];
+                        let steps = [
+                            Step::XboxLive,
+                            Step::MinecraftServices,
+                            Step::CheckingOwnership,
+                            Step::LoadingProfile,
+                        ];
                         for (i, step) in steps.into_iter().enumerate() {
-                            self.later(s, 2500 + 500 * i as u64, vec![p(step, i as u64 + 1, Some(4), ProgressUnit::Steps)]);
+                            self.later(
+                                s,
+                                2500 + 500 * i as u64,
+                                vec![p(step, i as u64 + 1, Some(4), ProgressUnit::Steps)],
+                            );
                         }
-                        self.later(s, 4600, vec![Event::AccountChanged(Some(account())), ok(Payload::None)]);
+                        self.later(
+                            s,
+                            4600,
+                            vec![Event::AccountChanged(Some(account())), ok(Payload::None)],
+                        );
                     }
                 }
             }
-            Command::SignOut => self.later(s, 200, vec![Event::AccountChanged(None), ok(Payload::None)]),
+            Command::SignOut => {
+                self.later(s, 200, vec![Event::AccountChanged(None), ok(Payload::None)])
+            }
             Command::Prepare { repair } => {
                 let phases: [(Step, u64, ProgressUnit); 7] = [
                     (Step::DownloadingRuntime, 52_428_800, ProgressUnit::Bytes),
@@ -273,20 +326,43 @@ impl FixtureBackend {
                 ];
                 let mut t = 100;
                 if *repair {
-                    self.later(s, t, vec![p(Step::CheckingFiles, 0, Some(3_100), ProgressUnit::Files)]);
+                    self.later(
+                        s,
+                        t,
+                        vec![p(Step::CheckingFiles, 0, Some(3_100), ProgressUnit::Files)],
+                    );
                     t += 900;
                 }
                 for (step, total, unit) in phases {
                     for k in 0..=8u64 {
-                        if scenario == Scenario::Offline && step == Step::DownloadingAssets && k == 4 {
-                            self.later(s, t, vec![fail(ErrorKind::Offline, "fixture: resources.download.minecraft.net unreachable", true)]);
+                        if scenario == Scenario::Offline
+                            && step == Step::DownloadingAssets
+                            && k == 4
+                        {
+                            self.later(
+                                s,
+                                t,
+                                vec![fail(
+                                    ErrorKind::Offline,
+                                    "fixture: resources.download.minecraft.net unreachable",
+                                    true,
+                                )],
+                            );
                             return;
                         }
                         self.later(s, t, vec![p(step, total * k / 8, Some(total), unit)]);
                         t += 140;
                     }
                 }
-                self.later(s, t, vec![Event::InstallChanged(InstallStatus::Ready), log("[fixture] profile verified"), ok(Payload::None)]);
+                self.later(
+                    s,
+                    t,
+                    vec![
+                        Event::InstallChanged(InstallStatus::Ready),
+                        log("[fixture] profile verified"),
+                        ok(Payload::None),
+                    ],
+                );
             }
             Command::Play => {
                 let session = {
@@ -294,39 +370,101 @@ impl FixtureBackend {
                     g.next_session += 1;
                     GameSessionId(g.next_session)
                 };
-                self.later(s, 100, vec![p(Step::RefreshingSession, 1, Some(3), ProgressUnit::Steps)]);
+                self.later(
+                    s,
+                    100,
+                    vec![p(Step::RefreshingSession, 1, Some(3), ProgressUnit::Steps)],
+                );
                 self.later(s, 500, vec![
                     p(Step::StartingJava, 2, Some(3), ProgressUnit::Steps),
                     log("[fixture] starting java --username FixturePlayer --accessToken eyJmaXh0dXJlIjoxfQ.eyJub3QiOiJhLXRva2VuIn0.c2lnbmF0dXJlLW5vdC1yZWFs"),
                 ]);
-                self.later(s, 900, vec![ok(Payload::None), Event::Game { session, state: GameState::Starting }]);
-                self.later(None, 2900, vec![Event::Game { session, state: GameState::Running { title_screen: false } }]);
-                self.later(None, 5400, vec![
-                    Event::Game { session, state: GameState::Running { title_screen: true } },
-                    Event::Log(vec![LogLine { level: LogLevel::Info, source: LogSource::Game, text: "OOZE_READY v1 screen=title engine=LOADED (fixture)".into() }]),
-                ]);
+                self.later(
+                    s,
+                    900,
+                    vec![
+                        ok(Payload::None),
+                        Event::Game {
+                            session,
+                            state: GameState::Starting,
+                        },
+                    ],
+                );
+                self.later(
+                    None,
+                    2900,
+                    vec![Event::Game {
+                        session,
+                        state: GameState::Running {
+                            title_screen: false,
+                        },
+                    }],
+                );
+                self.later(
+                    None,
+                    5400,
+                    vec![
+                        Event::Game {
+                            session,
+                            state: GameState::Running { title_screen: true },
+                        },
+                        Event::Log(vec![LogLine {
+                            level: LogLevel::Info,
+                            source: LogSource::Game,
+                            text: "OOZE_READY v1 screen=title engine=LOADED (fixture)".into(),
+                        }]),
+                    ],
+                );
                 let end = if scenario == Scenario::Crash {
-                    GameState::Crashed { code: Some(-1), crash_report: Some(PathBuf::from(r"C:\Users\Player\AppData\Roaming\.ooze\instance\crash-reports\crash-fixture.txt")) }
+                    GameState::Crashed {
+                        code: Some(-1),
+                        crash_report: Some(PathBuf::from(
+                            r"C:\Users\Player\AppData\Roaming\.ooze\instance\crash-reports\crash-fixture.txt",
+                        )),
+                    }
                 } else {
                     GameState::Exited { code: 0 }
                 };
-                self.later(None, if scenario == Scenario::Crash { 8000 } else { 15000 }, vec![Event::Game { session, state: end }]);
+                self.later(
+                    None,
+                    if scenario == Scenario::Crash {
+                        8000
+                    } else {
+                        15000
+                    },
+                    vec![Event::Game {
+                        session,
+                        state: end,
+                    }],
+                );
             }
-            Command::UpdateSettings(settings) => self.later(s, 150, vec![Event::SettingsChanged(settings.clone()), ok(Payload::None)]),
+            Command::UpdateSettings(settings) => self.later(
+                s,
+                150,
+                vec![Event::SettingsChanged(settings.clone()), ok(Payload::None)],
+            ),
             Command::CheckJava { path } => {
                 let event = if path.to_string_lossy().contains("21") {
-                    ok(Payload::Java(JavaInfo { version: "21.0.9".into(), vendor: "Fixture JDK".into(), path: path.clone() }))
+                    ok(Payload::Java(JavaInfo {
+                        version: "21.0.9".into(),
+                        vendor: "Fixture JDK".into(),
+                        path: path.clone(),
+                    }))
                 } else {
-                    fail(ErrorKind::JavaWrongVersion, "fixture: found Java 17.0.12", false)
+                    fail(
+                        ErrorKind::JavaWrongVersion,
+                        "fixture: found Java 17.0.12",
+                        false,
+                    )
                 };
                 self.later(s, 500, vec![event]);
             }
-            Command::ExportDiagnostics => self.later(
-                s,
-                300,
-                vec![ok(Payload::Exported(PathBuf::from(r"C:\Users\Player\AppData\Roaming\.ooze\diagnostics\ooze-diagnostics-fixture.zip")))],
-            ),
-            Command::OpenFolder(_) => self.later(s, 50, vec![ok(Payload::None)]),
+            Command::ExportDiagnostics { destination } => {
+                self.later(s, 300, vec![ok(Payload::Exported(destination.clone()))])
+            }
+            Command::OpenFolder(_) | Command::RevealFile(_) => {
+                self.later(s, 50, vec![ok(Payload::None)])
+            }
             Command::Cancel { .. } | Command::ReopenSignInBrowser { .. } => {}
         }
     }

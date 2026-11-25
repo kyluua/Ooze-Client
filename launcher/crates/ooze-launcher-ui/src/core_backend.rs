@@ -143,6 +143,48 @@ pub fn is_ready_marker(line: &str) -> bool {
     ready_marker_state(line).is_some()
 }
 
+/// An export destination the interface may send: absolute, named `*.zip`, with an existing parent
+/// folder. The backend re-checks it and refuses existing files and links.
+pub fn valid_export_path(path: &Path) -> bool {
+    path.is_absolute()
+        && path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("zip"))
+        && path.parent().is_some_and(Path::is_dir)
+}
+
+/// Open Explorer on the folder containing `path`, with the file selected.
+fn reveal_file(path: &Path) -> Outcome {
+    if !path.is_file() {
+        return Outcome::Failed(LauncherError {
+            kind: ErrorKind::Io,
+            detail: "That file is no longer there.".into(),
+            retryable: false,
+        });
+    }
+    #[cfg(windows)]
+    let opened = {
+        let mut arg = std::ffi::OsString::from("/select,");
+        arg.push(path.as_os_str());
+        std::process::Command::new("explorer.exe")
+            .arg(arg)
+            .spawn()
+            .is_ok()
+    };
+    #[cfg(not(windows))]
+    let opened = false;
+    if opened {
+        Outcome::Succeeded(Payload::None)
+    } else {
+        Outcome::Failed(LauncherError {
+            kind: ErrorKind::Io,
+            detail: "Windows couldn't open the folder.".into(),
+            retryable: false,
+        })
+    }
+}
+
 pub const MEMORY: MemoryBounds = MemoryBounds {
     min_mib: 1024,
     max_mib: 16384,
@@ -153,7 +195,9 @@ pub fn capabilities() -> Capabilities {
     Capabilities {
         reopen_browser: false,
         check_java: false,
-        export_diagnostics: false,
+        // Launcher API 1 ExportDiagnostics(PathBuf) (44c407f). The interface only reads
+        // capabilities from a connected backend's snapshot.
+        export_diagnostics: true,
         open_folders: cfg!(windows),
         install_status: false,
         concurrent_operations: false,
@@ -170,6 +214,7 @@ pub struct Mapper {
     title_screen_seen: bool,
     /// Pending interface-side follow-up when an operation completes.
     pending_settings: HashMap<u64, Settings>,
+    pending_exports: HashMap<u64, PathBuf>,
 }
 
 impl Mapper {
@@ -179,6 +224,11 @@ impl Mapper {
 
     pub fn track_settings(&mut self, id: lc::OperationId, settings: Settings) {
         self.pending_settings.insert(id.0, settings);
+    }
+
+    /// Remember where an export writes, so its completion can report the file.
+    pub fn track_export(&mut self, id: lc::OperationId, destination: PathBuf) {
+        self.pending_exports.insert(id.0, destination);
     }
 
     pub fn active(&self) -> bool {
@@ -313,6 +363,11 @@ impl Mapper {
     ) -> Option<Settings> {
         let kind = self.kinds.remove(&id.0)?;
         let saved = self.pending_settings.remove(&id.0);
+        let exported = self.pending_exports.remove(&id.0);
+        let outcome = match (outcome, exported) {
+            (Outcome::Succeeded(_), Some(path)) => Outcome::Succeeded(Payload::Exported(path)),
+            (other, _) => other,
+        };
         if self.in_game.remove(&id.0).is_some() {
             // The interface already ended this Launch at GameStarted; the game's end was
             // reported by GameExited. Absorb the terminal event (including Failed{Process}).
@@ -642,9 +697,26 @@ impl Backend for CoreBackend {
                 let outcome = self.open_folder(folder);
                 return Ok(self.local_op(OperationKind::OpenFolder, outcome));
             }
-            Command::ReopenSignInBrowser { .. }
-            | Command::CheckJava { .. }
-            | Command::ExportDiagnostics => {
+            Command::RevealFile(path) => {
+                let outcome = reveal_file(&path);
+                return Ok(self.local_op(OperationKind::OpenFolder, outcome));
+            }
+            Command::ExportDiagnostics { destination } => {
+                if !valid_export_path(&destination) {
+                    return Err(LauncherError {
+                        kind: ErrorKind::Io,
+                        detail: "Choose a new .zip file in a local folder.".into(),
+                        retryable: false,
+                    });
+                }
+                let id = self.submit_core(
+                    C::ExportDiagnostics(destination.clone()),
+                    OperationKind::ExportDiagnostics,
+                )?;
+                self.mapper.track_export(id, destination);
+                id
+            }
+            Command::ReopenSignInBrowser { .. } | Command::CheckJava { .. } => {
                 return Err(LauncherError {
                     kind: ErrorKind::Internal,
                     detail: "Not offered by this backend.".into(),
@@ -818,6 +890,50 @@ mod tests {
             m.map(e, None, &mut out);
         }
         out
+    }
+
+    #[test]
+    fn a_completed_export_reports_the_chosen_file_and_a_failure_reports_none() {
+        let mut m = Mapper::default();
+        let path = std::env::temp_dir().join("ooze-export-test.zip");
+        m.track(Id(11), OperationKind::ExportDiagnostics);
+        m.track_export(Id(11), path.clone());
+        let out = run(
+            &mut m,
+            vec![E::Started { id: Id(11) }, E::Completed { id: Id(11) }],
+        );
+        assert!(out.contains(&Event::Finished {
+            op: OperationId(11),
+            outcome: Outcome::Succeeded(Payload::Exported(path.clone()))
+        }));
+        m.track(Id(12), OperationKind::ExportDiagnostics);
+        m.track_export(Id(12), path);
+        let out = run(
+            &mut m,
+            vec![E::Failed {
+                id: Id(12),
+                error: err(ErrorCode::Configuration),
+            }],
+        );
+        assert!(out.iter().any(|e| matches!(
+            e,
+            Event::Finished {
+                outcome: Outcome::Failed(_),
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn export_paths_must_be_absolute_zip_files_in_an_existing_folder() {
+        let dir = std::env::temp_dir();
+        assert!(valid_export_path(&dir.join("a.zip")));
+        assert!(valid_export_path(&dir.join("a.ZIP")));
+        assert!(!valid_export_path(&dir.join("a.txt")));
+        assert!(!valid_export_path(std::path::Path::new("a.zip")));
+        assert!(!valid_export_path(
+            &dir.join("no-such-folder-ooze").join("a.zip")
+        ));
     }
 
     /// Gate L review: a chat message (or another mod) printing the marker must not make the

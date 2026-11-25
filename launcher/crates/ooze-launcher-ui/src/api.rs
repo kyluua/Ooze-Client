@@ -178,9 +178,16 @@ pub enum Command {
     CheckJava {
         path: PathBuf,
     },
-    /// Write a redacted diagnostics bundle (logs, versions, settings) into the Diagnostics folder.
-    ExportDiagnostics,
+    /// Write the backend's redacted diagnostics ZIP (release metadata and the latest launcher-owned
+    /// game log) to `destination`: a new absolute local `.zip` path the player chose. The backend
+    /// never overwrites an existing file.
+    ExportDiagnostics {
+        destination: PathBuf,
+    },
     OpenFolder(Folder),
+    /// Open the folder that contains a file this launcher wrote (for example an exported
+    /// diagnostics ZIP), with the file selected.
+    RevealFile(PathBuf),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

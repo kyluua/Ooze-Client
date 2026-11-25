@@ -575,10 +575,16 @@ fn over_the_real_backend_unsupported_controls_are_absent() {
     );
     h.get_by_role_and_label(Role::Tab, "Diagnostics").click();
     settle(&mut h);
+    // Launcher API 1 now exports diagnostics (44c407f): the control appears, with honest copy.
     assert!(
         h.query_by_role_and_label(Role::Button, "Export diagnostics")
-            .is_none()
+            .is_some()
     );
+    assert!(shows(&h, "can include your player name and folder paths"));
+    assert!(!shows(
+        &h,
+        "removed from everything shown, copied or exported"
+    ));
 }
 
 #[test]
@@ -840,4 +846,69 @@ fn repair_from_settings_reports_progress_and_completion() {
     );
     assert!(h.query_by_role(Role::ProgressIndicator).is_none());
     shot(&mut h, "14-repair-finished");
+}
+
+/// RC1 B2: Export diagnostics asks for a new .zip (save dialog), sends that exact destination, and
+/// the completion notice reveals the chosen file. A cancelled dialog or an unusable path sends
+/// nothing.
+#[test]
+fn export_diagnostics_saves_to_the_chosen_zip_and_reveals_it() {
+    let dir = std::env::temp_dir();
+    let (mut h, handle) = harness(ready(), MotionPreference::Off);
+    settle(&mut h);
+    h.get_by_role_and_label(Role::Tab, "Diagnostics").click();
+    settle(&mut h);
+
+    // Cancelled dialog: nothing happens.
+    h.state_mut().answer_next_dialog_for_tests(None);
+    h.get_by_role_and_label(Role::Button, "Export diagnostics")
+        .click();
+    settle(&mut h);
+    // A relative path is refused before it reaches the backend.
+    h.state_mut()
+        .answer_next_dialog_for_tests(Some(std::path::PathBuf::from("relative/report.zip")));
+    h.get_by_role_and_label(Role::Button, "Export diagnostics")
+        .click();
+    settle(&mut h);
+    assert_eq!(
+        count(&handle, |c| matches!(c, Command::ExportDiagnostics { .. })),
+        0
+    );
+
+    // A name without the extension gets ".zip".
+    let chosen = dir.join("ooze-rc1-diagnostics");
+    let expected = dir.join("ooze-rc1-diagnostics.zip");
+    h.state_mut().answer_next_dialog_for_tests(Some(chosen));
+    let op = handle.next_op();
+    h.get_by_role_and_label(Role::Button, "Export diagnostics")
+        .click();
+    settle(&mut h);
+    assert_eq!(
+        handle.submitted().last(),
+        Some(&Command::ExportDiagnostics {
+            destination: expected.clone()
+        })
+    );
+    push_all(
+        &mut h,
+        &handle,
+        vec![
+            Event::Started {
+                op,
+                kind: OperationKind::ExportDiagnostics,
+            },
+            Event::Finished {
+                op,
+                outcome: Outcome::Succeeded(Payload::Exported(expected.clone())),
+            },
+        ],
+    );
+    assert!(shows(&h, "Diagnostics exported"));
+    h.get_by_role_and_label(Role::Button, "Show in folder")
+        .click();
+    settle(&mut h);
+    assert_eq!(
+        handle.submitted().last(),
+        Some(&Command::RevealFile(expected))
+    );
 }
