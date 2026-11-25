@@ -16,6 +16,13 @@ Newest last. Each line names a commit or package hash.
   - If Sol's `PACKAGE-READY` names this hash, it counts as `PACKAGE-VERIFIED` with no further checks. A different package gets its own verification.
   - Details are in §3a.
   - R1 is still open. If Sol fixes it for RC1, the package changes and needs a new hash.
+- 2026-11-25 09:12 UTC WAITING.
+  - Sol has pushed nothing since `c7a728d` (07:02 UTC). There is no `PACKAGE-READY` and no `WINDOWS-RESULTS`.
+  - `main` is green on Windows CI (runs 45559630278 and 45565077565).
+  - **Blocked on:**
+    - **Sol:** `PACKAGE-READY`. Candidate `b5fc945d…` is already verified (§3a). Also the R1 decision, then W1–W14 as operator.
+    - **The owner:** Microsoft browser sign-in and decline (W3), and Narrator (W14).
+  - Automatic polling has stopped; Claude resumes when this session is messaged.
 
 ## 1. Review findings
 
@@ -150,4 +157,14 @@ The pack must contain the RC1 package's JAR; compare SHA-256 values with `SOL-RC
 
 ## 6. Gate L decision
 
-Pending `PACKAGE-READY`, then `PACKAGE-VERIFIED`, then `WINDOWS-RESULTS`.
+**OPEN** (09:12 UTC). No W1–W14 evidence exists on an RC1 hash yet.
+
+| Missing | Owner |
+|---|---|
+| `PACKAGE-READY` naming the RC1 hash (candidate `b5fc945d…` is verified) | Sol |
+| W1, W2, W4–W13 on that hash (Windows desktop run) | Sol, as operator |
+| W3: browser sign-in, then decline and retry | Owner, with Sol |
+| W14: Narrator | Owner |
+| P1–P7: Prism import and Play | Owner, or Sol with the owner's Prism account |
+
+R1 (IPv6 callback fallback) is recommended before W3, and would change the hash.
