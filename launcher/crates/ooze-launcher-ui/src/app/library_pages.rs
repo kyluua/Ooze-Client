@@ -13,6 +13,7 @@ use ooze_ui::settings::{SettingDef, SettingKind, Value, is_key_name};
 use ooze_ui::theme_doc::{Background, Contrast, Motion, Rgb, TEXT_SCALES, ThemeDoc, UI_SCALES};
 
 use super::{LauncherApp, Page};
+use crate::api::Command;
 use crate::appearance::{self, import_error_text};
 use crate::library::*;
 use crate::library_model::{LibNotice, LibOpKind};
@@ -22,8 +23,6 @@ use crate::widgets::{ButtonKind, Kit, Tone};
 pub(super) enum Confirm {
     Archive(InstanceId),
     Duplicate(InstanceId),
-    ToCustom(InstanceId),
-    ToManaged(InstanceId),
     Remove(InstalledItem),
     ResetProfile,
 }
@@ -70,13 +69,6 @@ pub(super) fn target_text(kit: &Kit<'_>, t: &GameTarget) -> String {
             "instance.target_no_loader_version",
             &[loader, &t.game_version, &t.java_major.to_string()],
         ),
-    }
-}
-
-fn mode_key(m: IntegrityMode) -> &'static str {
-    match m {
-        IntegrityMode::Custom => "integrity.mode.custom",
-        IntegrityMode::ManagedFairPlay => "integrity.mode.managed",
     }
 }
 
@@ -508,7 +500,6 @@ impl LauncherApp {
             if selected {
                 kit.tag(ui, kit.t("instances.selected"), Some(Tone::Info));
             }
-            kit.tag(ui, kit.t(mode_key(inst.mode)), None);
             match inst.install {
                 Some(InstallState::Ready) | None => {}
                 Some(InstallState::NeedsInstall) => {
@@ -646,7 +637,7 @@ impl LauncherApp {
         self.instance_confirm(ui, kit, inst);
         if self.lib_ui.integrity_for.as_ref() == Some(&inst.id) {
             ui.add_space(th.space.md);
-            self.integrity_section(ui, kit, inst, caps, free);
+            self.integrity_section(ui, kit, inst);
         }
     }
 
@@ -690,24 +681,6 @@ impl LauncherApp {
                     name: kit.tr.fmt("instances.duplicate.name", &[&inst.name]),
                 },
             ),
-            Confirm::ToCustom(id) if *id == inst.id => (
-                kit.t("integrity.to_custom.title").to_owned(),
-                kit.t("integrity.to_custom.body").to_owned(),
-                kit.t("integrity.to_custom"),
-                LibCommand::SetMode {
-                    id: id.clone(),
-                    mode: IntegrityMode::Custom,
-                },
-            ),
-            Confirm::ToManaged(id) if *id == inst.id => (
-                kit.t("integrity.to_managed.title").to_owned(),
-                kit.t("integrity.to_managed.body").to_owned(),
-                kit.t("integrity.to_managed"),
-                LibCommand::SetMode {
-                    id: id.clone(),
-                    mode: IntegrityMode::ManagedFairPlay,
-                },
-            ),
             _ => return,
         };
         ui.add_space(th.space.sm);
@@ -730,59 +703,26 @@ impl LauncherApp {
         }
     }
 
-    fn integrity_section(
-        &mut self,
-        ui: &mut Ui,
-        kit: &Kit<'_>,
-        inst: &InstanceSummary,
-        caps: &LibraryCapabilities,
-        free: bool,
-    ) {
+    /// File verification for one instance (`LIBRARY_UI.md` §7). It compares the files Ooze
+    /// installed with what it recorded and offers Repair; it makes no statement about what a
+    /// server allows.
+    fn integrity_section(&mut self, ui: &mut Ui, kit: &Kit<'_>, inst: &InstanceSummary) {
         let th = kit.theme;
         kit.section(ui, kit.t("integrity.title"));
-        kit.body(
-            ui,
-            kit.t(match inst.mode {
-                IntegrityMode::Custom => "integrity.custom.body",
-                IntegrityMode::ManagedFairPlay => "integrity.managed.body",
-            }),
-        );
+        kit.body(ui, kit.t("integrity.body"));
         kit.caption(ui, kit.t("integrity.limits"));
         ui.add_space(th.space.sm);
-        ui.horizontal_wrapped(|ui| {
-            if kit
-                .button(
-                    ui,
-                    kit.t("integrity.check"),
-                    ButtonKind::Secondary,
-                    !self.lib_busy(),
-                )
-                .clicked()
-            {
-                self.lib_submit(LibCommand::CheckIntegrity(inst.id.clone()));
-            }
-            if inst.actions.contains(&InstanceAction::ChangeMode) {
-                match inst.mode {
-                    IntegrityMode::ManagedFairPlay => {
-                        if kit
-                            .button(ui, kit.t("integrity.to_custom"), ButtonKind::Quiet, free)
-                            .clicked()
-                        {
-                            self.lib_ui.confirm = Some(Confirm::ToCustom(inst.id.clone()));
-                        }
-                    }
-                    IntegrityMode::Custom if caps.managed_mode && inst.target.ooze => {
-                        if kit
-                            .button(ui, kit.t("integrity.to_managed"), ButtonKind::Quiet, free)
-                            .clicked()
-                        {
-                            self.lib_ui.confirm = Some(Confirm::ToManaged(inst.id.clone()));
-                        }
-                    }
-                    IntegrityMode::Custom => {}
-                }
-            }
-        });
+        if kit
+            .button(
+                ui,
+                kit.t("integrity.check"),
+                ButtonKind::Secondary,
+                !self.lib_busy(),
+            )
+            .clicked()
+        {
+            self.lib_submit(LibCommand::CheckIntegrity(inst.id.clone()));
+        }
         let report = self
             .lib
             .as_ref()
@@ -819,18 +759,10 @@ impl LauncherApp {
             let problem = match &issue.problem {
                 IntegrityProblem::HashMismatch => kit.t("integrity.problem.hash").to_owned(),
                 IntegrityProblem::Missing => kit.t("integrity.problem.missing").to_owned(),
-                IntegrityProblem::UnexpectedMod => {
-                    kit.t("integrity.problem.unexpected_mod").to_owned()
-                }
-                IntegrityProblem::UnapprovedPack => {
-                    kit.t("integrity.problem.unapproved_pack").to_owned()
-                }
-                IntegrityProblem::ProhibitedLaunchSetting(s) => {
-                    kit.tr.fmt("integrity.problem.launch_setting", &[s])
-                }
                 IntegrityProblem::Reported(s) => s.clone(),
-                IntegrityProblem::BaselineUnverified => {
-                    kit.t("integrity.problem.baseline").to_owned()
+                IntegrityProblem::InstallationFiles => {
+                    self.installation_issue(ui, kit, inst);
+                    continue;
                 }
             };
             let labels: Vec<(&str, ButtonKind)> = issue
@@ -840,7 +772,6 @@ impl LauncherApp {
                     (
                         kit.t(match a {
                             IntegrityAction::Repair => "integrity.action.repair",
-                            IntegrityAction::Quarantine => "integrity.action.quarantine",
                             IntegrityAction::OpenFolder => "integrity.action.open_folder",
                         }),
                         ButtonKind::Secondary,
@@ -863,6 +794,47 @@ impl LauncherApp {
                     action,
                 });
             }
+        }
+    }
+
+    /// The instance's game installation isn't installed or changed. Its Repair is the game
+    /// installation's (Launcher API 1), which acts on the folder Play is pointed at, so it is
+    /// offered only for the selected instance; any other instance says to select it first.
+    fn installation_issue(&mut self, ui: &mut Ui, kit: &Kit<'_>, inst: &InstanceSummary) {
+        let th = kit.theme;
+        let selected = self
+            .selected_instance()
+            .is_some_and(|s| s.id == inst.id && s.game_dir == inst.game_dir);
+        let repair = Command::Prepare { repair: true };
+        let enabled = selected
+            && !self.model.busy()
+            && self.selection_ready()
+            && self.model.may_submit(&repair);
+        ui.add_space(th.space.xs);
+        let body = if selected {
+            kit.t("integrity.installation.body")
+        } else {
+            kit.t("integrity.installation.select")
+        };
+        kit.banner(
+            ui,
+            Tone::Warning,
+            kit.t("integrity.problem.installation"),
+            body,
+            &[],
+        );
+        if selected
+            && kit
+                .button(
+                    ui,
+                    kit.t("integrity.action.repair_installation"),
+                    ButtonKind::Secondary,
+                    enabled,
+                )
+                .clicked()
+        {
+            self.submit(repair);
+            self.page = Page::Play;
         }
     }
 

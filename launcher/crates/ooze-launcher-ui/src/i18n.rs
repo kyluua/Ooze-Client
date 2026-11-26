@@ -147,7 +147,7 @@ mod tests {
         out
     }
 
-    /// Product wording rules (LIBRARY_UI.md §7, AGENTS.md): no claim that a mode or module is
+    /// Product wording rules (LIBRARY_UI.md §7, AGENTS.md): no claim that an instance or module is
     /// cheat-proof, undetectable or server-approved, and no claim that content "works".
     #[test]
     fn no_banned_claims_in_any_string() {

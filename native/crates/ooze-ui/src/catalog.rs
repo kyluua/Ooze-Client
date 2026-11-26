@@ -13,7 +13,7 @@ pub enum FairPlay {
     Cosmetic,
     Informational,
     QualityOfLife,
-    /// Blocked until a server-policy design exists; never part of Managed Fair Play.
+    /// Blocked until a server-policy design exists.
     Gameplay,
 }
 

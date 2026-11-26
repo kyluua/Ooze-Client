@@ -29,8 +29,7 @@ pub fn kind_of(command: &LibCommand) -> LibOpKind {
         | C::Rename { .. }
         | C::Duplicate { .. }
         | C::Install(_)
-        | C::Archive(_)
-        | C::SetMode { .. } => LibOpKind::Instance,
+        | C::Archive(_) => LibOpKind::Instance,
         C::LoadProfile(_) | C::SaveProfile { .. } => LibOpKind::Profile,
         C::SaveTheme(_) => LibOpKind::Theme,
         C::Search(_) => LibOpKind::Search,

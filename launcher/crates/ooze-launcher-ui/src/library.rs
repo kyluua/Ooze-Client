@@ -56,12 +56,6 @@ pub struct GameTarget {
     pub ooze: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum IntegrityMode {
-    Custom,
-    ManagedFairPlay,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InstallState {
     Ready,
@@ -77,7 +71,6 @@ pub enum InstanceAction {
     Install,
     Repair,
     Archive,
-    ChangeMode,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -89,7 +82,6 @@ pub struct InstanceSummary {
     pub preset: Option<PresetId>,
     /// Number of user overrides on top of the preset.
     pub overrides: u32,
-    pub mode: IntegrityMode,
     /// `None` when the library does not report install state (Play still verifies via API 1).
     pub install: Option<InstallState>,
     pub actions: Vec<InstanceAction>,
@@ -140,7 +132,6 @@ pub struct LibraryCapabilities {
     pub themes: bool,
     /// Content kinds the library can search and install (for supported instances).
     pub content: Vec<ContentKind>,
-    pub managed_mode: bool,
     /// Search accepts a sort order.
     pub sort: bool,
 }
@@ -329,21 +320,18 @@ pub struct InstalledItem {
 pub enum IntegrityProblem {
     HashMismatch,
     Missing,
-    UnexpectedMod,
-    UnapprovedPack,
-    /// The backend's safe name for the setting (for example "custom JVM argument").
-    ProhibitedLaunchSetting(String),
     /// A problem the library describes only in its own safe words.
     Reported(String),
-    /// Managed mode: the release manifest itself could not be verified.
-    BaselineUnverified,
+    /// The instance's game, loader and runtime files aren't installed, or they changed after
+    /// installation. Fixed by the game installation's Repair (Launcher API 1) for the instance
+    /// Play is pointed at, not by a library action.
+    InstallationFiles,
 }
 
 /// Safe remedies. There is deliberately no "delete": the library never deletes player files.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IntegrityAction {
     Repair,
-    Quarantine,
     OpenFolder,
 }
 
@@ -357,7 +345,6 @@ pub struct IntegrityIssue {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct IntegrityReport {
-    pub mode: IntegrityMode,
     pub checked_files: u32,
     pub issues: Vec<IntegrityIssue>,
 }
@@ -383,10 +370,6 @@ pub enum LibCommand {
     /// Install or repair the instance's game files.
     Install(InstanceId),
     Archive(InstanceId),
-    SetMode {
-        id: InstanceId,
-        mode: IntegrityMode,
-    },
     LoadProfile(InstanceId),
     /// The library revalidates with `ooze-ui` and refuses a stale `revision`.
     SaveProfile {

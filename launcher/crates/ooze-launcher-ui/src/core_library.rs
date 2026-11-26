@@ -9,7 +9,11 @@
 //!   run any before M0; Real or absent);
 //! - themes and local data packs use the library's persisted appearance and opaque world keys;
 //! - search sort, category filters and metadata map the library's real catalog response;
-//! - Managed conversion and repair remain backend-validated, never optimistic interface state.
+//! - verification and repair remain backend-validated, never optimistic interface state.
+//!
+//! Instances have no mode (owner decision 2026-11-25, `SOL-INSTANCE-MODE-REMOVAL.md`): every
+//! instance is a normal instance where players add compatible mods and packs. The library
+//! migrates legacy instances on read; the interface never converts them.
 
 use std::collections::VecDeque;
 use std::path::Path;
@@ -356,6 +360,8 @@ impl LibraryBackend for CoreLibrary {
                     name: name.clone(),
                     target: to_core_target(target),
                     preset: sl::Preset::Minimal,
+                    // TRANSITION (SOL-INSTANCE-MODE-REMOVAL): today's library still requires
+                    // this field; Sol deletes this line when `Create` drops it.
                     mode: sl::Mode::Custom,
                 },
                 plain(&c),
@@ -375,14 +381,6 @@ impl LibraryBackend for CoreLibrary {
                 plain(&c),
             ),
             LibCommand::Archive(i) => self.start(sl::Command::Archive(id(i)), plain(&c)),
-            LibCommand::SetMode {
-                id: i,
-                mode: IntegrityMode::Custom,
-            } => self.start(sl::Command::ConvertToCustom(id(i)), plain(&c)),
-            LibCommand::SetMode {
-                id: i,
-                mode: IntegrityMode::ManagedFairPlay,
-            } => self.start(sl::Command::ConvertToManaged(id(i)), plain(&c)),
             LibCommand::LoadProfile(i) => {
                 let s = self
                     .raw_instance(i)
@@ -722,23 +720,17 @@ pub fn map_snapshot(raw: &sl::Snapshot, caps: &sl::Capabilities) -> LibrarySnaps
         .filter(|s| !s.instance.archived)
         .map(|s| {
             let i = &s.instance;
-            let mode = match i.mode {
-                sl::Mode::Managed => IntegrityMode::ManagedFairPlay,
-                sl::Mode::Custom => IntegrityMode::Custom,
-            };
-            let mut actions = vec![
+            let actions = vec![
                 InstanceAction::Rename,
                 InstanceAction::Duplicate,
                 InstanceAction::Archive,
             ];
-            actions.push(InstanceAction::ChangeMode);
             InstanceSummary {
                 id: InstanceId(i.id.0.clone()),
                 name: i.name.clone(),
                 target: from_core_target(&i.target),
                 preset: i.profile.document.base,
                 overrides: override_count(&i.profile.document),
-                mode,
                 install: None,
                 actions,
                 content: kinds_for(&i.target, &offered),
@@ -762,7 +754,6 @@ pub fn map_snapshot(raw: &sl::Snapshot, caps: &sl::Capabilities) -> LibrarySnaps
             profiles: !caps.runtime_modules.is_empty(),
             themes: caps.appearance,
             content: offered,
-            managed_mode: true,
             sort: caps.search_options,
         },
         instances,
@@ -883,12 +874,19 @@ fn installed_items(receipts: &[sl::CheckedContent], kind: ContentKind) -> Vec<In
         .collect()
 }
 
+/// The library's own sentence for an unverified installation. The interface shows
+/// [`IntegrityProblem::InstallationFiles`] instead, so this copy isn't listed twice.
+/// TRANSITION (SOL-INSTANCE-MODE-REMOVAL, request N1): drop once the library stops sending it.
+const LEGACY_BASELINE_ISSUE: &str =
+    "Managed game/runtime baseline is missing or changed. Install or repair it before launch.";
+
 fn map_integrity(r: &sl::IntegrityReport) -> IntegrityReport {
     let mut issues: Vec<IntegrityIssue> = Vec::new();
-    if r.managed && !r.baseline_verified {
+    // Every instance: `false` also means no installed generation yet (Library API 1).
+    if !r.baseline_verified {
         issues.push(IntegrityIssue {
             file: String::new(),
-            problem: IntegrityProblem::BaselineUnverified,
+            problem: IntegrityProblem::InstallationFiles,
             actions: Vec::new(),
         });
     }
@@ -902,11 +900,7 @@ fn map_integrity(r: &sl::IntegrityReport) -> IntegrityReport {
                     sl::ContentStatus::Missing => IntegrityProblem::Missing,
                     _ => IntegrityProblem::HashMismatch,
                 },
-                actions: if r.managed {
-                    Vec::new()
-                } else {
-                    vec![IntegrityAction::Repair]
-                },
+                actions: vec![IntegrityAction::Repair],
             }),
     );
     let recorded_messages: std::collections::BTreeSet<_> = r
@@ -923,7 +917,7 @@ fn map_integrity(r: &sl::IntegrityReport) -> IntegrityReport {
     issues.extend(
         r.issues
             .iter()
-            .filter(|s| !recorded_messages.contains(s.as_str()))
+            .filter(|s| !recorded_messages.contains(s.as_str()) && *s != LEGACY_BASELINE_ISSUE)
             .map(|text| IntegrityIssue {
                 file: String::new(),
                 problem: IntegrityProblem::Reported(crate::redact::redact(text).into_owned()),
@@ -931,11 +925,6 @@ fn map_integrity(r: &sl::IntegrityReport) -> IntegrityReport {
             }),
     );
     IntegrityReport {
-        mode: if r.managed {
-            IntegrityMode::ManagedFairPlay
-        } else {
-            IntegrityMode::Custom
-        },
         checked_files: r.verified_files,
         issues,
     }
@@ -1269,9 +1258,70 @@ mod tests {
         let Ok(LibPayload::Integrity { report, .. }) = wait(&mut lib, op) else {
             panic!()
         };
-        assert!(report.issues.is_empty(), "{:?}", report.issues);
+        // The installed content verifies; the only issue is the game installation itself, which
+        // this test never installed (Library API 1: no installed generation).
+        assert_eq!(
+            report.issues,
+            vec![IntegrityIssue {
+                file: String::new(),
+                problem: IntegrityProblem::InstallationFiles,
+                actions: Vec::new(),
+            }]
+        );
         assert_eq!(report.checked_files as usize, items.len());
+        let game_dir = lib.snapshot().instance(&id).unwrap().game_dir.clone();
+        change_and_repair(
+            &mut lib,
+            &id,
+            &game_dir.join("mods").join(&items[0].file_name),
+        );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Changes one installed file, checks that Verify reports it with Repair (and no policy
+    /// text), repairs it through the interface command and checks the original is back.
+    fn change_and_repair(lib: &mut CoreLibrary, id: &InstanceId, file: &std::path::Path) {
+        let original = std::fs::read(file).unwrap();
+        std::fs::write(file, b"changed").unwrap();
+        let op = lib.submit(LibCommand::CheckIntegrity(id.clone())).unwrap();
+        let Ok(LibPayload::Integrity { report, .. }) = wait(lib, op) else {
+            panic!("verify")
+        };
+        let changed = report
+            .issues
+            .iter()
+            .find(|i| i.problem == IntegrityProblem::HashMismatch)
+            .expect("the changed file is reported")
+            .clone();
+        assert_eq!(changed.actions, vec![IntegrityAction::Repair]);
+        assert!(
+            report
+                .issues
+                .iter()
+                .all(|i| !matches!(&i.problem, IntegrityProblem::Reported(_))),
+            "no policy text: {:?}",
+            report.issues
+        );
+        let op = lib
+            .submit(LibCommand::Resolve {
+                instance: id.clone(),
+                file: changed.file.clone(),
+                action: IntegrityAction::Repair,
+            })
+            .unwrap();
+        let Ok(LibPayload::Integrity { report, .. }) = wait_long(lib, op) else {
+            panic!("repaired")
+        };
+        assert!(
+            report
+                .issues
+                .iter()
+                .all(|i| i.problem == IntegrityProblem::InstallationFiles),
+            "{:?}",
+            report.issues
+        );
+        assert_eq!(std::fs::read(file).unwrap(), original, "repaired");
+        println!("repaired {}", changed.file);
     }
 
     fn wait_long(lib: &mut CoreLibrary, op: LibOpId) -> Result<LibPayload, LibError> {
@@ -1290,6 +1340,162 @@ mod tests {
             }
         }
         panic!("operation {op:?} did not finish");
+    }
+
+    /// A legacy instance saved as `managed` (schema 1, before the owner's 2026-11-25 decision)
+    /// displays as a normal instance: no mode, the usual actions, selectable for Play, and
+    /// Verify reports the installation with its own typed issue and no policy text. Written on
+    /// disk rather than created, so it holds before and after Sol's read-time migration.
+    #[test]
+    fn a_legacy_managed_instance_displays_and_verifies_as_a_normal_instance() {
+        let dir = temp_dir("legacy-managed");
+        let (id, game_dir, manifest) = legacy_managed_instance(&dir);
+        let fabric = CoreLibrary::open(&dir)
+            .unwrap()
+            .snapshot()
+            .capabilities
+            .create[0]
+            .clone();
+        let legacy = std::fs::read(&manifest).unwrap();
+
+        let mut lib = CoreLibrary::open(&dir).unwrap();
+        let inst = lib.snapshot().instance(&id).cloned().expect("listed");
+        assert_eq!(inst.name, "Old managed");
+        assert_eq!(inst.target, fabric);
+        assert_eq!(inst.game_dir, game_dir);
+        assert_eq!(
+            inst.actions,
+            vec![
+                InstanceAction::Rename,
+                InstanceAction::Duplicate,
+                InstanceAction::Archive
+            ]
+        );
+        assert!(inst.content.contains(&ContentKind::Mod), "mods allowed");
+        assert_eq!(
+            std::fs::read(&manifest).unwrap(),
+            legacy,
+            "opening doesn't rewrite it"
+        );
+
+        let op = lib.submit(LibCommand::Select(id.clone())).unwrap();
+        assert_eq!(wait(&mut lib, op), Ok(LibPayload::Done));
+        let snap = lib.snapshot();
+        assert_eq!(snap.selected, Some(id.clone()));
+        assert_eq!(snap.selected().unwrap().game_dir, game_dir, "Play's folder");
+
+        let op = lib.submit(LibCommand::CheckIntegrity(id.clone())).unwrap();
+        let Ok(LibPayload::Integrity { report, .. }) = wait(&mut lib, op) else {
+            panic!("verify")
+        };
+        assert_eq!(
+            report.issues,
+            vec![IntegrityIssue {
+                file: String::new(),
+                problem: IntegrityProblem::InstallationFiles,
+                actions: Vec::new(),
+            }],
+            "no policy or mode text"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Creates a Fabric instance through the adapter, then saves its manifest as schema 1 did for
+    /// a Managed Fair Play instance. Returns its ID, game folder and manifest path.
+    fn legacy_managed_instance(
+        dir: &std::path::Path,
+    ) -> (InstanceId, std::path::PathBuf, std::path::PathBuf) {
+        let mut lib = CoreLibrary::open(dir).unwrap();
+        let fabric = lib.snapshot().capabilities.create[0].clone();
+        let op = lib
+            .submit(LibCommand::Create {
+                name: "Old managed".into(),
+                target: fabric,
+            })
+            .unwrap();
+        let Ok(LibPayload::Created(id)) = wait(&mut lib, op) else {
+            panic!("created")
+        };
+        let game_dir = lib.snapshot().instance(&id).unwrap().game_dir.clone();
+        drop(lib);
+        // The library's instance manifest beside the game folder.
+        let manifest = game_dir
+            .parent()
+            .unwrap()
+            .join("instance")
+            .with_extension("json");
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+        value["mode"] = serde_json::Value::from("managed");
+        std::fs::write(&manifest, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+        (id, game_dir, manifest)
+    }
+
+    /// Live Modrinth (network): a legacy Managed instance takes compatible mods like any other
+    /// instance once Sol's read-time migration is in (`SOL-INSTANCE-MODE-REMOVAL.md`), and a
+    /// changed file is put back by Repair. Run with
+    /// `cargo test -p ooze-launcher-ui live_legacy -- --ignored`.
+    #[test]
+    #[ignore = "contacts api.modrinth.com and downloads files"]
+    fn live_legacy_managed_instance_installs_verifies_and_repairs_modrinth_content() {
+        let dir = temp_dir("live-legacy");
+        let (id, game_dir, _) = legacy_managed_instance(&dir);
+        let mut lib = CoreLibrary::open(&dir).unwrap();
+        // Sodium: a Fabric mod with no required dependencies on 1.21.11.
+        let op = lib
+            .submit(LibCommand::Project {
+                instance: id.clone(),
+                kind: ContentKind::Mod,
+                project_id: "AANobbMI".into(),
+            })
+            .unwrap();
+        let Ok(LibPayload::Project(details)) = wait(&mut lib, op) else {
+            panic!("details")
+        };
+        let version = details
+            .versions
+            .iter()
+            .find(|v| v.loaders.iter().any(|l| l == "fabric"))
+            .expect("a Fabric 1.21.11 version")
+            .version_id
+            .clone();
+        let op = lib
+            .submit(LibCommand::Plan {
+                instance: id.clone(),
+                kind: ContentKind::Mod,
+                project_id: details.project_id.clone(),
+                version_id: version,
+                world: None,
+            })
+            .unwrap();
+        let plan = match wait(&mut lib, op) {
+            Ok(LibPayload::Plan(plan)) => plan,
+            other => panic!("a legacy instance must plan normally: {other:?}"),
+        };
+        let op = lib
+            .submit(LibCommand::Apply {
+                plan_id: plan.plan_id.clone(),
+            })
+            .unwrap();
+        let Ok(LibPayload::Installed { .. }) = wait_long(&mut lib, op) else {
+            panic!("installed")
+        };
+        let op = lib
+            .submit(LibCommand::ListInstalled {
+                instance: id.clone(),
+                kind: ContentKind::Mod,
+            })
+            .unwrap();
+        let Ok(LibPayload::InstalledList { items, .. }) = wait(&mut lib, op) else {
+            panic!("listed")
+        };
+        assert_eq!(items.len(), plan.install.len());
+        change_and_repair(
+            &mut lib,
+            &id,
+            &game_dir.join("mods").join(&items[0].file_name),
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

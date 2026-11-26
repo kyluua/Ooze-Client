@@ -39,12 +39,11 @@ pub fn vanilla_id() -> InstanceId {
     InstanceId("a1b2c3d4e5f60718293a4b5c6d7e8f90".into())
 }
 
-const ALL_ACTIONS: [InstanceAction; 5] = [
+const ALL_ACTIONS: [InstanceAction; 4] = [
     InstanceAction::Rename,
     InstanceAction::Duplicate,
     InstanceAction::Repair,
     InstanceAction::Archive,
-    InstanceAction::ChangeMode,
 ];
 
 fn instance(
@@ -68,7 +67,6 @@ fn instance(
         target,
         preset,
         overrides: 0,
-        mode: IntegrityMode::Custom,
         install: Some(InstallState::Ready),
         actions: ALL_ACTIONS.to_vec(),
         content,
@@ -79,13 +77,12 @@ fn instance(
 
 /// A library with two instances (Fabric with Ooze, Vanilla) and every capability.
 pub fn snapshot() -> LibrarySnapshot {
-    let mut fabric = instance(
+    let fabric = instance(
         fabric_id(),
         "PvP practice",
         fabric_target(),
         Some(PresetId::Pvp),
     );
-    fabric.mode = IntegrityMode::ManagedFairPlay;
     LibrarySnapshot {
         capabilities: LibraryCapabilities {
             create: vec![fabric_target(), vanilla_target()],
@@ -93,7 +90,6 @@ pub fn snapshot() -> LibrarySnapshot {
             profiles: true,
             themes: true,
             content: ContentKind::ALL.to_vec(),
-            managed_mode: true,
             sort: true,
         },
         instances: vec![
@@ -251,26 +247,39 @@ pub fn installed(kind: ContentKind) -> Vec<InstalledItem> {
     }]
 }
 
-pub fn integrity(mode: IntegrityMode) -> IntegrityReport {
+/// The fixture's verification report. The Fabric instance has a changed and a missing file
+/// that Ooze installed; other instances verify cleanly.
+pub fn integrity(instance: &InstanceId) -> IntegrityReport {
     IntegrityReport {
-        mode,
         checked_files: 214,
-        issues: if mode == IntegrityMode::ManagedFairPlay {
+        issues: if *instance == fabric_id() {
             vec![
-                IntegrityIssue {
-                    file: "mods/unknown-tweaks.jar".into(),
-                    problem: IntegrityProblem::UnexpectedMod,
-                    actions: vec![IntegrityAction::Quarantine, IntegrityAction::OpenFolder],
-                },
                 IntegrityIssue {
                     file: "mods/fabric-api-0.141.6+1.21.11.jar".into(),
                     problem: IntegrityProblem::HashMismatch,
                     actions: vec![IntegrityAction::Repair, IntegrityAction::OpenFolder],
                 },
+                IntegrityIssue {
+                    file: "resourcepacks/faithful-32x.zip".into(),
+                    problem: IntegrityProblem::Missing,
+                    actions: vec![IntegrityAction::Repair],
+                },
             ]
         } else {
             Vec::new()
         },
+    }
+}
+
+/// A report whose only issue is the instance's game installation (not installed or changed).
+pub fn integrity_installation() -> IntegrityReport {
+    IntegrityReport {
+        checked_files: 0,
+        issues: vec![IntegrityIssue {
+            file: String::new(),
+            problem: IntegrityProblem::InstallationFiles,
+            actions: Vec::new(),
+        }],
     }
 }
 
@@ -429,13 +438,6 @@ impl LibraryFixture {
                 changed = true;
                 out.push(ok(LibPayload::Done));
             }
-            LibCommand::SetMode { id, mode } => {
-                if let Some(i) = self.snap.instances.iter_mut().find(|i| i.id == id) {
-                    i.mode = mode;
-                }
-                changed = true;
-                out.push(ok(LibPayload::Done));
-            }
             LibCommand::LoadProfile(id) => {
                 if let Some((_, p, r)) = self.profiles.iter().find(|p| p.0 == id) {
                     out.push(ok(LibPayload::Profile {
@@ -557,21 +559,13 @@ impl LibraryFixture {
                 out.push(ok(LibPayload::Done));
             }
             LibCommand::CheckIntegrity(instance) => {
-                let mode = self
-                    .snap
-                    .instance(&instance)
-                    .map_or(IntegrityMode::Custom, |i| i.mode);
                 out.push(ok(LibPayload::Integrity {
-                    report: integrity(mode),
+                    report: integrity(&instance),
                     instance,
                 }));
             }
             LibCommand::Resolve { instance, file, .. } => {
-                let mode = self
-                    .snap
-                    .instance(&instance)
-                    .map_or(IntegrityMode::Custom, |i| i.mode);
-                let mut report = integrity(mode);
+                let mut report = integrity(&instance);
                 report.issues.retain(|i| i.file != file);
                 out.push(ok(LibPayload::Integrity { instance, report }));
             }

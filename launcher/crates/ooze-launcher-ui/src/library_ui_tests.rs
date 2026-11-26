@@ -539,29 +539,34 @@ fn a_running_instance_cannot_be_changed_and_says_why() {
 }
 
 #[test]
-fn integrity_report_lists_concrete_problems_and_never_offers_deletion() {
+fn file_check_lists_concrete_problems_offers_repair_and_never_deletion() {
     let (mut h, _, lh) = harness(Some(fx::snapshot()));
     let lh = lh.unwrap();
     go(&mut h, "Instances");
-    h.get_all_by_role_and_label(Role::Button, "Integrity")
+    h.get_all_by_role_and_label(Role::Button, "Check files")
         .next()
         .unwrap()
         .click();
     steps(&mut h);
-    assert!(shows(&h, "each server decides what it allows"));
+    assert!(shows(&h, "Only files Ooze installed are checked"));
     click(&mut h, Role::Button, "Check now");
+    assert_eq!(
+        lh.submitted().last(),
+        Some(&LibCommand::CheckIntegrity(fx::fabric_id()))
+    );
     finish(
         &mut h,
         &lh,
         LibPayload::Integrity {
             instance: fx::fabric_id(),
-            report: fx::integrity(IntegrityMode::ManagedFairPlay),
+            report: fx::integrity(&fx::fabric_id()),
         },
     );
-    assert!(shows(&h, "mods/unknown-tweaks.jar"));
-    assert!(shows(&h, "This mod isn't part of the managed set"));
-    assert!(has_button(&h, "Move to quarantine folder"));
-    assert!(has_button(&h, "Repair"));
+    assert!(shows(&h, "mods/fabric-api-0.141.6+1.21.11.jar"));
+    assert!(shows(&h, "This file doesn't match the expected version"));
+    assert!(shows(&h, "resourcepacks/faithful-32x.zip"));
+    assert!(shows(&h, "This file is missing"));
+    assert!(has_button(&h, "Open folder"));
     shot(&mut h, "integrity");
     for n in h.query_all_by_role(Role::Button) {
         let l = n
@@ -569,16 +574,133 @@ fn integrity_report_lists_concrete_problems_and_never_offers_deletion() {
             .label()
             .unwrap_or_default()
             .to_lowercase();
-        assert!(!l.contains("delete"), "{l}");
+        assert!(!l.contains("delete") && !l.contains("quarantine"), "{l}");
     }
-    click(&mut h, Role::Button, "Move to quarantine folder");
+    // The Fabric row's own Repair comes first; the next one belongs to the first issue.
+    h.get_all_by_role_and_label(Role::Button, "Repair")
+        .nth(1)
+        .unwrap()
+        .click();
+    steps(&mut h);
     assert_eq!(
         lh.submitted().last(),
         Some(&LibCommand::Resolve {
             instance: fx::fabric_id(),
-            file: "mods/unknown-tweaks.jar".into(),
-            action: IntegrityAction::Quarantine
+            file: "mods/fabric-api-0.141.6+1.21.11.jar".into(),
+            action: IntegrityAction::Repair
         })
+    );
+}
+
+/// Owner decision 2026-11-25: one normal instance experience. No mode badges, mode switches or
+/// policy statements anywhere on the Instances page or in its file check.
+#[test]
+fn instances_show_no_mode_badges_switches_or_policy_text() {
+    let (mut h, _, lh) = harness(Some(fx::snapshot()));
+    let lh = lh.unwrap();
+    go(&mut h, "Instances");
+    h.get_all_by_role_and_label(Role::Button, "Check files")
+        .next()
+        .unwrap()
+        .click();
+    steps(&mut h);
+    click(&mut h, Role::Button, "Check now");
+    finish(
+        &mut h,
+        &lh,
+        LibPayload::Integrity {
+            instance: fx::fabric_id(),
+            report: fx::integrity(&fx::fabric_id()),
+        },
+    );
+    for banned in [
+        "Managed",
+        "managed",
+        "Fair Play",
+        "fair-play",
+        "Custom",
+        "anti-cheat",
+        "cheat",
+        "server",
+        "approved",
+        "quarantine",
+        "Switch to",
+    ] {
+        assert!(!shows(&h, banned), "{banned}");
+    }
+    assert_eq!(
+        h.query_all_by_role_and_label(Role::Button, "Check files")
+            .count(),
+        2,
+        "every instance has the same file check"
+    );
+}
+
+/// Game-file Repair goes through Launcher API 1, which acts on the folder Play is pointed at, so
+/// the file check offers it only for the selected instance.
+#[test]
+fn installation_repair_is_offered_only_for_the_instance_play_uses() {
+    let (mut h, handle, lh) = harness(Some(fx::snapshot()));
+    let lh = lh.unwrap();
+    go(&mut h, "Instances");
+    // Vanilla isn't selected: the issue says to select it and offers no Repair.
+    h.get_all_by_role_and_label(Role::Button, "Check files")
+        .nth(1)
+        .unwrap()
+        .click();
+    steps(&mut h);
+    click(&mut h, Role::Button, "Check now");
+    assert_eq!(
+        lh.submitted().last(),
+        Some(&LibCommand::CheckIntegrity(fx::vanilla_id()))
+    );
+    finish(
+        &mut h,
+        &lh,
+        LibPayload::Integrity {
+            instance: fx::vanilla_id(),
+            report: fx::integrity_installation(),
+        },
+    );
+    assert!(shows(&h, "Game files aren't installed or have changed"));
+    assert!(shows(&h, "Select this instance to install or repair"));
+    assert!(!has_button(&h, "Repair game files"));
+    assert!(
+        !handle
+            .submitted()
+            .iter()
+            .any(|c| matches!(c, Command::Prepare { .. }))
+    );
+
+    // Fabric is the one Play uses: Repair runs the game installation's repair and shows Play.
+    h.get_all_by_role_and_label(Role::Button, "Check files")
+        .next()
+        .unwrap()
+        .click();
+    steps(&mut h);
+    click(&mut h, Role::Button, "Check now");
+    finish(
+        &mut h,
+        &lh,
+        LibPayload::Integrity {
+            instance: fx::fabric_id(),
+            report: fx::integrity_installation(),
+        },
+    );
+    assert!(shows(&h, "Repair re-checks this instance's game files"));
+    assert!(enabled(&h, "Repair game files"));
+    h.get_by_role_and_label(Role::Button, "Repair game files")
+        .scroll_to_me();
+    h.run_steps(20);
+    shot(&mut h, "integrity-installation");
+    click(&mut h, Role::Button, "Repair game files");
+    assert_eq!(
+        handle.submitted().last(),
+        Some(&Command::Prepare { repair: true })
+    );
+    assert!(
+        !has_button(&h, "Check files"),
+        "Play shows the repair's progress"
     );
 }
 
