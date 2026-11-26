@@ -54,7 +54,9 @@ record verification by version and loader before any release claim.
 ## Status
 
 Contract published at `4b7379c`, before source changes. Backend, packaging,
-and CI landed at `53adaa4`. The launcher API is still 1.1 and the JNI ABI
+and CI landed at `53adaa4`. Follow-up `0ae6d7e` preserved the legacy
+1.21.11 error detail expected by the existing desktop adapter. The original
+run failed that assertion. The launcher API is still 1.1 and the JNI ABI
 is still 1. Library API 1 adds the release-aware constructor without changing
 the stored target schema.
 
@@ -74,14 +76,14 @@ The candidate catalogs the 12 Vanilla/Fabric pairs. The Fabric Loader pin is
 metadata for every ID. The original release manifest remains readable and the
 original installer and portable distribution remain available.
 
-| Minecraft | Java | Vanilla and plain Fabric descriptors | Ooze bundle |
+| Minecraft | Java | Exact candidate CI Install / Repair | Ooze bundle |
 | --- | --- | --- | --- |
-| 1.21.11 | 21 | Pinned | Original 1.21.11 production path |
-| 26.1 | 25 | Pinned | Await Claude's validated JAR |
-| 26.1.1 | 25 | Pinned | Await Claude's validated JAR |
-| 26.1.2 | 25 | Pinned | Await Claude's validated JAR |
-| 26.2 | 25 | Pinned | Await Claude's validated JAR |
-| 26.3 | 25 | Pinned | Await Claude's validated JAR |
+| 1.21.11 | 21 | Vanilla and Fabric with Ooze passed | Original 1.21.11 production path |
+| 26.1 | 25 | Vanilla and plain Fabric passed | Await Claude's validated JAR |
+| 26.1.1 | 25 | Vanilla and plain Fabric passed | Await Claude's validated JAR |
+| 26.1.2 | 25 | Vanilla and plain Fabric passed | Await Claude's validated JAR |
+| 26.2 | 25 | Vanilla and plain Fabric passed | Await Claude's validated JAR |
+| 26.3 | 25 | Vanilla and plain Fabric passed | Await Claude's validated JAR |
 
 - Local launcher formatting and workspace Clippy passed. The
   packaging script fetched Fabric Meta profiles and validated the Mojang
@@ -92,16 +94,62 @@ original installer and portable distribution remain available.
   pack from the existing RC1 client JAR. The owner machine blocked a local
   native DLL load and a Rust test dependency with Application Control error
   4551. This preflight does not carry launcher or JNI execution evidence.
-- [Windows CI run 45785733894](https://github.com/kyluua/Ooze-Client/actions/runs/45785733894)
-  packages the candidate ZIP, Setup and eligible Prism packs. It checks JNI on
-  Java 21 and 25, opens a previously installed 1.21.11 library from the catalog,
-  and runs install/repair jobs for the game pairs. Candidate data and artifacts
-  are separate from the 1.21.11 RC1 distribution.
+- **Headless-tested** local 26.3 preflight with the compiled CLI from
+  `53adaa4` ([artifact 15099949459](https://github.com/kyluua/Ooze-Client/actions/runs/45785733894/artifacts/15099949459)).
+  Used the locally pinned catalog and a new data directory. Opened schema 1
+  instances created by the 1.21.11 RC1 CLI and preserved both IDs and the
+  selected ID. Installed Sodium `mc26.3-0.9.4-beta.2-fabric` on the new
+  Fabric 26.3 instance, installed the game with Fabric Loader 0.20.1 and
+  actual Temurin 25 x64, and repaired a corrupted game JAR. Repair preserved
+  seven checked player files including Sodium and the separate legacy
+  options fixture. Vanilla 26.3 independently installed and repaired with the
+  same runtime and preserved its options. An explicit Java 21 override returned
+  the Java 25 requirement and kept the original installation receipt.
+- [Windows CI run 45786508447](https://github.com/kyluua/Ooze-Client/actions/runs/45786508447)
+  **Built** the candidate ZIP, Setup and eligible Prism pack on `0ae6d7e`.
+  **Headless-tested** 53 core, 115 ordinary UI, 3 live Modrinth, and 29 native
+  Rust tests. The packaged JNI bridge passed 20,323 assertions each under
+  actual Java 21.0.13.1+2 and Java 25.0.5.1+2, both Windows amd64, with
+  `-Xcheck:jni`. The catalog migration job opened a previously installed
+  1.21.11 library and verified the original selection and a separate 26.3
+  instance directory. The installer was built. All six matrix jobs passed
+  (12 install/repair cases) on the exact candidate ZIP below. Each case used
+  the catalog-selected Java x64 release, verified the managed game generation,
+  repaired a corrupted game file, and kept the seeded player file hashes.
+- **Headless-tested** all 12 local install/repair pairs with the earlier
+  CLI preflight and pinned metadata. These checks exercised real downloads,
+  Java selection, corruption detection and retained player files.
+
+### Candidate downloads
+
+| Artifact | SHA-256 |
+| --- | --- |
+| [Portable Windows x64 ZIP](https://github.com/kyluua/Ooze-Client/actions/runs/45786508447/artifacts/15101992148) | `40708483d5fed7175127666c2311f7cc86872f220adfc52817203372e0e11604` |
+| [Windows x64 Setup EXE, inside artifact](https://github.com/kyluua/Ooze-Client/actions/runs/45786508447/artifacts/15101493470) | `eca69cf2247f47e11bea7c94f03df17d2f163f1168f4b0f3359e2da289403b13` |
+| [1.21.11 Prism pack, inside artifact](https://github.com/kyluua/Ooze-Client/actions/runs/45786508447/artifacts/15101757759) | `11daee9c1bae1573a6923265f55368a23750a3b6de930bae7b773c394ba3c98b` |
+
+Verified all 609 payload files against the downloaded portable ZIP's
+`SHA256SUMS`. The manifest SHA-256 is
+`110dba72b47b1394c64ec774beaac417a8eb0a7a4d3f505a60c8ab844249c1e3`.
+The desktop EXE SHA-256 is
+`731a17c6daeb7e105b7b197a2bf413b19340ea51a1aebcb77f624e01a6d7cde1`,
+the CLI is `a9e7116e8ab843b28ea80e564aecd23b1795f1c3b4aada0429a8ece8abd5a2ce`,
+and the Ooze JAR is
+`9b3262521262c0fcc2c3c053e2e1dc012159ed4186705660f1e351a49a16f7c9`.
+The embedded Windows JNI DLL SHA-256 is
+`154c591dbf48f9a7a0d21d908f995b6b2b99b642c5ae5cbab7e6c6e3ce37bce4`.
+The matching Prism pack includes that same JAR and verified Fabric API.
+Its SHA-512 is
+`0ac6e173f448d0f7699f1ce9b3fefd798df350cedc8192d22e7c2f6bd9a35d5065c5c7192b53c7abe5d7ea3a8bdbde123cabeaf8f3f83c3ed1e6bd03a8d5a1c6`.
 
 Authenticated desktop Play and real title-screen evidence are still required
 on the exact combined package, along with Claude's desktop integration and
-matching 26.x client JARs. Use the owner for sign-in and report each target
-individually. The version catalog does not promote this candidate to a release.
+matching 26.x client JARs. The candidate installer is unsigned. The owner
+PC's Windows Application Control blocked the exact packaged CLI before it
+could create a signed-out test instance. No settings or Windows execution
+policy were changed. Use an approved execution environment and the owner
+for sign-in. Report each target's actual title-screen evidence individually
+before marking support.
 
 Claude's next desktop edit is to wire the config's manifest path at
 `ooze-launcher.rs:49` and `core_library.rs:71`. The current translation file
