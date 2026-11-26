@@ -106,6 +106,29 @@ Prism handles sign-in, Java selection and launch. Use Java 21 and Windows x64
 for the bundled engine. See [the Modrinth format](https://support.modrinth.com/en/articles/8802351-modrinth-modpack-format-mrpack)
 and [Prism's import instructions](https://prismlauncher.org/wiki/help-pages/zip-import/).
 
+## Build the per-user Windows setup
+
+The **Ooze Launcher Windows Installer** workflow uses the Windows package
+from a successful `Ooze Launcher` run on `main`. Provide the source run ID
+when dispatching it to pin a specific candidate. The workflow verifies the
+artifact and each packaged file before compiling setup with Inno Setup.
+The resulting artifact contains the setup EXE, SHA256SUMS and the source
+commit, run and payload hash in `source.json`.
+
+To compile the same installer from an already verified, extracted release
+package, provide the path to an installed Inno Setup compiler.
+
+```powershell
+./launcher/packaging/prepare-installer.ps1 -PackageDirectory '<extracted release>' `
+  -OutputDirectory '<new output folder>' -Compiler '<path to ISCC.exe>'
+```
+
+Setup installs the app and its launch files under
+`%LOCALAPPDATA%\Programs\Ooze Launcher` and adds a Start menu shortcut. Game
+data remains in its existing location. Setup and uninstall require only the
+current user's privileges. Build and test evidence for unsigned candidates
+does not grant execution trust on an owner PC.
+
 ## Exercise the package outside a developer shell
 
 ```powershell

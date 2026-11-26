@@ -1,0 +1,93 @@
+name: Ooze Launcher Windows Installer
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/launcher-installer.yml
+      - launcher/packaging/ooze-launcher.iss
+      - launcher/packaging/prepare-installer.ps1
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: Green main run of Ooze Launcher (defaults to latest successful)
+        type: string
+        required: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Download the verified Windows launcher payload
+        shell: pwsh
+        env:
+          OOZE_SOURCE_RUN: ${{ inputs.source_run }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $api = "$env:GITHUB_API_URL/repos/$env:GITHUB_REPOSITORY/actions"
+          if ($env:OOZE_SOURCE_RUN) {
+            if ($env:OOZE_SOURCE_RUN -notmatch '^[0-9]+$') { throw 'Expected a numeric source run ID' }
+            $run = Invoke-RestMethod "$api/runs/$env:OOZE_SOURCE_RUN" -Headers $headers
+          } else {
+            $runs = Invoke-RestMethod "$api/workflows/launcher-l0.yml/runs?branch=main&status=success&per_page=1" -Headers $headers
+            $run = $runs.workflow_runs | Select-Object -First 1
+          }
+          if ($run.path -ne '.github/workflows/launcher-l0.yml' -or $run.head_repository.full_name -ne $env:GITHUB_REPOSITORY -or
+              $run.head_branch -ne 'main' -or $run.event -notin @('push','workflow_dispatch') -or $run.conclusion -ne 'success') {
+            throw 'The installer requires a successful launcher run from this repository on main'
+          }
+          $artifacts = Invoke-RestMethod "$api/runs/$($run.id)/artifacts?name=ooze-launcher-windows-x64" -Headers $headers
+          $artifact = @($artifacts.artifacts | Where-Object { !$_.expired -and $_.name -eq 'ooze-launcher-windows-x64' })
+          if ($artifact.Count -ne 1 -or $artifact[0].digest -notmatch '^sha256:([a-f0-9]{64})$') { throw 'Expected one hashed Windows payload' }
+          $expected = $Matches[1]
+          $archive = Join-Path $env:RUNNER_TEMP 'ooze-launcher-payload.zip'
+          Invoke-WebRequest "$api/artifacts/$($artifact[0].id)/zip" -Headers $headers -OutFile $archive
+          if ((Get-FileHash -LiteralPath $archive).Hash -ine $expected) { throw 'Source artifact digest mismatch' }
+          [IO.Compression.ZipFile]::ExtractToDirectory($archive, (Join-Path $env:RUNNER_TEMP 'ooze-launcher-payload'))
+          [ordered]@{ source_commit = $run.head_sha; source_run = $run.id; payload_artifact = $artifact[0].id; payload_sha256 = $expected } |
+            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'ooze-installer-source.json') -Encoding utf8NoBOM
+      - name: Build per-user setup
+        shell: pwsh
+        run: |
+          ./launcher/packaging/prepare-installer.ps1 -PackageDirectory (Join-Path $env:RUNNER_TEMP 'ooze-launcher-payload') -OutputDirectory './launcher/dist/setup'
+          Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'ooze-installer-source.json') -Destination './launcher/dist/setup/source.json'
+      - name: Test installation, reinstall and uninstall
+        shell: pwsh
+        run: |
+          $setup = (Get-Item './launcher/dist/setup/*-Setup.exe').FullName
+          $app = Join-Path $env:LOCALAPPDATA 'Programs/Ooze Launcher'
+          $data = Join-Path $env:LOCALAPPDATA 'OozeLauncher'
+          $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Ooze Launcher.lnk'
+          foreach ($path in @($app,$data,$shortcut)) {
+            if (Test-Path -LiteralPath $path) { throw 'Expected a clean runner user' }
+          }
+          $save = Join-Path $data 'test-instance/saves/example/level.dat'
+          New-Item -ItemType Directory -Path (Split-Path -Parent $save) | Out-Null
+          Set-Content -LiteralPath $save -Value 'Installer retention fixture'
+          $saved = (Get-FileHash -LiteralPath $save).Hash
+          $payload = Join-Path $env:RUNNER_TEMP 'ooze-launcher-payload'
+          foreach ($attempt in 1..2) {
+            $process = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -Wait -PassThru
+            if ($process.ExitCode -ne 0 -or !(Test-Path -LiteralPath $shortcut)) { throw "Setup attempt $attempt failed" }
+            foreach ($entry in Get-ChildItem -LiteralPath $payload -File -Recurse) {
+              $relative = [IO.Path]::GetRelativePath($payload,$entry.FullName)
+              if ((Get-FileHash -LiteralPath (Join-Path $app $relative)).Hash -ne (Get-FileHash -LiteralPath $entry.FullName).Hash) {
+                throw "Installed file mismatch: $relative"
+              }
+            }
+          }
+          $uninstall = (Get-ChildItem -LiteralPath $app -Filter 'unins*.exe' -File | Select-Object -First 1).FullName
+          $process = Start-Process -FilePath $uninstall -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0 -or (Test-Path -LiteralPath $shortcut) -or (Test-Path -LiteralPath (Join-Path $app 'ooze-launcher.exe')) -or
+              (Get-FileHash -LiteralPath $save).Hash -ne $saved) { throw 'Uninstall failed or changed game data' }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ooze-launcher-windows-x64-setup
+          path: launcher/dist/setup/
+          if-no-files-found: error
