@@ -5,6 +5,10 @@
 - STARTED 7dd54d73f5897dcd2900241865e8dbac56d271ff
 - API-READY 120be4fb35e06e5a0fec38e7828389694fb8fcf7
 - Preflight tested through 3a1ad9cb0ba37c611a8caede266322ea9a85b0b6. Waiting for UI-READY.
+- Single-instance backend landed at `1beaf85`. The local successor pass used
+  ZIP `beff2cd7c1d6f993234850cb41494b4714ed0f9cba098f19c613b843af8d35d0`.
+  [Migration and Windows evidence](SOL-INSTANCE-MODE-REMOVAL.md).
+  Gate L remains open pending the combined UI package and authenticated Play.
 
 Owner Sol. Target Windows x64, Fabric 1.21.11, Java 21 and the bundled Rust
 engine. Gate L is open. The previous Windows runs in `SOL-GATE-L.md` cover
