@@ -1,6 +1,7 @@
 use crate::{
     api::{ErrorCode, Settings, Stage},
-    metadata::{self, Installation, InstalledFile, Release},
+    catalog::Catalog,
+    metadata::{self, Installation, InstalledFile},
     net::{Artifact, Http},
     util::{self, Result, error, io_error, metadata_error},
 };
@@ -15,6 +16,8 @@ use std::{
 pub(crate) struct Prepared {
     pub installation: Installation,
     pub root: PathBuf,
+    pub java_major: u32,
+    pub has_ooze: bool,
 }
 #[derive(Deserialize)]
 struct AssetObjects {
@@ -69,18 +72,13 @@ pub(crate) fn prepare(
 ) -> Result<Prepared> {
     check()?;
     progress(Stage::Resolving, 0, None);
-    let release: Release = util::read_json(manifest_path)?;
-    release.validate()?;
     let target = crate::library::store::for_game(&settings.instance_dir)?
         .map(|i| i.target)
         .unwrap_or_else(crate::library::Target::fabric);
-    let is_fabric = target.loader == crate::library::Loader::Fabric;
-    let expected_version = if is_fabric {
-        format!("fabric-loader-{}-{}", release.loader, release.minecraft)
-    } else {
-        release.minecraft.clone()
-    };
-    let release_hash = util::sha256(manifest_path)?;
+    let catalog = Catalog::read(manifest_path)?;
+    let release = catalog.select(&target)?;
+    let expected_version = target.launch_version_name();
+    let release_hash = catalog.receipt_hash(release)?;
     let managed = util::join(&settings.instance_dir, ".ooze-launcher")?;
     util::mkdir(&managed)?;
     let pointer = util::join(&managed, "active-install.json")?;
@@ -118,9 +116,14 @@ pub(crate) fn prepare(
                 );
             }
             if valid {
+                progress(Stage::ValidatingJava, 0, None);
+                let java = java_path(settings, &root, current.managed_java.as_deref())?;
+                crate::process::validate_java(&java, target.java_major)?;
                 return Ok(Prepared {
                     installation: current,
                     root,
+                    java_major: target.java_major,
+                    has_ooze: target.ooze,
                 });
             }
         }
@@ -128,14 +131,9 @@ pub(crate) fn prepare(
     let package = manifest_path.parent().ok_or_else(metadata_error)?;
     let cache = util::join(data, "cache")?;
     let game_meta = http.artifact(&release.minecraft_metadata, package, &cache, check)?;
-    let fabric_meta = http.artifact(&release.fabric_profile, package, &cache, check)?;
     let minecraft: metadata::Minecraft = util::read_json(&game_meta)?;
-    let fabric: metadata::Fabric = util::read_json(&fabric_meta)?;
     if minecraft.id != release.minecraft
-        || minecraft.java_version.major_version != 21
-        || fabric.inherits_from != minecraft.id
-        || fabric.id != format!("fabric-loader-{}-{}", release.loader, minecraft.id)
-        || fabric.main_class != "net.fabricmc.loader.impl.launch.knot.KnotClient"
+        || minecraft.java_version.major_version != release.java_major
         || minecraft.main_class != "net.minecraft.client.main.Main"
     {
         return Err(metadata_error());
@@ -143,26 +141,41 @@ pub(crate) fn prepare(
     let mut specs: Vec<(String, Artifact)> = Vec::new();
     let mut classpath = Vec::new();
     let mut library_ids = HashSet::new();
-    if fabric.libraries.len() != release.fabric_libraries.len() {
-        return Err(metadata_error());
-    }
-    for lib in fabric.libraries.iter().filter(|_| is_fabric) {
-        let pin = release
-            .fabric_libraries
-            .iter()
-            .find(|p| p.name == lib.name)
-            .ok_or_else(metadata_error)?;
-        let path = format!("libraries/{}", pin.path);
-        classpath.push(path.clone());
-        specs.push((path, pin.artifact.clone()));
-        let parts = lib.name.split(':').collect::<Vec<_>>();
-        library_ids.insert(format!("{}:{}", parts[0], parts[1]));
-    }
+    let fabric = if let Some(pin) = &release.fabric {
+        let path = http.artifact(&pin.profile, package, &cache, check)?;
+        let profile: metadata::Fabric = util::read_json(&path)?;
+        if profile.inherits_from != minecraft.id
+            || profile.id != expected_version
+            || profile.main_class != "net.fabricmc.loader.impl.launch.knot.KnotClient"
+            || profile.libraries.len() != pin.libraries.len()
+        {
+            return Err(metadata_error());
+        }
+        for lib in &profile.libraries {
+            let dependency = pin
+                .libraries
+                .iter()
+                .find(|item| item.name == lib.name)
+                .ok_or_else(metadata_error)?;
+            let path = format!("libraries/{}", dependency.path);
+            classpath.push(path.clone());
+            specs.push((path, dependency.artifact.clone()));
+            let (group, artifact_and_version) =
+                lib.name.split_once(':').ok_or_else(metadata_error)?;
+            let (artifact, _) = artifact_and_version
+                .split_once(':')
+                .ok_or_else(metadata_error)?;
+            library_ids.insert(format!("{group}:{artifact}"));
+        }
+        Some(profile)
+    } else {
+        None
+    };
     for lib in &minecraft.libraries {
         if !metadata::allowed(&lib.rules)? {
             continue;
         }
-        // 1.21.11 carries modern native jars on the classpath; legacy classifier extraction isn't assumed.
+        // All pinned versions carry modern native JARs on the classpath.
         if !lib.natives.is_empty() {
             return Err(metadata_error());
         }
@@ -223,8 +236,9 @@ pub(crate) fn prepare(
         }
     }
     if target.ooze {
-        specs.push(("mods/fabric-api.jar".into(), release.fabric_api.clone()));
-        specs.push(("mods/ooze-client.jar".into(), release.ooze.clone()));
+        let bundle = release.bundle().ok_or_else(metadata_error)?;
+        specs.push(("mods/fabric-api.jar".into(), bundle.api.clone()));
+        specs.push(("mods/ooze-client.jar".into(), bundle.ooze.clone()));
     }
     if specs.len() > 100000 {
         return Err(metadata_error());
@@ -271,20 +285,18 @@ pub(crate) fn prepare(
         None
     };
     progress(Stage::ValidatingJava, 0, None);
-    let java = match &settings.java_path {
-        Some(path) => path.clone(),
-        None => util::join(root, managed_java.as_deref().ok_or_else(metadata_error)?)?,
-    };
-    crate::process::validate_java(&java)?;
+    let java = java_path(settings, root, managed_java.as_deref())?;
+    crate::process::validate_java(&java, target.java_major)?;
     util::mkdir(&util::join(root, "natives")?)?;
     let mut jvm_args = metadata::arguments(&minecraft.arguments.jvm)?;
-    if is_fabric {
-        jvm_args.extend(metadata::arguments(&fabric.arguments.jvm)?);
-    }
     let mut game_args = metadata::arguments(&minecraft.arguments.game)?;
-    if is_fabric {
-        game_args.extend(metadata::arguments(&fabric.arguments.game)?);
-    }
+    let main_class = if let Some(profile) = fabric {
+        jvm_args.extend(metadata::arguments(&profile.arguments.jvm)?);
+        game_args.extend(metadata::arguments(&profile.arguments.game)?);
+        profile.main_class
+    } else {
+        minecraft.main_class
+    };
     let generation = root
         .file_name()
         .and_then(|v| v.to_str())
@@ -296,11 +308,7 @@ pub(crate) fn prepare(
         directory: format!("installs/{generation}"),
         files,
         classpath,
-        main_class: if is_fabric {
-            fabric.main_class
-        } else {
-            minecraft.main_class
-        },
+        main_class,
         jvm_args,
         game_args,
         asset_index: minecraft.asset_index.id,
@@ -311,7 +319,23 @@ pub(crate) fn prepare(
     let root = stage.keep();
     util::atomic_json(&pointer, &installation)?;
     progress(Stage::Verifying, total, Some(total));
-    Ok(Prepared { installation, root })
+    Ok(Prepared {
+        installation,
+        root,
+        java_major: target.java_major,
+        has_ooze: target.ooze,
+    })
+}
+
+pub(crate) fn java_path(
+    settings: &Settings,
+    root: &Path,
+    managed_java: Option<&str>,
+) -> Result<PathBuf> {
+    match &settings.java_path {
+        Some(path) => Ok(path.clone()),
+        None => util::join(root, managed_java.ok_or_else(metadata_error)?),
+    }
 }
 
 pub(crate) fn extract_zip(

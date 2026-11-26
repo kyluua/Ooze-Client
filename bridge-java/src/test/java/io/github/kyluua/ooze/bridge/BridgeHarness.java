@@ -21,7 +21,9 @@ public final class BridgeHarness {
     private BridgeHarness() {}
 
     public static void main(String[] args) throws Exception {
-        check(Runtime.version().feature() == 21, "Harness must execute under Java 21");
+        int expected = Integer.getInteger("ooze.bridge.expectedJava", 21);
+        check((expected == 21 || expected == 25) && Runtime.version().feature() == expected,
+                "Harness must execute under the requested Java 21 or Java 25 runtime");
         boolean faults = args.length > 0 && args[0].equals("--fault-injection");
         Path cache = Files.createTempDirectory("ooze-g0-harness-");
         System.out.println("Runtime: " + Runtime.version() + " / " + System.getProperty("os.arch"));

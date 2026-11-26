@@ -351,6 +351,7 @@ impl Context {
             }
             let tx = self.inner.events.clone();
             let id = self.id;
+            let expect_ooze = prepared.has_ooze;
             let ready_sent = AtomicBool::new(false);
             let code = process::launch(
                 &prepared,
@@ -365,7 +366,13 @@ impl Context {
                     self.control(LauncherEvent::GameStarted { id, pid });
                 },
                 move |line, engine_state| {
-                    publish_game_line(&tx, id, line, engine_state, &ready_sent);
+                    publish_game_line(
+                        &tx,
+                        id,
+                        line,
+                        engine_state.filter(|_| expect_ooze),
+                        &ready_sent,
+                    );
                 },
             )?;
             self.control(LauncherEvent::GameExited { id, code });

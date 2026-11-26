@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$JavaHome,
+    [string]$Java25Home,
     [switch]$IncludeFaultInjection
 )
 
@@ -11,6 +12,7 @@ $bridgeRoot = Join-Path $repoRoot 'bridge-java'
 $javaExe = Join-Path $JavaHome 'bin\java.exe'
 $javacExe = Join-Path $JavaHome 'bin\javac.exe'
 $jarExe = Join-Path $JavaHome 'bin\jar.exe'
+$java25Exe = if ($Java25Home) { Join-Path $Java25Home 'bin\java.exe' }
 foreach ($tool in @($javaExe, $javacExe, $jarExe)) {
     if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { throw "Missing JDK tool: $tool" }
 }
@@ -126,6 +128,10 @@ source.dirty=$sourceDirty
         }
         & $javaExe @harnessArguments
         if ($LASTEXITCODE -ne 0) { throw "Real Java 21/JNI harness failed ($variant)" }
+        if ($java25Exe) {
+            & $java25Exe '--enable-native-access=ALL-UNNAMED' '-Dooze.bridge.expectedJava=25' @harnessArguments
+            if ($LASTEXITCODE -ne 0) { throw "Real Java 25/JNI harness failed ($variant)" }
+        }
         $jarHash = (Get-FileHash -LiteralPath $jarFile -Algorithm SHA256).Hash.ToLowerInvariant()
         Write-Utf8 (Join-Path $artifactRoot 'SHA256SUMS') "$hash  resources/natives/windows-x86_64/ooze_jni.dll`n$jarHash  $([IO.Path]::GetFileName($jarFile))`n"
         Write-Output "G0 artifact ($variant): $jarFile"

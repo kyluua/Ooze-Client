@@ -34,12 +34,14 @@ fn command(exe: &Path) -> Command {
     }
     cmd
 }
-pub(crate) fn validate_java(path: &Path) -> Result<()> {
+pub(crate) fn validate_java(path: &Path, major: u32) -> Result<()> {
     util::absolute(path)?;
     if !path.is_file() {
         return Err(error(
             ErrorCode::JavaRuntime,
-            "Java executable is missing. Repair the managed runtime or choose Java 21 x64.",
+            format!(
+                "Java executable is missing. Repair the managed runtime or choose Java {major} x64."
+            ),
         ));
     }
     let mut child = command(path)
@@ -51,7 +53,7 @@ pub(crate) fn validate_java(path: &Path) -> Result<()> {
         .map_err(|_| {
             error(
                 ErrorCode::JavaRuntime,
-                "Couldn't execute Java. Check Windows application policy and select Java 21 x64.",
+                format!("Couldn't execute Java. Check Windows application policy and select Java {major} x64."),
             )
         })?;
     let stdout = child.stdout.take().ok_or_else(io_error)?;
@@ -68,7 +70,7 @@ pub(crate) fn validate_java(path: &Path) -> Result<()> {
             let _ = child.wait();
             return Err(error(
                 ErrorCode::JavaRuntime,
-                "Java validation timed out. Select a working Java 21 x64 runtime.",
+                format!("Java validation timed out. Select a working Java {major} x64 runtime."),
             ));
         }
         std::thread::sleep(Duration::from_millis(20));
@@ -78,14 +80,14 @@ pub(crate) fn validate_java(path: &Path) -> Result<()> {
         out.join().unwrap_or_default(),
         err.join().unwrap_or_default()
     );
-    validate_properties(status.success(), &text)
+    validate_properties(status.success(), &text, major)
 }
 fn bounded_output(input: impl Read) -> String {
     let mut bytes = Vec::new();
     let _ = input.take(1024 * 1024).read_to_end(&mut bytes);
     String::from_utf8_lossy(&bytes).into_owned()
 }
-fn validate_properties(success: bool, text: &str) -> Result<()> {
+fn validate_properties(success: bool, text: &str, major: u32) -> Result<()> {
     let property = |name: &str| {
         text.lines().find_map(|line| {
             line.trim()
@@ -94,12 +96,17 @@ fn validate_properties(success: bool, text: &str) -> Result<()> {
         })
     };
     if !success
-        || !property("java.version").is_some_and(|v| v == "21" || v.starts_with("21."))
+        || property("java.version")
+            .and_then(|version| version.split(['.', '+', '-']).next())
+            .and_then(|feature| feature.parse::<u32>().ok())
+            != Some(major)
         || !property("os.arch").is_some_and(|v| matches!(v, "amd64" | "x86_64"))
     {
         return Err(error(
             ErrorCode::JavaRuntime,
-            "Ooze requires Java 21 x64. The selected runtime does not match.",
+            format!(
+                "This instance requires Java {major} x64. Choose a matching runtime or use managed Java."
+            ),
         ));
     }
     Ok(())
@@ -166,14 +173,8 @@ pub(crate) fn launch(
 ) -> Result<Option<i32>> {
     let install = &prepared.installation;
     let root = &prepared.root;
-    let java = match &settings.java_path {
-        Some(path) => path.clone(),
-        None => util::join(
-            root,
-            install.managed_java.as_deref().ok_or_else(metadata_error)?,
-        )?,
-    };
-    validate_java(&java)?;
+    let java = crate::install::java_path(settings, root, install.managed_java.as_deref())?;
+    validate_java(&java, prepared.java_major)?;
     let paths = install
         .classpath
         .iter()
@@ -405,6 +406,8 @@ mod tests {
             memory_mib: 1024,
         };
         let prepared = Prepared {
+            java_major: 21,
+            has_ooze: false,
             root: root.clone(),
             installation: metadata::Installation {
                 schema: 1,
@@ -468,9 +471,13 @@ mod tests {
     }
     #[test]
     fn java_21_only_and_argfile_paths() {
-        assert!(validate_properties(true, "java.version = 21.0.12\nos.arch = amd64").is_ok());
-        assert!(validate_properties(true, "java.version = 25.0.4\nos.arch = amd64").is_err());
-        assert!(validate_properties(true, "java.version = 21.0.12\nos.arch = x86").is_err());
+        let java_21 = "java.version = 21.0.12\nos.arch = amd64";
+        let java_25 = "java.version = 25.0.4\nos.arch = amd64";
+        assert!(validate_properties(true, java_21, 21).is_ok());
+        assert!(validate_properties(true, java_25, 25).is_ok());
+        assert!(validate_properties(true, java_25, 21).is_err());
+        assert!(validate_properties(true, java_21, 25).is_err());
+        assert!(validate_properties(true, "java.version = 21.0.12\nos.arch = x86", 21).is_err());
         assert_eq!(
             quote_argfile("C:\\path with spaces\\lib.jar"),
             "\"C:\\\\path with spaces\\\\lib.jar\""

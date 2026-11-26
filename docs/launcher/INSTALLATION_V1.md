@@ -1,5 +1,25 @@
 # L0 installation and process decisions
 
+## Version catalog
+
+Packages can use schema 2 in `release.json`. The versioned target contract
+and validation status are in [SOL-MULTIVERSION](../handoffs/SOL-MULTIVERSION.md).
+A record names one Minecraft version and loader family. A Fabric record can
+carry a pinned Ooze and Fabric API bundle, which is distinct from plain Fabric.
+The active generation's receipt uses a digest of the selected record.
+Schema 1 packages still use the original manifest-file digest. A schema change
+may refresh the managed generation without rewriting any player files or
+changing the saved instance target.
+
+The installer verifies the Minecraft and Fabric profile IDs, applies their
+ordered rules, and checks the running JVM's architecture and major. For a
+cached generation, the selected Java is revalidated before reuse. A custom
+Java path must match the selected target. Switching to managed Java lets each
+instance use its pinned runtime. Vanilla and plain Fabric report lifecycle
+events without an Ooze-specific title event.
+
+## Original 1.21.11 manifest
+
 The release manifest schema is `Release` in core/src/metadata.rs, schema 1. It
 pins Minecraft 1.21.11, Fabric Loader 0.20.1, a bundled production Ooze JAR, Fabric
 API, local hash-checked game/Fabric metadata, exact Fabric library artifacts and

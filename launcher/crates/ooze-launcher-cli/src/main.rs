@@ -1,7 +1,10 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use ooze_launcher_core::library as lib;
 use ooze_launcher_core::*;
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 #[derive(Parser)]
 #[command(
@@ -82,10 +85,11 @@ enum LibraryAction {
         project: String,
     },
     List,
+    Targets,
     Create {
         name: String,
-        #[arg(long)]
-        vanilla: bool,
+        #[command(flatten)]
+        target: TargetArgs,
         #[arg(long, value_enum, default_value = "minimal")]
         preset: PresetArg,
     },
@@ -127,12 +131,16 @@ enum LibraryAction {
         query: String,
         #[arg(long, default_value_t = 0)]
         offset: u32,
+        #[command(flatten)]
+        target: TargetArgs,
     },
     Project {
         project: String,
     },
     Versions {
         project: String,
+        #[command(flatten)]
+        target: TargetArgs,
     },
     Install {
         id: String,
@@ -153,6 +161,36 @@ enum LibraryAction {
         id: String,
         project: String,
     },
+}
+
+#[derive(clap::Args)]
+struct TargetArgs {
+    #[arg(long, default_value = "1.21.11")]
+    minecraft: String,
+    #[arg(long, conflicts_with = "plain_fabric")]
+    vanilla: bool,
+    #[arg(long)]
+    plain_fabric: bool,
+}
+
+impl TargetArgs {
+    fn resolve(self, library: &lib::Library) -> Result<lib::Target, Box<dyn std::error::Error>> {
+        let loader = if self.vanilla {
+            lib::Loader::Vanilla
+        } else {
+            lib::Loader::Fabric
+        };
+        library
+            .capabilities()
+            .targets
+            .into_iter()
+            .filter(|target| target.minecraft == self.minecraft && target.loader == loader)
+            .filter(|target| !self.plain_fabric || !target.ooze)
+            .max_by_key(|target| target.ooze)
+            .ok_or_else(|| {
+                "This game and loader combination is unavailable in the current package.".into()
+            })
+    }
 }
 #[derive(Clone, Copy, ValueEnum)]
 enum KindArg {
@@ -183,27 +221,29 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .data_dir
         .or_else(|| std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("OozeLauncher")))
         .ok_or("LOCALAPPDATA is missing; pass --data-dir with an absolute local directory")?;
-    if let Action::Library { command } = args.command {
-        return run_library(data, command);
-    }
+    let explicit_release = args.release.is_some();
     let release = args.release.unwrap_or(
         std::env::current_exe()?
             .parent()
             .ok_or("Executable directory missing")?
             .join("release.json"),
     );
+    if let Action::Library { command } = args.command {
+        let manifest = (explicit_release || release.is_file()).then_some(release.as_path());
+        return run_library(data, manifest, command);
+    }
     let client_id = std::env::var("OOZE_MICROSOFT_CLIENT_ID")
         .ok()
         .or_else(|| option_env!("OOZE_MICROSOFT_CLIENT_ID").map(str::to_owned));
     let launcher = Launcher::open(LauncherConfig {
         data_dir: data.clone(),
-        release_manifest: release,
+        release_manifest: release.clone(),
         microsoft_client_id: client_id,
     })?;
     let command = match args.command {
         Action::Library { .. } => unreachable!(),
         Action::Instance { id, command } => {
-            let library = lib::Library::open(&data)?;
+            let library = lib::Library::open_with_release(&data, &release)?;
             let instance = library
                 .snapshot()
                 .instances
@@ -309,8 +349,15 @@ fn library_wait(
         std::thread::sleep(Duration::from_millis(10));
     }
 }
-fn run_library(data: PathBuf, command: LibraryAction) -> Result<(), Box<dyn std::error::Error>> {
-    let library = lib::Library::open(data)?;
+fn run_library(
+    data: PathBuf,
+    release: Option<&Path>,
+    command: LibraryAction,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let library = match release {
+        Some(path) => lib::Library::open_with_release(data, path)?,
+        None => lib::Library::open(data)?,
+    };
     let command = match command {
         LibraryAction::Appearance { import } => {
             if let Some(file) = import {
@@ -328,17 +375,20 @@ fn run_library(data: PathBuf, command: LibraryAction) -> Result<(), Box<dyn std:
             println!("{}", serde_json::to_string_pretty(&library.snapshot())?);
             return Ok(());
         }
+        LibraryAction::Targets => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&library.capabilities().targets)?
+            );
+            return Ok(());
+        }
         LibraryAction::Create {
             name,
-            vanilla,
+            target,
             preset,
         } => lib::Command::Create {
             name,
-            target: if vanilla {
-                lib::Target::vanilla()
-            } else {
-                lib::Target::fabric()
-            },
+            target: target.resolve(&library)?,
             preset: preset.into(),
         },
         LibraryAction::Select { id } => lib::Command::Select(lib::Id(id)),
@@ -366,17 +416,18 @@ fn run_library(data: PathBuf, command: LibraryAction) -> Result<(), Box<dyn std:
             kind,
             query,
             offset,
+            target,
         } => lib::Command::Search(lib::Search {
             query,
             kind: kind.into(),
-            target: lib::Target::fabric(),
+            target: target.resolve(&library)?,
             offset,
             limit: 10,
         }),
         LibraryAction::Project { project } => lib::Command::Project(project),
-        LibraryAction::Versions { project } => lib::Command::Versions {
+        LibraryAction::Versions { project, target } => lib::Command::Versions {
             project,
-            target: lib::Target::fabric(),
+            target: target.resolve(&library)?,
         },
         LibraryAction::Install {
             id,
