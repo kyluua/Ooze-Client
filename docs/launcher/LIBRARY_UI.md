@@ -61,9 +61,9 @@ Row actions are Select, Rename, Duplicate, Install / Repair, Check files and Arc
 
 **Create.**
 - A dialog offers **only** the combinations from `capabilities.create`. There are no free-text version fields.
-  - **Loader** first (each loader the library reports, in its order; Ooze targets first), then **Minecraft version** for that loader, newest first. Both are radio groups with arrow-key roving focus.
-  - A version is marked "· Ooze" when that combination includes Ooze. Below, the exact target ("Fabric 0.20.1 · Minecraft 26.3 · Java 25") and an "Ooze Client included" or "No Ooze modules" tag.
-  - Switching loader keeps the chosen version when the other loader offers it. Create sends exactly the target shown.
+  - **Kind** first: **Fabric with Ooze**, **Fabric** (plain) and **Vanilla**, each only if the library reports it (Sol's catalog offers Fabric both with and without Ooze where a bundle is pinned). Then **Minecraft version** for that kind, newest first. Both are radio groups with arrow-key roving focus.
+  - Below, the exact target ("Fabric 0.20.1 · Minecraft 26.3 · Java 25") and an "Ooze Client included" or "No Ooze modules" tag.
+  - Switching kind keeps the chosen version when the other kind offers it. Create sends exactly the target shown.
 - Each option shows the Java requirement and whether Ooze is available.
 - Name: 1–48 characters, trimmed. A duplicate name is allowed; the ID is the identity.
 
@@ -207,7 +207,7 @@ Library errors map to the L0 banner pattern (`LAUNCHER_UI.md §5`), with the bac
 - **Headless (egui_kittest, fixture library):**
   - every page hidden without its capability;
   - create offers only reported combinations;
-  - loader then version selection covers every reported combination, marks those with Ooze, works with the keyboard alone and fits at the minimum window and 200 % scale;
+  - kind then version selection covers every reported combination, separates Fabric with Ooze from plain Fabric, works with the keyboard alone and fits at the minimum window and 200 % scale;
   - Play names the selected instance's version, loader and Ooze availability;
   - content search and the install review run for, and name, the selected instance's exact target;
   - a stale search result is ignored;

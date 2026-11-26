@@ -33,7 +33,7 @@ Steps:
 2. **Run** it.
 3. **Choose an install location**: an empty folder, or an existing Ooze game folder. Ooze never takes over a folder holding other files, and your official `.minecraft` folder is not touched.
 4. **Press Sign in.** Your web browser opens Microsoft's sign-in page. Sign in there, then come back. Ooze never sees your password.
-5. **Choose a version.** In Instances, a new instance offers the loader (Fabric or Vanilla) and the Minecraft versions this launcher can install; versions marked "· Ooze" include Ooze. The Play page names the version and loader it will start.
+5. **Choose a version.** In Instances, a new instance offers **Fabric with Ooze**, plain **Fabric** or **Vanilla**, and the Minecraft versions this launcher release can install for each. The Play page names the version, loader and whether Ooze is included.
 6. **Press Play.** The first time, the launcher downloads that Minecraft version, Fabric Loader 0.20.1, Fabric API, the Java it needs (21 or 25) and Ooze, verifying every file, and then starts the game. You can cancel before the game starts; downloaded files are reused next time.
 
 Accounts and privacy:

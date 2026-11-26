@@ -43,10 +43,14 @@ fn config() -> Result<LauncherConfig, LauncherError> {
 
 fn main() -> eframe::Result {
     let config = config();
-    // Sol's library (Library API 1) shares the launcher's data directory.
+    // Sol's library (Library API 1) shares the launcher's data directory and reads the package's
+    // release catalog, so it offers exactly the Minecraft targets this package can install.
     let library: Option<Box<dyn ooze_launcher_ui::library::LibraryBackend>> =
         config.as_ref().ok().map(|c| {
-            match ooze_launcher_ui::core_library::CoreLibrary::open(&c.data_dir) {
+            match ooze_launcher_ui::core_library::CoreLibrary::open_with_release(
+                &c.data_dir,
+                &c.release_manifest,
+            ) {
                 Ok(lib) => Box::new(lib) as Box<dyn ooze_launcher_ui::library::LibraryBackend>,
                 Err(e) => Box::new(ooze_launcher_ui::core_library::FailedLibrary(e)),
             }

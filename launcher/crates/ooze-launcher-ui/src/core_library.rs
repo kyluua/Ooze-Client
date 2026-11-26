@@ -66,9 +66,23 @@ impl std::fmt::Debug for CoreLibrary {
 
 impl CoreLibrary {
     /// Opens the library under the launcher's data directory (bounded local I/O; call before the
-    /// window opens, beside `CoreBackend::open`).
+    /// window opens, beside `CoreBackend::open`). Without a release catalog the library offers only
+    /// its built-in 1.21.11 targets (tests and fixtures).
     pub fn open(data_dir: &Path) -> Result<Self, LibError> {
         let lib = sl::Library::open(data_dir).map_err(|e| map_error(&e))?;
+        Self::from_library(lib, data_dir)
+    }
+
+    /// Opens the library with the package's release catalog (`release.json`, the same path as
+    /// `LauncherConfig::release_manifest`), so its capabilities list every target the package can
+    /// install (`SOL-MULTIVERSION.md`).
+    pub fn open_with_release(data_dir: &Path, release_manifest: &Path) -> Result<Self, LibError> {
+        let lib = sl::Library::open_with_release(data_dir, release_manifest)
+            .map_err(|e| map_error(&e))?;
+        Self::from_library(lib, data_dir)
+    }
+
+    fn from_library(lib: sl::Library, data_dir: &Path) -> Result<Self, LibError> {
         migrate_legacy_appearance(&lib, data_dir)?;
         let raw = lib.snapshot();
         let caps = lib.capabilities();
@@ -1533,6 +1547,100 @@ mod tests {
             &id,
             &game_dir.join("mods").join(&items[0].file_name),
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Sol's release catalog (schema 2, `SOL-MULTIVERSION.md`) drives the create choices through
+    /// the real library: every record, Fabric with Ooze only where a bundle is pinned, and an exact
+    /// target creates an instance with that target. A combination outside the catalog is refused.
+    #[test]
+    fn a_release_catalog_offers_exactly_its_targets_with_and_without_ooze() {
+        use serde_json::{Value, json};
+        let dir = temp_dir("catalog");
+        let pin = |file: &str| json!({"file": file, "size": 1, "sha256": "0".repeat(64)});
+        let fabric = |bundle: bool| {
+            json!({
+                "loader": "0.20.1",
+                "profile": pin("metadata/fabric.json"),
+                "libraries": [{
+                    "name": "net.fabricmc:fabric-loader:0.20.1",
+                    "path": "net/fabricmc/fabric-loader/0.20.1/fabric-loader-0.20.1.jar",
+                    "artifact": pin("libraries/fabric-loader.jar")
+                }],
+                "bundle": if bundle {
+                    json!({"api_version": "0.166.2+26.3", "api": pin("mods/fabric-api.jar"), "ooze": pin("mods/ooze-client.jar")})
+                } else {
+                    Value::Null
+                }
+            })
+        };
+        let row = |minecraft: &str, java: u32, fabric: Value| {
+            json!({
+                "minecraft": minecraft,
+                "java_major": java,
+                "minecraft_metadata": pin("metadata/minecraft.json"),
+                "java": {"archive": pin("runtime/java.zip"), "java_relative": "runtime/bin/java.exe"},
+                "fabric": fabric
+            })
+        };
+        let catalog = json!({"schema": 2, "id": "test-catalog", "targets": [
+            row("26.3", 25, Value::Null),
+            row("26.3", 25, fabric(true)),
+            row("26.2", 25, fabric(false)),
+            row("1.21.11", 21, Value::Null),
+        ]});
+        let manifest = dir.join("release").with_extension("json");
+        std::fs::write(&manifest, serde_json::to_vec(&catalog).unwrap()).unwrap();
+        let mut lib = CoreLibrary::open_with_release(&dir, &manifest).unwrap();
+
+        let target = |version: &str, loader: Loader, ooze: bool| GameTarget {
+            game_version: version.into(),
+            loader,
+            loader_version: (loader == Loader::Fabric).then(|| "0.20.1".to_owned()),
+            java_major: if version == "1.21.11" { 21 } else { 25 },
+            ooze,
+        };
+        let create = lib.snapshot().capabilities.create;
+        assert_eq!(
+            create[0],
+            target("26.3", Loader::Fabric, true),
+            "Ooze targets first"
+        );
+        let mut got = create.clone();
+        let mut want = vec![
+            target("26.3", Loader::Fabric, true),
+            target("26.3", Loader::Vanilla, false),
+            target("26.3", Loader::Fabric, false),
+            target("26.2", Loader::Fabric, false),
+            target("1.21.11", Loader::Vanilla, false),
+        ];
+        let key = |t: &GameTarget| (t.game_version.clone(), t.loader, t.ooze);
+        got.sort_by_key(key);
+        want.sort_by_key(key);
+        assert_eq!(got, want);
+
+        for t in [
+            target("26.2", Loader::Fabric, false),
+            target("26.3", Loader::Fabric, true),
+        ] {
+            let op = lib
+                .submit(LibCommand::Create {
+                    name: format!("{} {}", t.game_version, t.ooze),
+                    target: t.clone(),
+                })
+                .unwrap();
+            let Ok(LibPayload::Created(id)) = wait(&mut lib, op) else {
+                panic!("created {t:?}")
+            };
+            assert_eq!(lib.snapshot().instance(&id).unwrap().target, t);
+        }
+        let refused = lib
+            .submit(LibCommand::Create {
+                name: "Not in the catalog".into(),
+                target: target("26.2", Loader::Fabric, true),
+            })
+            .and_then(|op| wait(&mut lib, op));
+        assert!(refused.is_err(), "no Ooze bundle is pinned for 26.2");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
