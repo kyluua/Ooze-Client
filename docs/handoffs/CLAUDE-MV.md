@@ -7,9 +7,9 @@
   - `c7f9ca2`: Fabric adapters and build.
   - `1d0477e`: launcher interface.
   - `081b805`: specs.
-  - Merge of Sol's `4b7379c`, `53adaa4`, `0ae6d7e` and `51d09f8`, reviewed in §4.
-  - Integration commit.
-  - The commit that adds this handoff.
+  - `493b008`: merge of Sol's `4b7379c`, `53adaa4`, `0ae6d7e` and `51d09f8`, reviewed in §4.
+  - `b6abebc`: integration (release-aware library, JDK 25 detection).
+  - `3cd13d8`: this handoff and the evidence (the result commit).
 - **Contracts:**
   - Library API 1, with Sol's additive `Library::open_with_release`.
   - Launcher API 1.1 and JNI ABI 1 are unchanged.
