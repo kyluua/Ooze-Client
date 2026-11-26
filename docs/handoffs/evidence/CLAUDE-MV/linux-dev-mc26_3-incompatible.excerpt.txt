@@ -1,0 +1,10 @@
+[main/INFO] (FabricLoader/GameProvider) Loading Minecraft 26.3 with Fabric Loader 0.20.1
+[Render thread/WARN] (OozeClient) Ooze Client 0.1.0-rc1+mc26.3 is OFF: The Ooze native library version does not match this mod.
+[Render thread/WARN] (OozeClient)   state    : INCOMPATIBLE
+[Render thread/INFO] (OozeClient) Ooze Client bootstrap: 10808 µs total, engine connect 189 µs, dev=true, state=INCOMPATIBLE
+[Render thread/INFO] (Minecraft) Using graphics backend Vulkan, using drivers: 1.4.318 llvmpipe Mesa 25.2.8-0ubuntu0.24.04.4 (LLVM 20.1.2)
+[Render thread/INFO] (Minecraft) Created window using SDL video driver: x11
+[Render thread/INFO] (OozeClient) OOZE_READY v1 screen=title engine=INCOMPATIBLE
+[Test thread/INFO] (OozeClient/C0-LaunchTest) C0 fixture pixels: left=FFF8F9FF right=FF171923 (expected FFF8F9FF / FF171923), gui scale 2.0
+[Test thread/INFO] (OozeClient/C0-LaunchTest) C0 input/window OK: F9 code 66 -> key.keyboard.f9, Escape code 41 -> key.keyboard.escape, window 854x480
+[Test thread/INFO] (OozeClient/C0-LaunchTest) C0 launch test PASSED: state=INCOMPATIBLE, title screen reached, vanilla Options round-trip OK (Escape key and Done)

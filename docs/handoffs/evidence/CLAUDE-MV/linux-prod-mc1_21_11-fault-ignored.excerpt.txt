@@ -1,0 +1,9 @@
+Production run uses packaged mod JAR jars/ooze-client-0.1.0-rc1+mc1.21.11.jar (sha256 9a8cb3667213e4b57273c6eb52e5604fda1abd95c99171fb9922523ad6bcb2f8)
+[main/INFO]: Loading Minecraft 1.21.11 with Fabric Loader 0.20.1
+[Render thread/WARN]: Ignoring -Doozeclient.dev.engineFault outside the development environment.
+[Render thread/WARN]: Ooze Client 0.1.0-rc1+mc1.21.11 is OFF: linux-x86_64 is not a supported Ooze native platform yet.
+[Render thread/WARN]:   state    : UNSUPPORTED_PLATFORM
+[Render thread/INFO]: Ooze Client bootstrap: 8293 µs total, engine connect 1615 µs, dev=false, state=UNSUPPORTED_PLATFORM
+[Render thread/INFO]: OOZE_READY v1 screen=title engine=UNSUPPORTED_PLATFORM
+[Test thread/INFO]: C0 fixture pixels: left=FFF8F9FF right=FF171923 (expected FFF8F9FF / FF171923), gui scale 2.0
+[Test thread/INFO]: C0 launch test PASSED: state=UNSUPPORTED_PLATFORM, title screen reached, vanilla Options round-trip OK

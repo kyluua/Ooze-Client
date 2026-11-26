@@ -1,0 +1,10 @@
+Production run: Minecraft 26.2 with mod JAR ooze-client-0.1.0-rc1+mc26.2.jar (sha256 9fa9ede12a5c1e671c3ea4262d743754eabf07a0beff0b3ea44892622b1fbab8)
+[main/INFO]: Loading Minecraft 26.2 with Fabric Loader 0.20.1
+[Render thread/WARN]: Ooze Client 0.1.0-rc1+mc26.2 is OFF: linux-x86_64 is not a supported Ooze native platform yet.
+[Render thread/WARN]:   state    : UNSUPPORTED_PLATFORM
+[Render thread/INFO]: Ooze Client bootstrap: 10862 µs total, engine connect 1758 µs, dev=false, state=UNSUPPORTED_PLATFORM
+[Render thread/INFO]: Using graphics backend OpenGL, using drivers: 4.5 (Core Profile) Mesa 25.2.8-0ubuntu0.24.04.4
+[Render thread/INFO]: OOZE_READY v1 screen=title engine=UNSUPPORTED_PLATFORM
+[Test thread/INFO]: C0 fixture pixels: left=FFF8F9FF right=FF171923 (expected FFF8F9FF / FF171923), gui scale 2.0
+[Test thread/INFO]: C0 input/window OK: F9 code 298 -> key.keyboard.f9, Escape code 256 -> key.keyboard.escape, window 854x480
+[Test thread/INFO]: C0 launch test PASSED: state=UNSUPPORTED_PLATFORM, title screen reached, vanilla Options round-trip OK (Escape key and Done)
