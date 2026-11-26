@@ -67,8 +67,8 @@ Loud     ○○○○○○○●●●  Quiet        (quiet surfaces, expressiv
 - All 12 screens in [SCREENS.md](SCREENS.md), fully interactive.
 - The full component library in [COMPONENTS.md](COMPONENTS.md).
 - Sample modules and HUD widgets, clearly labelled **Sample**, that exercise every framework capability.
-- One Fabric distribution for **Minecraft Java Edition 1.21.11**.
-- The **Ooze Launcher** (owner decision 2026-11-16): a Windows x64 desktop launcher with its own Microsoft sign-in that installs, verifies and directly starts 1.21.11 + Fabric + Ooze. Its first milestone, L0, is only the path from sign-in to Play ([docs/launcher/LAUNCHER_UI.md](launcher/LAUNCHER_UI.md)). The mod also stays installable by hand into the official launcher.
+- Fabric distributions for **Minecraft Java Edition 1.21.11, 26.1, 26.1.1, 26.1.2, 26.2 and 26.3** (owner brief 2026-11-26), one JAR per Minecraft API family (TARGET_PLATFORM §1).
+- The **Ooze Launcher** (owner decision 2026-11-16): a Windows x64 desktop launcher with its own Microsoft sign-in that installs, verifies and directly starts Minecraft with Fabric and Ooze (or Vanilla) for the versions its backend supports. Its first milestone, L0, is only the path from sign-in to Play ([docs/launcher/LAUNCHER_UI.md](launcher/LAUNCHER_UI.md)). The mod also stays installable by hand into the official launcher.
 - The native engine runs on **Windows x64** first. Other platforms run vanilla with a clear diagnostic until their artifacts and launch tests exist (TARGET_PLATFORM §2).
 
 **Owner scope expansion (2026-11-17).** Now in scope, in reviewable milestones (IMPLEMENTATION_PLAN L1–L3, M0–M3):
@@ -88,7 +88,7 @@ Loud     ○○○○○○○●●●  Quiet        (quiet surfaces, expressiv
 - Custom UI sound assets. v0.1 uses the vanilla UI click with Ooze pitch and volume tuning.
 - Features that give an unfair advantage on servers. When modules arrive, the module metadata includes fair-play classification ([ARCHITECTURE.md §8](ARCHITECTURE.md)).
 - Built-in anti-cheat, fair-play installation modes or any claim that an installation is "cheat-proof" or "server-approved" (owner decision, 2026-11-25). Servers decide what they allow.
-- Builds for 26.x or any Minecraft version other than 1.21.11 (owner decision, 2026-11-09).
+- Minecraft versions other than the six above, and Quilt, Forge or NeoForge builds of the mod.
 - Any **Ooze** account system or login server. Microsoft sign-in, entitlement and account switching live in the Ooze Launcher's backend, which keeps credentials out of the interface, the mod and the JNI engine (TARGET_PLATFORM §4).
 
 ## 7. Success criteria

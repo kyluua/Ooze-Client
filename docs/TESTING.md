@@ -11,7 +11,7 @@ Every result reported in a handoff uses exactly one of these words, and states t
 |---|---|
 | **Built** | Compiles and packages |
 | **Headless-tested** | Automated tests passed without a game window: JUnit, `cargo test`, contract tests, goldens, egui_kittest (launcher interface through its AccessKit tree) |
-| **Game-launched** | A real Minecraft 1.21.11 client started with the mod, and the stated automated check passed |
+| **Game-launched** | A real Minecraft client of the stated version (1.21.11, 26.1, 26.1.1, 26.1.2, 26.2 or 26.3) started with the mod, and the stated automated check passed |
 | **Manually verified** | A person looked at or used it, on stated hardware |
 
 A platform is **supported** only with a native artifact **and** a Game-launched pass on that platform (TARGET_PLATFORM §2).
@@ -45,21 +45,30 @@ A platform is **supported** only with a native artifact **and** a Game-launched 
 
 ## 3. Client launch tests
 
-Run the whole matrix and collect evidence (screenshots, log excerpts, summary):
+Run the whole matrix for every advertised target and collect evidence (screenshots, log excerpts, summary with JAR hashes):
 
 ```bash
 OOZE_NATIVE_RESOURCES=<abs dir> tools/launch-tests.sh build/launch-evidence   # Linux uses xvfb-run; Windows: Git Bash
+OOZE_TARGETS="26.3" OOZE_DEV_CASES=0 tools/launch-tests.sh <dir>             # one version, shipped JAR only
 ```
+
+The script builds every distribution JAR once and launches **those exact files**. A case passes only with Gradle success, `C0 launch test PASSED`, `Loading Minecraft <version>` and the exact line `OOZE_READY v1 screen=title engine=<expected>`.
+
+**Per Minecraft version** (`prod-<version>`): the family's shipped JAR in a production Fabric environment on that exact version (`-PoozeMinecraft`), with its pinned Fabric API. The 26.1 JAR runs on 26.1, 26.1.1 and 26.1.2.
+
+**Per adapter** (its compile version): the `dev-<state>` fault cases, `prod-fault-ignored`, and on Windows x64 with resources the three `win-real-*` cases.
+
+**26.x input and window check** (every case, every engine state): the family's compiled `F9` and `Escape` key codes must name those keys on the running input backend (GLFW 298/256 through 26.2; SDL3 scancodes 66/41 on 26.3), the window must have a handle and a size, and Options is closed once with a real Escape key press and once with Done.
 
 The expected state defaults inside the test to **`LOADED` on Windows x64** and **`UNSUPPORTED_PLATFORM` elsewhere**. Sol's loader checks the platform first. `-PoozeExpectEngineState=<STATE>` overrides it.
 
-Every case also asserts that the `GuiGraphicsAccessor` mixin applied (dev and production-remapped), and that the launcher readiness marker `OOZE_READY v1 screen=title engine=<STATE>` was logged when the title screen opened.
+Every case also asserts that the render-state accessor mixin applied (`GuiGraphicsAccessor` on 1.21.11, `GuiGraphicsExtractorAccessor` on 26.x; dev and production), and that the launcher readiness marker `OOZE_READY v1 screen=title engine=<STATE>` was logged when the title screen opened.
 
 | Case | Task | Asserts |
 |---|---|---|
 | `dev-default` | `runClientGameTest` | Title screen reached; **real** state from Sol's loader; when not loaded: no `key.oozeclient.*` mappings and the notice was queued; vanilla Options round trip |
 | `dev-<state>` for `missing_library`, `incompatible`, `load_failed` | `runClientGameTest -PoozeEngineFault=<state>` | The same, for each fault-injected state |
-| `prod-default` | `runProductionClientGameTest` | The **shipped remapped JAR** (bridge classes and DLL merged) in a production Fabric environment (`dev=false`); real loader state |
+| `prod-<version>` | `runProductionClientGameTest -PoozeProductionJar=<jar> [-PoozeMinecraft=<version>]` | The **shipped JAR** (bridge, shared classes and DLL merged; remapped for 1.21.11) in a production Fabric environment (`dev=false`) on that exact version; real loader state |
 | `prod-fault-ignored` | `runProductionClientGameTest -PoozeEngineFault=incompatible` | A release build ignores developer fault injection (real state, with a warning) |
 | `win-real-missing_library`, `win-real-corrupt`, `win-real-abi-mismatch` (**Windows x64 only**) | Generated from the provided resources: DLL removed, one DLL byte flipped, manifest `bridge.abi=2` | Real `MISSING_LIBRARY` / `INCOMPATIBLE` (corrupt DLL: SHA-256 mismatch) / `INCOMPATIBLE` (ABI) from Sol's loader; vanilla usable |
 | `LOADED` branch (**Windows x64 only**) | `dev-default` with resources | The F9 developer key exists; the probe round trip passes; `BridgeDiagnosticScreen` renders fixture frames; the colour switches `F8F9FF` → `171923` → `F8F9FF` with simulated left-button hold and release; two screenshots |

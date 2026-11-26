@@ -1,13 +1,13 @@
 # AGENTS.md: Instructions for coding agents
 
 Ooze has two products that ship together:
-- **Ooze Client:** a Minecraft Java Edition **1.21.11** client delivered as a **Fabric** mod.
-  - The Fabric adapter is **Java 21**.
+- **Ooze Client:** a Minecraft Java Edition client delivered as a **Fabric** mod for **1.21.11, 26.1, 26.1.1, 26.1.2, 26.2 and 26.3** (decision record 2026-11-26).
+  - The Fabric adapters are **Java 21** (1.21.11, remapped) and **Java 25** (26.x, unobfuscated).
   - Most Ooze-owned engine and interface logic is **Rust**, reached through one batched JNI bridge.
   - Minecraft itself stays Java.
 - **Ooze Launcher:** a standalone **Rust** desktop launcher for Windows x64.
   - It has its **own Microsoft sign-in**.
-  - It installs, verifies and **directly launches** Minecraft 1.21.11 with Fabric and Ooze.
+  - It installs, verifies and **directly launches** Minecraft with Fabric and Ooze, or Vanilla, for the versions the backend reports.
 
 The specification in `docs/` is the source of truth. Implement it milestone by milestone.
 
@@ -32,6 +32,11 @@ The specification in `docs/` is the source of truth. Implement it milestone by m
 > launcher milestone. This supersedes the usual Claude path restriction for
 > `launcher/crates/ooze-launcher-ui/**` and `launcher/resources/**` in this work.
 > Claude retains in-game/product-model ownership and independent review.
+
+> **Decision record (2026-11-26, owner):** Ooze supports Minecraft Java **1.21.11, 26.1, 26.1.1, 26.1.2, 26.2 and 26.3** on Windows x64. This supersedes the 2026-11-09 "1.21.11 only" target for 26.x.
+> - Keep the 1.21.11 Java 21 remapped build; 26.x uses Java 25 and Fabric's non-remapping Loom.
+> - One JAR per Minecraft API family (`versions/mc1_21_11`, `mc26_1`, `mc26_2`, `mc26_3`); Minecraft-independent Java lives in `versions/common`; family-specific 26.x calls live only in each family's `compat/McCompat` and `dev/FixtureRenderState`.
+> - A JAR lists only the versions on which its production launch test passed. Pins and the matrix are in `docs/TARGET_PLATFORM.md` §1.
 
 > **Decision record (2026-11-25, owner):** Ooze ships **without built-in anti-cheat**.
 > - One normal instance experience: players add compatible mods and packs to any instance. Managed Fair Play and instance modes are removed from the interface, the Library API (`docs/handoffs/SOL-INSTANCE-MODE-REMOVAL.md`) and the active specs; legacy `managed` instances load as normal instances.
@@ -80,7 +85,7 @@ Two agents work in this repository. They do **not** share chat history: **handof
   - **Never** call JNI once per vertex, glyph, entity, widget or setting.
   - Use **only** the agreed `bridge-java` API. Never declare `native` methods or a second JNI interface outside `bridge-java`.
 - **Native code never sees Minecraft symbols.** No obfuscated or Mojang class names cross the bridge; only Ooze-defined data does.
-- **Mojang official names** in all Java sources, compiled with Loom's **remapping** plugin for 1.21.11. Do not copy 26.x APIs.
+- **Mojang official names** in all Java sources: compiled with Loom's **remapping** plugin for 1.21.11 and the **non-remapping** plugin for unobfuscated 26.x. Keep each version's APIs in its own adapter; never use a 26.x API in the 1.21.11 adapter or a family-specific API in shared 26.x code.
 
 **Launcher architecture**
 - **The launcher window** is drawn by a maintained Rust GUI toolkit (egui/eframe with AccessKit; ARCHITECTURE §19, ADR-016). The in-game "no custom renderer" rule does **not** apply to the separate desktop window.
@@ -129,10 +134,11 @@ Two agents work in this repository. They do **not** share chat history: **handof
 ## Commands
 
 ```bash
-./gradlew build                                        # Java build + Java unit tests (all Gradle projects)
-./gradlew buildAll -PoozeNativeResources=<abs dir>     # mod JAR with Sol's Windows x64 DLL + build/dist/ooze-launcher-profile.json
-./gradlew :versions:mc1_21_11:runClient                # dev client (offline dev account; no real sign-in)
-OOZE_NATIVE_RESOURCES=<abs dir> tools/launch-tests.sh  # full launch matrix + evidence (Linux via xvfb-run; Windows Git Bash adds real-DLL cases)
+./gradlew build                                        # Java build + Java unit tests (all Gradle projects; Gradle runs on JDK 25, provisioned if missing)
+./gradlew buildAll -PoozeNativeResources=<abs dir>     # every mod JAR with Sol's Windows x64 DLL + build/dist/ooze-launcher-profile-mc<version>.json
+./gradlew :versions:mc1_21_11:runClient                # dev client (offline dev account; no real sign-in); also :versions:mc26_1, mc26_2, mc26_3
+OOZE_NATIVE_RESOURCES=<abs dir> tools/launch-tests.sh  # launch matrix for every target + evidence (Linux via xvfb-run; Windows Git Bash adds real-DLL cases)
+./gradlew :versions:mc26_1:runProductionClientGameTest -PoozeMinecraft=26.1 -PoozeProductionJar=<abs jar>  # one shipped JAR on one listed version
 ./gradlew :versions:mc1_21_11:runClient -PoozeEngineFault=incompatible   # dev-only: exercise engine diagnostics
 
 # Launcher interface (Claude); until it is a member of Sol's launcher workspace, run inside the crate:

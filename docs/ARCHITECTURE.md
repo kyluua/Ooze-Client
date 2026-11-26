@@ -406,7 +406,7 @@ The fuzzy index and scoring are unchanged from the previous specification:
 ## 16. Resources and localisation
 
 - **Source assets** live in `assets-src/`: theme tokens, fonts with their OFL texts, icons and the brand.
-- **Java-side resources** live in `versions/mc1_21_11/src/main/resources/assets/oozeclient/`, including `lang/*.json`.
+- **Java-side resources** shared by every Minecraft adapter live in `versions/common/src/main/resources/assets/oozeclient/`, including `lang/*.json`; adapter-specific resources (`fabric.mod.json`, mixin configs) stay in each adapter.
 - **Resource contract** (agreed with Sol in G0 or G1): which assets are embedded in the native library and which are passed from the JAR at `init`.
 - **Translations:** Java resolves the `oozeclient.*` keys for the current language through Minecraft's language system, and sends the table to Rust at `init` and on language change. Rust never parses Minecraft language files itself.
 
@@ -456,6 +456,7 @@ See TARGET_PLATFORM §4.
 | 016 | **Launcher UI in Rust with egui/eframe + AccessKit** (Windows UI Automation); the in-game "no custom renderer" rule (ADR-002) does not apply to the separate desktop window | New (2026-11-16) |
 | 017 | **Instance, profile and theme are separate concepts.** An instance is version + loader + runtime + files + content (Sol's library). A profile is module/HUD/visual configuration (`ooze-ui`). A theme is interface appearance (tokens). The launcher talks to the library only through the versioned **Library API 1** | New (owner scope expansion 2026-11-17) |
 | 018 | **Real modules from one Rust catalog** (`ooze-ui`) with mandatory fair-play classes. Server-sensitive modules carry a notice; GAMEPLAY is blocked; an excluded list never ships. No built-in anti-cheat and no instance modes: file verification describes only what Ooze installed, never server approval | New (owner scope expansion 2026-11-17); amended 2026-11-25 (owner: Managed Fair Play removed) |
+| 019 | **One Fabric adapter per Minecraft API family, sharing everything Minecraft-independent.** 1.21.11 (Java 21, remapped) and 26.1 / 26.2 / 26.3 (Java 25, unobfuscated, non-remapping Loom) each build their own JAR against their own Minecraft; `versions/common` holds the engine connector, status, gate, diagnostics, readiness marker, runtime state and translations; the 26.x families share `versions/mc26` and differ only in `compat/McCompat` and `dev/FixtureRenderState`. A JAR lists only the versions its production launch test passed on (26.1 covers 26.1–26.1.2). Per-family compilation is required, not cosmetic: 26.3's SDL3 key codes are compile-time constants | New (owner brief 2026-11-26) |
 
 ---
 

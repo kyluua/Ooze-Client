@@ -284,7 +284,13 @@ The owner authorised real client modules, FPS/PvP/Minimal profiles, multiple iso
 **Depends on:** L2.
 
 - Only combinations whose install adapter and launch test exist on Windows x64 are exposed.
-- Each instance shows whether Ooze modules are available. They are available only on Fabric 1.21.11 until the mod targets more versions.
+- Each instance shows whether Ooze modules are available.
+
+#### MV — Minecraft 1.21.11 and 26.1–26.3 (owner brief 2026-11-26; Claude mod and interface + Sol backend)
+
+- **Claude:** Fabric adapters for 1.21.11 (kept) and the 26.1, 26.2 and 26.3 families with shared Java (`versions/common`, `versions/mc26`); production JARs with exact `minecraft` lists; per-version launcher profiles; the launch matrix for every target (`tools/launch-tests.sh`); Vanilla and Fabric version selection, the Play target and the content target in the launcher interface. Delivered in `docs/handoffs/CLAUDE-MV.md`.
+- **Sol:** install adapters, capabilities, the planner's Fabric API pin, Play for the instance's own target, packaging and Windows `engine=LOADED` evidence (`docs/handoffs/CLAUDE-MV-request.md`).
+- **Gate:** every advertised Fabric target Game-launched on Windows x64 with its shipped JAR to `OOZE_READY v1 screen=title engine=LOADED`, and vanilla Options working with the engine unavailable (real DLL failure cases); launcher version selection Headless-tested and Manually verified with keyboard and Narrator on Windows.
 
 ### In-game module milestones (revised dependencies, 2026-11-17)
 

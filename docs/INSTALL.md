@@ -1,6 +1,17 @@
 # Installing Ooze
 
-Ooze is a **Fabric mod for Minecraft Java Edition 1.21.11**, plus the **Ooze Launcher**, which installs and starts it for you.
+Ooze is a **Fabric mod for Minecraft Java Edition 1.21.11, 26.1, 26.1.1, 26.1.2, 26.2 and 26.3**, plus the **Ooze Launcher**, which installs and starts it for you.
+
+Each Minecraft version needs its matching Ooze JAR and Fabric API:
+
+| Minecraft | Ooze JAR | Fabric API | Java |
+|---|---|---|---|
+| 1.21.11 | `ooze-client-<version>+mc1.21.11.jar` | `0.141.6+1.21.11` or newer for 1.21.11 | 21 |
+| 26.1, 26.1.1, 26.1.2 | `ooze-client-<version>+mc26.1.jar` | `0.155.3+26.1.2` or newer for 26.1.x | 25 |
+| 26.2 | `ooze-client-<version>+mc26.2.jar` | `0.161.0+26.2` or newer for 26.2 | 25 |
+| 26.3 | `ooze-client-<version>+mc26.3.jar` | `0.166.2+26.3` or newer for 26.3 | 25 |
+
+All use Fabric Loader **0.20.1** or newer. A JAR refuses to load on a Minecraft version it doesn't list.
 
 > **Status (2026-11-16):**
 > - **Ooze Launcher:** not released yet. The interface and backend exist and are integrated. Still missing: the packaged Windows app, the project's Microsoft app registration and Minecraft Services access, and a verified signed-in launch. Use route B until a release with published checksums appears.
@@ -22,7 +33,8 @@ Steps:
 2. **Run** it.
 3. **Choose an install location**: an empty folder, or an existing Ooze game folder. Ooze never takes over a folder holding other files, and your official `.minecraft` folder is not touched.
 4. **Press Sign in.** Your web browser opens Microsoft's sign-in page. Sign in there, then come back. Ooze never sees your password.
-5. **Press Play.** The first time, the launcher downloads Minecraft 1.21.11, Fabric Loader 0.20.1, Fabric API, Java 21 and Ooze, verifying every file, and then starts the game. You can cancel before the game starts; downloaded files are reused next time.
+5. **Choose a version.** In Instances, a new instance offers the loader (Fabric or Vanilla) and the Minecraft versions this launcher can install; versions marked "· Ooze" include Ooze. The Play page names the version and loader it will start.
+6. **Press Play.** The first time, the launcher downloads that Minecraft version, Fabric Loader 0.20.1, Fabric API, the Java it needs (21 or 25) and Ooze, verifying every file, and then starts the game. You can cancel before the game starts; downloaded files are reused next time.
 
 Accounts and privacy:
 - Your sign-in is stored in Windows Credential Manager on your PC. Launcher data lives in `%LOCALAPPDATA%\OozeLauncher`.
@@ -38,16 +50,16 @@ If sign-in says **"Sign-in isn't set up in this build"** or **"Minecraft sign-in
 |---|---|
 | Minecraft Java Edition (owned) and the **official Minecraft Launcher** | You sign in **in that launcher**; Ooze has no login of its own |
 | **Windows x64** for Ooze features | On other systems the game runs normally with Ooze switched off and a notice explaining why |
-| Fabric Loader **0.20.1 or newer** for 1.21.11 | Installed with the official Fabric installer |
-| **Fabric API 0.141.6+1.21.11** (or newer for 1.21.11) | A separate mod JAR |
+| Fabric Loader **0.20.1 or newer** for your Minecraft version | Installed with the official Fabric installer |
+| **Fabric API** for your Minecraft version (table above) | A separate mod JAR |
 
-1. **Install Fabric Loader.** Run the official installer from <https://fabricmc.net/use/installer/>. Choose **Client**, Minecraft **1.21.11**, Loader **0.20.1** or newer, and keep **Create profile** ticked.
-2. **Download Fabric API** for 1.21.11 from its official page on Modrinth or CurseForge.
+1. **Install Fabric Loader.** Run the official installer from <https://fabricmc.net/use/installer/>. Choose **Client**, your Minecraft version, Loader **0.20.1** or newer, and keep **Create profile** ticked.
+2. **Download Fabric API** for your Minecraft version from its official page on Modrinth or CurseForge.
 3. **Open your mods folder.** Press `Win + R`, enter `%APPDATA%\.minecraft\mods` and press Enter. Create the folder if it doesn't exist.
 4. **Copy both JARs** into it:
-   - `ooze-client-<version>+mc1.21.11.jar`
-   - `fabric-api-<version>+1.21.11.jar`
-5. **Start the official Minecraft Launcher**, select the **fabric-loader-1.21.11** installation and press **Play**.
+   - the Ooze JAR for your version (table above), for example `ooze-client-<version>+mc26.3.jar`
+   - the matching Fabric API JAR
+5. **Start the official Minecraft Launcher**, select the **fabric-loader-<your version>** installation and press **Play**.
 
 The mod reads only your **username and UUID**, to show them in its interface. It never reads, stores or sends access tokens or session data.
 

@@ -1,6 +1,6 @@
 # Ooze Client — Repository Structure
 
-> Deliverable 11. Rewritten 2026-11-09 for the 1.21.11 / Rust architecture; launcher added 2026-11-16.
+> Deliverable 11. Rewritten 2026-11-09 for the 1.21.11 / Rust architecture; launcher added 2026-11-16; 26.x adapters and the shared Java module added 2026-11-26.
 > - **Owner:** C = Claude, S = Sol (Sol also owns the launcher backend; the L0 brief called that role "Codex").
 > - **State:** ✓ = exists, ○ = planned.
 
@@ -51,7 +51,9 @@ Ooze-Client/
 
 | Gradle/Cargo unit | Language | Produces | Packaged into the JAR as |
 |---|---|---|---|
-| `:versions:mc1_21_11` | Java 21 | The remapped Fabric mod | The JAR itself: `ooze-client-<ver>+mc1.21.11.jar` |
+| `:versions:common` | Java 21 | Minecraft-independent Java shared by every adapter (engine connector, status, gate, diagnostics, readiness marker, runtime state, in-game translations); merged into every JAR | Nothing on its own |
+| `:versions:mc1_21_11` | Java 21 | The remapped Fabric mod for 1.21.11 | `ooze-client-<ver>+mc1.21.11.jar` |
+| `:versions:mc26_1`, `:versions:mc26_2`, `:versions:mc26_3` | Java 25 | The unobfuscated Fabric mod per 26.x family. One build script and source tree (`versions/mc26/adapter.gradle.kts`, `versions/mc26/src`); each project holds its pins and its own `compat/McCompat` and `dev/FixtureRenderState` | `ooze-client-<ver>+mc26.1.jar` (26.1–26.1.2), `+mc26.2.jar`, `+mc26.3.jar` |
 | `:bridge-java` (Sol) | Java 21 | Bridge classes + native resources | **Merged once into the mod JAR** (not jar-in-jar, no second mod ID; `NativeBindings` not relocated) |
 | `native/` (Sol) | Rust | `ooze_jni.dll` (Windows x64) | `natives/windows-x86_64/ooze_jni.dll` + `META-INF/ooze/native.properties` inside the mod JAR, from Sol's prebuilt resources (`-PoozeNativeResources`); extracted to `<gameDir>/.ooze/natives/<ver>/<sha256>/…` and loaded by `NativeLoader` |
 | `native/crates/ooze-ui` (Claude) | Rust | Linked into the native library | Part of `ooze_jni` (not created yet) |
@@ -70,7 +72,7 @@ Ooze-Client/
 | Rust | Crate names `ooze-*`; `native/` workspace lints are Sol's, `launcher/` workspace lints are Sol's |
 | Commits | Conventional commits on `main` (AGENTS.md §Branches); a handoff document per milestone |
 | Generated assets | Produced by build tasks; committed only if listed in `assets-src/LICENSES.md` |
-| Versioning | SemVer for the mod; JAR suffix `+mc1.21.11`; the bridge version is reported in the handoff and logs |
+| Versioning | SemVer for the mod; JAR suffix `+mc<family>` (`mc1.21.11`, `mc26.1`, `mc26.2`, `mc26.3`); each JAR's `fabric.mod.json` lists its exact Minecraft versions; the bridge version is reported in the handoff and logs |
 
 ## 4. Gradle tasks (contract)
 

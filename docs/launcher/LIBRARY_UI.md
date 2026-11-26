@@ -47,7 +47,7 @@ The left navigation gains, in this order and only when capable:
 
 Play, Settings and Diagnostics stay as in L0.
 - **Selected-instance chip:** the header shows the selected instance ("Fabric 1.21.11 · PvP"). It is activatable and opens Instances.
-- **Play** plays the selected instance through API 1: the interface saves the library's instance directory with `SaveSettings`, then sends `Launch`.
+- **Play** plays the selected instance through API 1: the interface saves the library's instance directory with `SaveSettings`, then sends `Launch`. The Play card names the exact target as tags ("Minecraft 26.3", "Fabric 0.20.1" or "Vanilla", "Ooze Client included" or "No Ooze modules") and the Java major ("Runs on Java 25").
 
 ## 3. Instances
 
@@ -60,7 +60,10 @@ Play, Settings and Diagnostics stay as in L0.
 Row actions are Select, Rename, Duplicate, Install / Repair, Check files and Archive. Each library action appears only if the backend's per-instance action list contains it. Archive moves the instance into the library archive; the confirmation says it is not deleted.
 
 **Create.**
-- A dialog lists **only** the combinations from `capabilities.create` (today Fabric 0.20.1 / 1.21.11 and, if reported, Vanilla 1.21.11). There are no free-text version fields.
+- A dialog offers **only** the combinations from `capabilities.create`. There are no free-text version fields.
+  - **Loader** first (each loader the library reports, in its order; Ooze targets first), then **Minecraft version** for that loader, newest first. Both are radio groups with arrow-key roving focus.
+  - A version is marked "· Ooze" when that combination includes Ooze. Below, the exact target ("Fabric 0.20.1 · Minecraft 26.3 · Java 25") and an "Ooze Client included" or "No Ooze modules" tag.
+  - Switching loader keeps the chosen version when the other loader offers it. Create sends exactly the target shown.
 - Each option shows the Java requirement and whether Ooze is available.
 - Name: 1–48 characters, trimmed. A duplicate name is allowed; the ID is the identity.
 
@@ -109,7 +112,7 @@ Row actions are Select, Rename, Duplicate, Install / Repair, Check files and Arc
 
 **Search.**
 - Query field, sort (relevance, downloads, updated), category filters from the library, and paging.
-- Results are filtered by the backend to the instance's game version and loader. Every card says so: "Compatible with Fabric 1.21.11, as reported by Modrinth".
+- Results are filtered by the backend to the instance's game version and loader. The page names the selected instance and its exact target, every card says "Compatible with …, as reported by Modrinth", and the install review says "Resolved for <target>".
 - Cards show icon (when provided), title, author, summary, downloads, updated date and the project type.
 - Text is plain: no markup is interpreted.
 
@@ -204,6 +207,9 @@ Library errors map to the L0 banner pattern (`LAUNCHER_UI.md §5`), with the bac
 - **Headless (egui_kittest, fixture library):**
   - every page hidden without its capability;
   - create offers only reported combinations;
+  - loader then version selection covers every reported combination, marks those with Ooze, works with the keyboard alone and fits at the minimum window and 200 % scale;
+  - Play names the selected instance's version, loader and Ooze availability;
+  - content search and the install review run for, and name, the selected instance's exact target;
   - a stale search result is ignored;
   - cancel during download;
   - the commit-boundary message;
