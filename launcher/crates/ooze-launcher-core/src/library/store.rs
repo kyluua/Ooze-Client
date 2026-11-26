@@ -137,21 +137,14 @@ impl Store {
         super::content::recover(self, id)?;
         Ok((self.instance(id)?, lock))
     }
-    pub fn create(
-        &self,
-        name_value: String,
-        target: Target,
-        preset: Preset,
-        mode: Mode,
-    ) -> Result<Id> {
-        self.create_filled(name_value, target, preset, mode, |_, _| Ok(()))
+    pub fn create(&self, name_value: String, target: Target, preset: Preset) -> Result<Id> {
+        self.create_filled(name_value, target, preset, |_, _| Ok(()))
     }
     fn create_filled(
         &self,
         name_value: String,
         target: Target,
         preset: Preset,
-        mode: Mode,
         fill: impl FnOnce(&Path, &mut Instance) -> Result<()>,
     ) -> Result<Id> {
         name(&name_value)?;
@@ -185,7 +178,7 @@ impl Store {
             name: name_value,
             revision: 1,
             target,
-            mode,
+            legacy_mode: LegacyMode::Normal,
             profile: Profile::new(preset),
             theme: Theme::default(),
             archived: false,
@@ -234,7 +227,6 @@ impl Store {
             name_value,
             original.target.clone(),
             original.profile.preset(),
-            Mode::Custom,
             |game, copy| {
                 copy.profile = original.profile.clone();
                 copy.theme = original.theme.clone();
@@ -322,10 +314,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();
         let a = store
-            .create("A".into(), Target::fabric(), Preset::Fps, Mode::Custom)
+            .create("A".into(), Target::fabric(), Preset::Fps)
             .unwrap();
         let b = store
-            .create("B".into(), Target::vanilla(), Preset::Minimal, Mode::Custom)
+            .create("B".into(), Target::vanilla(), Preset::Minimal)
             .unwrap();
         let mut appearance = super::super::Appearance::default();
         appearance.document.motion = ooze_ui::theme_doc::Motion::Reduced;
@@ -345,12 +337,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();
         let id = store
-            .create(
-                "Original".into(),
-                Target::fabric(),
-                Preset::Minimal,
-                Mode::Custom,
-            )
+            .create("Original".into(), Target::fabric(), Preset::Minimal)
             .unwrap();
         let calls = std::cell::Cell::new(0);
         let result = store.duplicate(&id, "Cancelled".into(), &|| {
@@ -369,10 +356,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();
         let a = store
-            .create("A".into(), Target::fabric(), Preset::Fps, Mode::Custom)
+            .create("A".into(), Target::fabric(), Preset::Fps)
             .unwrap();
         let b = store
-            .create("B".into(), Target::fabric(), Preset::Minimal, Mode::Custom)
+            .create("B".into(), Target::fabric(), Preset::Minimal)
             .unwrap();
         assert_ne!(store.game(&a).unwrap(), store.game(&b).unwrap());
         let options = store.game(&a).unwrap().join("options.txt");
@@ -407,7 +394,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();
         let id = store
-            .create("A".into(), Target::fabric(), Preset::Fps, Mode::Custom)
+            .create("A".into(), Target::fabric(), Preset::Fps)
             .unwrap();
         let (_, lock) = store.claim(&id).unwrap();
         assert_eq!(store.claim(&id).unwrap_err().code, ErrorCode::Busy);

@@ -524,11 +524,6 @@ pub(super) fn apply(
     report: Reporter<'_>,
 ) -> Result<()> {
     let (before, _lock) = store.claim(&plan.instance)?;
-    if before.mode == Mode::Managed {
-        return Err(invalid(
-            "This release approves no extra content in Managed mode. Explicitly convert this instance to Custom first.",
-        ));
-    }
     if before.revision != plan.revision
         || plan.created.elapsed() > std::time::Duration::from_secs(600)
     {
@@ -668,11 +663,6 @@ pub(super) fn change_reported(
         }
     }
     let (before, _lock) = store.claim(id)?;
-    if before.mode == Mode::Managed {
-        return Err(invalid(
-            "Convert this managed instance to Custom before editing extra content.",
-        ));
-    }
     if enabled != Some(true)
         && before
             .content
@@ -758,11 +748,6 @@ pub(super) fn repair(
         }
     }
     let (before, _lock) = store.claim(id)?;
-    if before.mode == Mode::Managed {
-        return Err(invalid(
-            "Managed baseline repair uses the launcher's Repair operation.",
-        ));
-    }
     let selected: Vec<_> = before
         .content
         .iter()
@@ -825,7 +810,6 @@ pub(super) fn verify(
     check: &dyn Fn() -> Result<()>,
 ) -> Result<IntegrityReport> {
     let mut result = IntegrityReport {
-        managed: instance.mode == Mode::Managed,
         baseline_verified: false,
         verified_files: 0,
         issues: Vec::new(),
@@ -839,46 +823,6 @@ pub(super) fn verify(
             ));
         } else {
             result.verified_files += 1;
-        }
-    }
-    if instance.mode == Mode::Managed {
-        if !instance.content.is_empty() {
-            result.issues.push(
-                "This release's managed policy approves only its pinned baseline content.".into(),
-            );
-        }
-        for directory in ["mods", "resourcepacks", "shaderpacks"] {
-            let path = util::join(game, directory)?;
-            if path.exists() {
-                for entry in fs::read_dir(path).map_err(|_| io_error())? {
-                    check()?;
-                    let entry = entry.map_err(|_| io_error())?;
-                    util::reject_links(&entry.path())?;
-                    result.issues.push(format!(
-                        "Unapproved entry in {directory}; convert to Custom or move it yourself."
-                    ));
-                    if result.issues.len() > 512 {
-                        return Err(invalid("Too many unapproved content entries."));
-                    }
-                }
-            }
-        }
-        let saves = util::join(game, "saves")?;
-        if saves.exists() {
-            for world in fs::read_dir(saves).map_err(|_| io_error())? {
-                check()?;
-                let world = world.map_err(|_| io_error())?;
-                util::reject_links(&world.path())?;
-                let packs = util::join(&world.path(), "datapacks")?;
-                if packs.is_dir()
-                    && fs::read_dir(packs)
-                        .map_err(|_| io_error())?
-                        .next()
-                        .is_some()
-                {
-                    result.issues.push("An installed local-world data pack is not approved by this managed policy.".into());
-                }
-            }
         }
     }
     Ok(result)
@@ -920,12 +864,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();
         let id = store
-            .create(
-                "Install".into(),
-                Target::fabric(),
-                Preset::Minimal,
-                Mode::Custom,
-            )
+            .create("Install".into(), Target::fabric(), Preset::Minimal)
             .unwrap();
         let before = store.instance(&id).unwrap();
         let source = dir.path().join("source.jar");
@@ -989,12 +928,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();
         let id = store
-            .create(
-                "World scope".into(),
-                Target::vanilla(),
-                Preset::Minimal,
-                Mode::Custom,
-            )
+            .create("World scope".into(), Target::vanilla(), Preset::Minimal)
             .unwrap();
         let game = store.game(&id).unwrap();
         let mut instance = store.instance(&id).unwrap();
@@ -1067,12 +1001,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();
         let id = store
-            .create(
-                "Recovery".into(),
-                Target::fabric(),
-                Preset::Minimal,
-                Mode::Custom,
-            )
+            .create("Recovery".into(), Target::fabric(), Preset::Minimal)
             .unwrap();
         let game = store.game(&id).unwrap();
         fs::create_dir(game.join("mods")).unwrap();
@@ -1154,36 +1083,67 @@ mod tests {
         }
     }
     #[test]
-    fn managed_mode_detects_extra_mod_without_deleting_it() {
+    fn formerly_managed_instance_accepts_unregistered_mods_at_launch() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();
         let id = store
-            .create(
-                "Managed".into(),
-                Target::fabric(),
-                Preset::Pvp,
-                Mode::Managed,
-            )
+            .create("Managed".into(), Target::fabric(), Preset::Pvp)
             .unwrap();
         let game = store.game(&id).unwrap();
         fs::create_dir(game.join("mods")).unwrap();
+        let registered = game.join("mods/recorded.jar");
+        fs::write(&registered, b"verified").unwrap();
+        let mut instance = store.instance(&id).unwrap();
+        instance.content.push(ContentReceipt {
+            project: "A".into(),
+            version: "a".into(),
+            kind: ContentKind::Mod,
+            path: "mods/recorded.jar".into(),
+            size: 8,
+            sha512: hash(&registered, &|| Ok(())).unwrap(),
+            enabled: true,
+            required_projects: Vec::new(),
+            required_versions: BTreeMap::new(),
+        });
+        store.save(&mut instance).unwrap();
+
+        let manifest = store.container(&id).unwrap().join("instance.json");
+        let mut legacy: serde_json::Value = util::read_json(&manifest).unwrap();
+        legacy["mode"] = "managed".into();
+        util::atomic_json(&manifest, &legacy).unwrap();
         let extra = game.join("mods/unknown.jar");
-        fs::write(&extra, b"unexpected").unwrap();
-        let report = verify(&store.instance(&id).unwrap(), &game, &|| Ok(())).unwrap();
-        assert!(!report.issues.is_empty());
-        assert!(extra.is_file());
+        fs::write(&extra, b"unregistered").unwrap();
+        super::super::before_launch(&game, &|| Ok(())).unwrap();
+        let preserved: serde_json::Value = util::read_json(&manifest).unwrap();
+        assert_eq!(preserved, legacy);
+
+        fs::write(&registered, b"modified").unwrap();
+        assert_eq!(
+            super::super::before_launch(&game, &|| Ok(()))
+                .unwrap_err()
+                .code,
+            ErrorCode::Integrity
+        );
+        fs::write(&registered, b"verified").unwrap();
+        change(&store, &id, "A", Some(false), &|| Ok(())).unwrap();
+        let normalized: serde_json::Value = util::read_json(&manifest).unwrap();
+        assert_eq!(normalized["mode"], "custom");
+        assert_eq!(normalized["id"], legacy["id"]);
+        assert_eq!(normalized["profile"], legacy["profile"]);
+        assert_eq!(normalized["theme"], legacy["theme"]);
+        assert_eq!(store.snapshot().unwrap().selected, Some(id));
+        assert_eq!(
+            fs::read(game.join("mods/recorded.jar.disabled")).unwrap(),
+            b"verified"
+        );
+        assert_eq!(fs::read(&extra).unwrap(), b"unregistered");
     }
     #[test]
     fn untracked_files_survive_failed_install_transaction() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();
         let id = store
-            .create(
-                "Custom".into(),
-                Target::fabric(),
-                Preset::Minimal,
-                Mode::Custom,
-            )
+            .create("Custom".into(), Target::fabric(), Preset::Minimal)
             .unwrap();
         let before = store.instance(&id).unwrap();
         let game = store.game(&id).unwrap();

@@ -25,8 +25,8 @@ source or assets were copied into the launcher backend.
 Public API v2 requests use a descriptive User-Agent and no account token.
 [Iris project](https://api.modrinth.com/v2/project/iris) ID YL57xq9U,
 version ka9PDlsN (`1.10.8+1.21.11-fabric`), requires Sodium version rkdTcxoT,
-project AANobbMI. This exact version pair is a Custom-instance integration test,
-not a managed-policy approval or bundled release component. SHA-512 and sizes
+project AANobbMI. This exact version pair is an optional Modrinth integration
+fixture, downloaded separately from the release. SHA-512 and sizes
 come from the selected version metadata and are verified before commit.
 
 Observed project license metadata:
@@ -42,8 +42,8 @@ compatibility opinion. Sodium is not relabeled MIT or assumed to have the same
 license as Iris. Its source and binaries have not been copied into Ooze's source
 or launcher package by this work. User-selected downloads retain upstream terms.
 Any future vendoring/bundling requires review of the exact version's license and
-applicable notices. Managed currently approves only the pinned Ooze baseline.
+applicable notices.
 
 The release's own notices are generated from the Windows-filtered Cargo metadata
-and shipped license files; original font/OFL files are included. Minecraft game
-files and these optional Custom mod downloads are not bundled in the review ZIP.
+and shipped license files. Original font/OFL files are included. The launcher
+downloads Minecraft game files and optional mods separately from the review ZIP.

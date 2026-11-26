@@ -1,6 +1,6 @@
 # Library API 1 — instances, presets, themes and content
 
-Owner: Sol. This additive Rust source API is exposed as
+Owner: Sol. This in-tree Rust source API is exposed as
 `ooze_launcher_core::library`. Launcher API 1 and JNI ABI 1 remain unchanged.
 The implementation and verification status is recorded in SOL-L1.md; this
 contract alone is not execution evidence.

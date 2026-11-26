@@ -356,7 +356,6 @@ impl LibraryBackend for CoreLibrary {
                     name: name.clone(),
                     target: to_core_target(target),
                     preset: sl::Preset::Minimal,
-                    mode: sl::Mode::Custom,
                 },
                 plain(&c),
             ),
@@ -375,14 +374,7 @@ impl LibraryBackend for CoreLibrary {
                 plain(&c),
             ),
             LibCommand::Archive(i) => self.start(sl::Command::Archive(id(i)), plain(&c)),
-            LibCommand::SetMode {
-                id: i,
-                mode: IntegrityMode::Custom,
-            } => self.start(sl::Command::ConvertToCustom(id(i)), plain(&c)),
-            LibCommand::SetMode {
-                id: i,
-                mode: IntegrityMode::ManagedFairPlay,
-            } => self.start(sl::Command::ConvertToManaged(id(i)), plain(&c)),
+            LibCommand::SetMode { .. } => Err(LibError::new(LibErrorKind::Invalid)),
             LibCommand::LoadProfile(i) => {
                 let s = self
                     .raw_instance(i)
@@ -722,25 +714,19 @@ pub fn map_snapshot(raw: &sl::Snapshot, caps: &sl::Capabilities) -> LibrarySnaps
         .filter(|s| !s.instance.archived)
         .map(|s| {
             let i = &s.instance;
-            let mode = match i.mode {
-                sl::Mode::Managed => IntegrityMode::ManagedFairPlay,
-                sl::Mode::Custom => IntegrityMode::Custom,
-            };
-            let mut actions = vec![
-                InstanceAction::Rename,
-                InstanceAction::Duplicate,
-                InstanceAction::Archive,
-            ];
-            actions.push(InstanceAction::ChangeMode);
             InstanceSummary {
                 id: InstanceId(i.id.0.clone()),
                 name: i.name.clone(),
                 target: from_core_target(&i.target),
                 preset: i.profile.document.base,
                 overrides: override_count(&i.profile.document),
-                mode,
+                mode: IntegrityMode::Custom,
                 install: None,
-                actions,
+                actions: vec![
+                    InstanceAction::Rename,
+                    InstanceAction::Duplicate,
+                    InstanceAction::Archive,
+                ],
                 content: kinds_for(&i.target, &offered),
                 running: false,
                 revision: i.revision,
@@ -762,7 +748,7 @@ pub fn map_snapshot(raw: &sl::Snapshot, caps: &sl::Capabilities) -> LibrarySnaps
             profiles: !caps.runtime_modules.is_empty(),
             themes: caps.appearance,
             content: offered,
-            managed_mode: true,
+            managed_mode: false,
             sort: caps.search_options,
         },
         instances,
@@ -885,13 +871,6 @@ fn installed_items(receipts: &[sl::CheckedContent], kind: ContentKind) -> Vec<In
 
 fn map_integrity(r: &sl::IntegrityReport) -> IntegrityReport {
     let mut issues: Vec<IntegrityIssue> = Vec::new();
-    if r.managed && !r.baseline_verified {
-        issues.push(IntegrityIssue {
-            file: String::new(),
-            problem: IntegrityProblem::BaselineUnverified,
-            actions: Vec::new(),
-        });
-    }
     issues.extend(
         r.content
             .iter()
@@ -902,11 +881,7 @@ fn map_integrity(r: &sl::IntegrityReport) -> IntegrityReport {
                     sl::ContentStatus::Missing => IntegrityProblem::Missing,
                     _ => IntegrityProblem::HashMismatch,
                 },
-                actions: if r.managed {
-                    Vec::new()
-                } else {
-                    vec![IntegrityAction::Repair]
-                },
+                actions: vec![IntegrityAction::Repair],
             }),
     );
     let recorded_messages: std::collections::BTreeSet<_> = r
@@ -931,11 +906,7 @@ fn map_integrity(r: &sl::IntegrityReport) -> IntegrityReport {
             }),
     );
     IntegrityReport {
-        mode: if r.managed {
-            IntegrityMode::ManagedFairPlay
-        } else {
-            IntegrityMode::Custom
-        },
+        mode: IntegrityMode::Custom,
         checked_files: r.verified_files,
         issues,
     }

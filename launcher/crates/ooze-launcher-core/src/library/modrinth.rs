@@ -684,12 +684,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = super::super::store::Store::open(dir.path()).unwrap();
         let id = store
-            .create(
-                "Graph".into(),
-                Target::fabric(),
-                Preset::Minimal,
-                Mode::Custom,
-            )
+            .create("Graph".into(), Target::fabric(), Preset::Minimal)
             .unwrap();
         let instance = store.instance(&id).unwrap();
         let fixture = Fixture(BTreeMap::from([

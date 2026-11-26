@@ -8,7 +8,7 @@ function Run-Cli([string[]]$Arguments){
     return ($lines -join "`n")
 }
 foreach($target in @('fabric','vanilla')){
-    $arguments=@('library','create',"CI $target",'--managed')
+    $arguments=@('library','create',"CI $target")
     if($target -eq 'vanilla'){$arguments+='--vanilla'}
     $created=(Run-Cli $arguments)|ConvertFrom-Json
     $id=$created.Instance
@@ -21,11 +21,30 @@ foreach($target in @('fabric','vanilla')){
     $hasOoze=@($receipt.files|Where-Object path -eq 'mods/ooze-client.jar').Count -eq 1
     if($hasOoze -ne ($target -eq 'fabric')){throw 'Wrong Ooze distribution selection'}
     $verify=(Run-Cli @('library','verify',$id))|ConvertFrom-Json
-    if(-not $verify.Integrity.baseline_verified -or $verify.Integrity.issues.Count -ne 0){throw 'Managed baseline did not verify'}
-    $options=Join-Path $instance.game_dir 'options.txt'
-    [IO.File]::WriteAllText($options,'controlled player settings fixture')
-    $before=(Get-FileHash -LiteralPath $options).Hash
+    if(-not $verify.Integrity.baseline_verified -or $verify.Integrity.issues.Count -ne 0){throw 'Installed game files did not verify'}
+    $fixtures=@('options.txt','saves/test/level.dat','saves/test/datapacks/test.zip','screenshots/test.png','resourcepacks/test.zip','shaderpacks/test.zip','mods/unregistered.jar')
+    $before=@{}
+    foreach($relative in $fixtures){
+        $path=Join-Path $instance.game_dir $relative
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
+        [IO.File]::WriteAllText($path,"controlled repair fixture: $relative")
+        $before[$relative]=(Get-FileHash -LiteralPath $path).Hash
+    }
+    $generation=Join-Path $instance.game_dir ".ooze-launcher/$($receipt.directory)"
+    $artifact=@($receipt.files | Where-Object path -eq 'mods/ooze-client.jar')
+    if($artifact.Count -eq 1){
+        [IO.File]::AppendAllText((Join-Path $generation $artifact[0].path),'controlled game-file corruption')
+        $verify=(Run-Cli @('library','verify',$id))|ConvertFrom-Json
+        if($verify.Integrity.baseline_verified -or $verify.Integrity.issues.Count -ne 1){throw 'Corrupt packaged game file did not fail verification'}
+    }
     $null=Run-Cli @('instance',$id,'repair')
-    if((Get-FileHash -LiteralPath $options).Hash -ne $before){throw 'Repair changed options.txt'}
+    foreach($relative in $fixtures){
+        $path=Join-Path $instance.game_dir $relative
+        if((Get-FileHash -LiteralPath $path).Hash -ne $before[$relative]){
+            throw "Repair changed $relative"
+        }
+    }
+    $verify=(Run-Cli @('library','verify',$id))|ConvertFrom-Json
+    if(-not $verify.Integrity.baseline_verified -or $verify.Integrity.issues.Count -ne 0){throw 'Repaired game files did not verify'}
     Write-Output "Actual Java 21 install/repair and baseline verification passed: $target 1.21.11 (no live game/auth claim)"
 }

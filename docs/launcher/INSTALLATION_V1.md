@@ -49,8 +49,9 @@ cache files are retained in L0; automatic pruning and a disk quota are future
 work, so repeated upgrades/repairs can retain substantial disk space.
 
 The production Fabric entrypoint launches through structured Command arguments,
-never a shell. Fabric's `fabric.addMods` points to the managed generation's mod
-directory; the game directory's user content is separate. Long classpaths use a
+never a shell. Fabric's `fabric.addMods` lists the verified distribution JARs
+from the game installation receipt. Fabric discovers additional user mods in
+the game directory's `mods/` folder. Long classpaths use a
 non-secret Java argument file. Launcher-controlled JVM memory is bounded; freeform
 JVM flags are not accepted. Inherited Java agent/options environment variables
 are removed. Minecraft must receive its game token through the game protocol;
