@@ -239,7 +239,9 @@ Integration code is complete (C0). What remains is evidence, plus follow-ups to 
 
 #### Owner scope expansion (2026-11-17)
 
-The owner authorised real client modules, FPS/PvP/Minimal profiles, multiple isolated instances, Modrinth content (mods, resource packs, data packs, shader packs), customisable themes and managed-installation integrity. The milestones below replace "L1+ (not planned in detail)".
+The owner authorised real client modules, FPS/PvP/Minimal profiles, multiple isolated instances, Modrinth content (mods, resource packs, data packs, shader packs), customisable themes and installation integrity. The milestones below replace "L1+ (not planned in detail)".
+
+**Owner decision (2026-11-25):** Ooze ships without built-in anti-cheat. Managed Fair Play and instance modes are removed; every instance is a normal instance where players add compatible mods and packs. File verification and Repair stay. Module classes, the GAMEPLAY block and the excluded list are unchanged.
 
 - **Backend contract:** Sol's `docs/launcher/LIBRARY_API_V1.md` (Library API 1, alongside Launcher API 1).
 - **Product definitions:** `docs/MODULES.md` and `docs/launcher/LIBRARY_UI.md`.
@@ -266,7 +268,7 @@ The owner authorised real client modules, FPS/PvP/Minimal profiles, multiple iso
   - Game-launched (Windows x64): the installed mod loads in the selected instance and `OOZE_READY` is logged;
   - Manually verified: Narrator over the new screens.
 
-#### L2 — Content types, installed content, integrity modes (Sol + Claude)
+#### L2 — Content types, installed content, file verification (Sol + Claude)
 
 **Depends on:** L1.
 
@@ -274,8 +276,8 @@ The owner authorised real client modules, FPS/PvP/Minimal profiles, multiple iso
 - Data packs, with an explicitly selected existing local world; refused while the game runs.
 - Shader packs, with the compatible shader loader checked; installed ≠ enabled.
 - Updates, disable and removal of recorded files only.
-- Managed Fair Play vs Custom with concrete integrity failures and safe repair, never automatic deletion.
-- **Gate:** Game-launched per content type on Windows x64. Integrity-failure scenarios are Headless-tested.
+- File verification with concrete failures (changed or missing files, game installation) and safe repair, never automatic deletion. One instance experience, no modes.
+- **Gate:** Game-launched per content type on Windows x64. File-verification failure scenarios are Headless-tested.
 
 #### L3 — More versions and loaders (Sol + Claude)
 

@@ -77,7 +77,9 @@ Loud     ○○○○○○○●●●  Quiet        (quiet surfaces, expressiv
 - **Multiple isolated instances** with exact game and loader compatibility.
 - **Modrinth browsing and installation** of mods, resource packs, data packs and shader packs, through Sol's library.
 - **Customisable themes** that keep White Ooze / Ink Gel as the default.
-- **Managed Fair Play and Custom integrity modes**, worded honestly: never "cheat-proof" or "server-approved".
+- **File verification and Repair** for the files Ooze installed in each instance, worded honestly: it compares files with what Ooze recorded and says nothing about what a server allows.
+
+**Owner decision (2026-11-25).** Ooze ships **without built-in anti-cheat**. Every instance is a normal instance where players add compatible mods and packs; there are no instance modes. The module release scope above (fair-play classes, blocked GAMEPLAY, the excluded list) is unchanged.
 
 **Out of scope for v0.1.** These are deliberate non-goals:
 
@@ -85,6 +87,7 @@ Loud     ○○○○○○○●●●  Quiet        (quiet surfaces, expressiv
 - Online services of our own: Ooze accounts, cosmetics servers, friends, telemetry, analytics, remote news feeds. (The launcher talks only to Microsoft, Xbox, Minecraft, Mojang and Fabric services, for sign-in and installation.)
 - Custom UI sound assets. v0.1 uses the vanilla UI click with Ooze pitch and volume tuning.
 - Features that give an unfair advantage on servers. When modules arrive, the module metadata includes fair-play classification ([ARCHITECTURE.md §8](ARCHITECTURE.md)).
+- Built-in anti-cheat, fair-play installation modes or any claim that an installation is "cheat-proof" or "server-approved" (owner decision, 2026-11-25). Servers decide what they allow.
 - Builds for 26.x or any Minecraft version other than 1.21.11 (owner decision, 2026-11-09).
 - Any **Ooze** account system or login server. Microsoft sign-in, entitlement and account switching live in the Ooze Launcher's backend, which keeps credentials out of the interface, the mod and the JNI engine (TARGET_PLATFORM §4).
 

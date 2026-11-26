@@ -1,6 +1,6 @@
 # Ooze modules: sourced matrix, fair-play policy and profiles
 
-> Owner: Claude (product). Created 2026-11-17 after the owner authorised real client modules, multiple instances, Modrinth content, themes and integrity modes.
+> Owner: Claude (product). Created 2026-11-17 after the owner authorised real client modules, multiple instances, Modrinth content, themes and installation integrity. Updated 2026-11-25: Ooze ships without built-in anti-cheat and has no instance modes (owner decision); the module classes and release scope below are unchanged.
 > This file replaces the "framework samples only" stance of v0.1. `FEATURE_BACKLOG.md` keeps the per-module engineering notes; this file is the product source of truth for **what** ships and **under which rules**.
 
 ## 1. Research record (reference catalogs)
@@ -53,17 +53,16 @@ The reference clients are **product references only**. Ooze implements every mod
 
 ## 3. Fair-play policy
 
-| Class | Meaning | Managed Fair Play mode | Custom mode |
-|---|---|---|---|
-| COSMETIC | Changes appearance only | Allowed if on the pinned list | Allowed |
-| INFORMATIONAL | Shows information the vanilla client already exposes | Allowed if on the pinned list | Allowed |
-| QUALITY_OF_LIFE | Convenience without information or input advantage; some servers restrict items such as zoom or toggle sprint | Allowed if on the pinned list; **server-sensitive** items carry a notice | Allowed, with notice |
-| GAMEPLAY | Could change what a player can see or do | **Never** | Blocked until a server-policy design exists (servers able to disable it, plus a visible indicator) |
+| Class | Meaning | Release |
+|---|---|---|
+| COSMETIC | Changes appearance only | Allowed |
+| INFORMATIONAL | Shows information the vanilla client already exposes | Allowed |
+| QUALITY_OF_LIFE | Convenience without information or input advantage; some servers restrict items such as zoom or toggle sprint | Allowed; **server-sensitive** items carry a notice |
+| GAMEPLAY | Could change what a player can see or do | Blocked until a server-policy design exists (servers able to disable it, plus a visible indicator) |
 
-- Ooze never claims a mode is "cheat-proof", "anticheat-safe" or "server-approved". The copy says what Ooze checked and nothing more.
+- Ooze has **no built-in anti-cheat** (owner decision 2026-11-25). It never claims a module or an instance is "cheat-proof", "anticheat-safe" or "server-approved"; servers decide what they allow.
 - Every module shows its class and, when server-sensitive, the notice "Some servers don't allow this. Check the server's rules."
-- **Managed Fair Play** = the pinned, verified set of Ooze modules plus pinned content, with backend integrity checks (`docs/launcher/CONTENT_AND_INTEGRITY.md`).
-- **Custom** = user-managed compatible mods and packs, with no fair-play verification claim.
+- Instances have no modes: players add compatible mods and packs to any instance. File verification and Repair cover only what Ooze installed (`docs/launcher/LIBRARY_UI.md §7`).
 
 ## 4. Profiles (presets)
 

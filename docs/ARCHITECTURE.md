@@ -455,7 +455,7 @@ See TARGET_PLATFORM §4.
 | 015 | **Independent Ooze Launcher with its own Microsoft sign-in** (system browser + PKCE, owned public client ID, DPAPI storage) that installs and directly launches 1.21.11 + Fabric + Ooze. No Ooze account system or server | New (owner decision 2026-11-16) |
 | 016 | **Launcher UI in Rust with egui/eframe + AccessKit** (Windows UI Automation); the in-game "no custom renderer" rule (ADR-002) does not apply to the separate desktop window | New (2026-11-16) |
 | 017 | **Instance, profile and theme are separate concepts.** An instance is version + loader + runtime + files + content (Sol's library). A profile is module/HUD/visual configuration (`ooze-ui`). A theme is interface appearance (tokens). The launcher talks to the library only through the versioned **Library API 1** | New (owner scope expansion 2026-11-17) |
-| 018 | **Real modules from one Rust catalog** (`ooze-ui`) with mandatory fair-play classes. Server-sensitive modules carry a notice; GAMEPLAY is blocked; an excluded list never ships. Managed Fair Play and Custom integrity modes describe the installation, never server approval | New (owner scope expansion 2026-11-17) |
+| 018 | **Real modules from one Rust catalog** (`ooze-ui`) with mandatory fair-play classes. Server-sensitive modules carry a notice; GAMEPLAY is blocked; an excluded list never ships. No built-in anti-cheat and no instance modes: file verification describes only what Ooze installed, never server approval | New (owner scope expansion 2026-11-17); amended 2026-11-25 (owner: Managed Fair Play removed) |
 
 ---
 
@@ -493,14 +493,15 @@ Details: `docs/launcher/LAUNCHER_UI.md` and `LIBRARY_UI.md` (interface, Claude);
 - **Player data:** install and repair never touch `saves/`, `screenshots/`, `resourcepacks/`, `shaderpacks/` or `options.txt`. Changing the install location never moves or deletes the old one.
 - **Fixtures:** the interface's scripted backends exist only for tests and the developer preview (`dev-fixtures`, refused by release builds).
 
-### 19.1 Library (instances, profiles, themes, content, integrity; 2026-11-17)
+### 19.1 Library (instances, profiles, themes, content, file verification; 2026-11-17, amended 2026-11-25)
 
 - **Library API 1** (Sol, `LIBRARY_API_V1.md`) is a second facade next to Launcher API 1, with the same submit/cancel/event shape. It owns:
   - instance directories and persistence;
   - Modrinth requests (identifying User-Agent, rate limits);
   - dependency plans, downloads with hash checks, and installed-content records;
   - theme and profile persistence;
-  - integrity verification.
+  - file verification and repair of what it installed.
+- **One kind of instance** (owner decision 2026-11-25): Ooze has no built-in anti-cheat and no instance modes. Players add compatible mods and packs to any instance; legacy schema-1 `managed` instances load as normal instances (`LIBRARY_API_V1.md`).
 - **The interface** (`LIBRARY_UI.md`) only renders library snapshots and submits typed commands. It never computes dependency plans, paths or hashes, and never decides whether a version is compatible; it shows the backend's answer.
 - **Capabilities gate the release UI.** A screen or action appears only when the backend reports that capability. Until Library API 1 is implemented, release builds show the existing single-instance launcher and nothing else.
 - **Play** still goes through Launcher API 1: the selected instance is saved with `SaveSettings`, then `Launch`. The readiness rule (`OOZE_READY`) is unchanged.

@@ -3,7 +3,7 @@
 > Owner: Claude (interface).
 > Backend contract: Sol's [`LIBRARY_API_V1.md`](LIBRARY_API_V1.md) (Library API 1).
 > Module definitions: [`../MODULES.md`](../MODULES.md).
-> Scope: the owner's 2026-11-17 expansion: instances, profiles, themes, Modrinth content and integrity modes.
+> Scope: the owner's 2026-11-17 expansion: instances, profiles, themes, Modrinth content and file verification. Amended 2026-11-25: Ooze ships without built-in anti-cheat; instance modes (Managed Fair Play / Custom) are removed.
 > The L0 interface (`LAUNCHER_UI.md`) is unchanged and still governs sign-in, Play, Settings and Diagnostics.
 
 ## 1. Rules
@@ -29,7 +29,7 @@
    - The interface says so for shader packs, resource packs and data packs.
    - Play readiness is still only `OOZE_READY` (`LAUNCHER_UI.md §6`).
 6. **Fair play.**
-   - Integrity modes are **Managed Fair Play** and **Custom**.
+   - One instance experience (owner decision 2026-11-25): no built-in anti-cheat, no instance modes, no mode badges or switches. Players add compatible mods and packs to any instance.
    - Never "cheat-proof", "anticheat", "safe on every server" or "server-approved".
    - Server-sensitive modules carry their notice wherever they are switched on.
 7. **Keyboard, focus and narration** for every control, and stale-result handling for every async operation, exactly as in L0 (`LAUNCHER_UI.md §7–8`).
@@ -55,10 +55,9 @@ Play, Settings and Diagnostics stay as in L0.
 - name, game version, loader and loader version;
 - "Ooze modules available" or "Ooze modules are not available for this instance";
 - profile (preset name or "Custom");
-- integrity mode;
 - install state (`Ready`, `Needs install`, `Needs repair`, `Archived`).
 
-Row actions are Select, Rename, Duplicate, Install / Repair and Archive. Each appears only if the backend's per-instance action list contains it. Archive moves the instance into the library archive; the confirmation says it is not deleted.
+Row actions are Select, Rename, Duplicate, Install / Repair, Check files and Archive. Each library action appears only if the backend's per-instance action list contains it. Archive moves the instance into the library archive; the confirmation says it is not deleted.
 
 **Create.**
 - A dialog lists **only** the combinations from `capabilities.create` (today Fabric 0.20.1 / 1.21.11 and, if reported, Vanilla 1.21.11). There are no free-text version fields.
@@ -168,22 +167,21 @@ Rejected accents say why (with the measured ratio) and keep the last valid value
 - Unknown fields, URLs, paths and out-of-range values are rejected with a reason.
 - The library validates again before persisting.
 
-## 7. Integrity
+## 7. File check
 
-The **Integrity** section in each instance's details shows the mode and the last report.
+The **Check files** section in each instance's details verifies the files Ooze installed for that instance and shows the last report. It is the same for every instance and makes no statement about what a server allows.
 
-**Custom.** "Content downloads are hash-checked. Ooze makes no fair-play statement about this instance."
-
-**Managed Fair Play.**
-- "This instance is checked against Ooze's release manifest: only approved files and settings. This describes your installation; servers decide what they allow."
-- **Report:** each failure is concrete: file, expected vs found, or "unexpected mod", "unapproved pack" or "prohibited launch setting".
+- **Copy:** "Ooze compares this instance's game files and the content it installed with the versions it recorded, and can put back any that changed or went missing." and "Only files Ooze installed are checked. Mods and packs you add yourself are left as they are."
+- **Report:** each problem is concrete:
+  - a content file Ooze installed: "doesn't match the expected version" or "is missing";
+  - the game installation: "Game files aren't installed or have changed" (Library API 1 `baseline_verified == false`);
+  - otherwise the library's own safe sentence.
 - **Actions:**
-  - Repair (re-download a managed file);
-  - Move to a quarantine folder (the backend moves it; never deletes);
-  - Open folder;
-  - Switch to Custom (explicit confirmation).
+  - Repair a changed or missing content file (library `RepairRecord`);
+  - Repair game files (Launcher API 1 Repair). It acts on the folder Play is pointed at, so it is offered only for the selected instance; any other instance says "Select this instance to install or repair its game files.";
+  - Open folder, where the library offers it.
 
-  Nothing is deleted automatically.
+  Nothing is deleted or moved aside automatically.
 
 **Wording ban.** "Cheat-proof", "undetectable", "anticheat", "server-approved", "safe on all servers". A test scans the language file for these words.
 
@@ -218,7 +216,7 @@ Library errors map to the L0 banner pattern (`LAUNCHER_UI.md §5`), with the bac
   - module setting validation;
   - the server-sensitive notice;
   - theme contrast guard, live preview, revert, reset and import/export round trip;
-  - integrity report actions never include delete;
+  - file-check actions never include delete or quarantine; no mode badges, mode switches or policy text; game-file Repair only for the selected instance;
   - the wording-ban scan;
   - keyboard reachability and AccessKit roles on each page.
 - **Needs the real library (L1 gate):** Built, Headless-tested on Windows CI, Game-launched on Windows x64 for an installed mod, and Manually verified with Narrator.

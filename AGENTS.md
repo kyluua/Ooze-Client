@@ -33,6 +33,12 @@ The specification in `docs/` is the source of truth. Implement it milestone by m
 > `launcher/crates/ooze-launcher-ui/**` and `launcher/resources/**` in this work.
 > Claude retains in-game/product-model ownership and independent review.
 
+> **Decision record (2026-11-25, owner):** Ooze ships **without built-in anti-cheat**.
+> - One normal instance experience: players add compatible mods and packs to any instance. Managed Fair Play and instance modes are removed from the interface, the Library API (`docs/handoffs/SOL-INSTANCE-MODE-REMOVAL.md`) and the active specs; legacy `managed` instances load as normal instances.
+> - File verification and Repair stay.
+> - The module release scope is unchanged: fair-play classes, blocked `GAMEPLAY`, the permanently excluded list.
+> - Historical handoffs stay as records.
+
 ## Who owns what
 
 Two agents work in this repository. They do **not** share chat history: **handoffs and commits carry all context**. (The L0 brief called the launcher-backend role "Codex"; in this repository that role is **Sol**, as recorded in `docs/handoffs/SOL-L0-CONTRACT.md`.)
@@ -110,7 +116,7 @@ Two agents work in this repository. They do **not** share chat history: **handof
   - launcher: `launcher/resources/lang/en_us.json`.
 - **Keyboard access, visible focus and narration** (Minecraft's narrator in game; UI Automation via AccessKit in the launcher) are required for every interactive element.
 - **Fonts:** ship upstream static TTFs **unmodified**, together with their `OFL.txt`.
-- **Modules** come only from `docs/MODULES.md`, each through its milestone (M0–M3), with a fair-play class. `GAMEPLAY` modules stay blocked until a server-policy design exists. The permanently excluded list (input automation, aim assistance, reach, ESP, X-ray, movement exploits) never ships. Never claim a mode is cheat-proof or server-approved.
+- **Modules** come only from `docs/MODULES.md`, each through its milestone (M0–M3), with a fair-play class. `GAMEPLAY` modules stay blocked until a server-policy design exists. The permanently excluded list (input automation, aim assistance, reach, ESP, X-ray, movement exploits) never ships. Ooze has no built-in anti-cheat and no instance modes (owner decision 2026-11-25); never claim a module or an instance is cheat-proof or server-approved.
 - **Instances, profiles and themes are distinct:**
   - an instance is the game version, loader, runtime, files and content;
   - a profile is the module, HUD and visual configuration;
