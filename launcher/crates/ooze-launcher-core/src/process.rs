@@ -248,10 +248,18 @@ pub(crate) fn launch(
         .args(jvm)
         .arg(format!("-Xmx{}M", settings.memory_mib));
     if install.main_class == "net.fabricmc.loader.impl.launch.knot.KnotClient" {
-        cmd.arg(format!(
-            "-Dfabric.addMods={}",
-            util::join(root, "mods")?.display()
-        ));
+        // Fabric discovers player mods in the game directory. Here it only
+        // needs the separate distribution JARs that prepare hash-verified.
+        let packaged_mods = install
+            .files
+            .iter()
+            .filter(|file| file.path.starts_with("mods/") && file.path.ends_with(".jar"))
+            .map(|file| util::join(root, &file.path))
+            .collect::<Result<Vec<_>>>()?;
+        let packaged_mods = std::env::join_paths(packaged_mods).map_err(|_| metadata_error())?;
+        let mut arg = std::ffi::OsString::from("-Dfabric.addMods=");
+        arg.push(packaged_mods);
+        cmd.arg(arg);
     }
     cmd.arg(&install.main_class)
         .args(game_args)

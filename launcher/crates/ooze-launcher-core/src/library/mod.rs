@@ -32,7 +32,6 @@ pub enum Command {
         name: String,
         target: Target,
         preset: Preset,
-        mode: Mode,
     },
     Select(Id),
     Rename {
@@ -62,8 +61,6 @@ pub enum Command {
     },
     ExportProfile(Id),
     ExportTheme(Id),
-    ConvertToCustom(Id),
-    ConvertToManaged(Id),
     Search(Search),
     SearchFiltered {
         search: Search,
@@ -422,10 +419,9 @@ impl Inner {
                 name,
                 target,
                 preset,
-                mode,
             } => {
                 report(ProgressStage::Committing, 0, None, None)?;
-                Ok(Reply::Instance(store.create(name, target, preset, mode)?))
+                Ok(Reply::Instance(store.create(name, target, preset)?))
             }
             Command::Select(id) => {
                 report(ProgressStage::Committing, 0, None, None)?;
@@ -481,27 +477,6 @@ impl Inner {
                 serde_json::to_string_pretty(&store.instance(&id)?.theme)
                     .map_err(|_| io_error())?,
             )),
-            Command::ConvertToCustom(id) => {
-                let (mut value, _lock) = store.claim(&id)?;
-                value.mode = Mode::Custom;
-                report(ProgressStage::Committing, 0, None, None)?;
-                store.save(&mut value)?;
-                Ok(Reply::None)
-            }
-            Command::ConvertToManaged(id) => {
-                let (mut value, _lock) = store.claim(&id)?;
-                value.mode = Mode::Managed;
-                let game = store.game(&id)?;
-                let integrity = content::verify(&value, &game, check)?;
-                if !integrity.issues.is_empty() || !verify_baseline(&value, &game, check)? {
-                    return Err(invalid(
-                        "Managed mode requires a verified pinned installation and no extra content. Repair the installation and explicitly remove extra content first; nothing was changed.",
-                    ));
-                }
-                report(ProgressStage::Committing, 0, None, None)?;
-                store.save(&mut value)?;
-                Ok(Reply::None)
-            }
             Command::Search(request) => Ok(Reply::Search(self.http.search(&request, check)?)),
             Command::SearchFiltered { search, options } => Ok(Reply::Search(
                 self.http.search_filtered(&search, &options, check)?,
@@ -525,11 +500,6 @@ impl Inner {
                 world,
             } => {
                 let (value, _lock) = store.claim(&instance)?;
-                if value.mode == Mode::Managed {
-                    return Err(invalid(
-                        "Convert to Custom to install third-party content; this managed release has no extra-content approvals.",
-                    ));
-                }
                 let resolution = modrinth::resolve(&self.http, &value, &project, &version, check)?;
                 for file in &resolution.files {
                     content::destination(
@@ -646,10 +616,15 @@ impl Inner {
             }
             Command::Verify(id) => {
                 let (value, _lock) = store.claim(&id)?;
-                let mut report = content::verify(&value, &store.game(&id)?, check)?;
-                report.baseline_verified = verify_baseline(&value, &store.game(&id)?, check)?;
-                if report.managed && !report.baseline_verified {
-                    report.issues.push("Managed game/runtime baseline is missing or changed. Install or repair it before launch.".into());
+                let game = store.game(&id)?;
+                let mut report = content::verify(&value, &game, check)?;
+                if let Some(verified) = verify_baseline(&value, &game, check)? {
+                    report.baseline_verified = verified;
+                    if !verified {
+                        report.issues.push(
+                            "Installed game files changed or are missing. Use game Repair.".into(),
+                        );
+                    }
                 }
                 Ok(Reply::Integrity(report))
             }
@@ -671,7 +646,7 @@ pub(crate) fn before_launch(game: &Path, check: &dyn Fn() -> Result<()>) -> Resu
         if !report.issues.is_empty() {
             return Err(error(
                 ErrorCode::Integrity,
-                "Instance content integrity check failed. Inspect Library Verify and repair, or explicitly convert a managed instance to Custom.",
+                "Instance content integrity check failed. Inspect Library Verify and repair the affected content.",
             ));
         }
     }
@@ -682,15 +657,15 @@ fn verify_baseline(
     instance: &Instance,
     game: &Path,
     check: &dyn Fn() -> Result<()>,
-) -> Result<bool> {
+) -> Result<Option<bool>> {
     let managed = util::join(game, ".ooze-launcher")?;
     let pointer = util::join(&managed, "active-install.json")?;
     if !pointer.is_file() {
-        return Ok(false);
+        return Ok(None);
     }
     let install: crate::metadata::Installation = util::read_json(&pointer)?;
     if install.schema != 1 || install.files.is_empty() || install.files.len() > 100000 {
-        return Ok(false);
+        return Ok(Some(false));
     }
     let expected = if instance.target.loader == Loader::Fabric {
         "net.fabricmc.loader.impl.launch.knot.KnotClient"
@@ -698,7 +673,7 @@ fn verify_baseline(
         "net.minecraft.client.main.Main"
     };
     if install.main_class != expected {
-        return Ok(false);
+        return Ok(Some(false));
     }
     let root = util::join(&managed, &install.directory)?;
     for file in &install.files {
@@ -708,25 +683,10 @@ fn verify_baseline(
             || fs::metadata(&path).map_err(|_| io_error())?.len() != file.size
             || util::sha256(&path)? != file.sha256
         {
-            return Ok(false);
+            return Ok(Some(false));
         }
     }
-    if instance.mode == Mode::Managed {
-        let settings = crate::api::Settings {
-            instance_dir: game.to_owned(),
-            java_path: None,
-            memory_mib: 4096,
-        };
-        verify_prepared(
-            &settings,
-            &crate::install::Prepared {
-                installation: install,
-                root,
-            },
-            check,
-        )?;
-    }
-    Ok(true)
+    Ok(Some(true))
 }
 
 pub(crate) fn recover_game(game: &Path) -> Result<()> {
@@ -741,107 +701,9 @@ pub(crate) fn recover_game(game: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn validate_game_settings(settings: &crate::api::Settings) -> Result<()> {
-    if let Some(instance) = store::for_game(&settings.instance_dir)?
-        && instance.mode == Mode::Managed
-        && settings.java_path.is_some()
-    {
-        return Err(invalid(
-            "Managed mode requires the release's verified managed Java runtime. Choose managed Java or explicitly convert the instance to Custom.",
-        ));
-    }
-    Ok(())
-}
-
-pub(crate) fn verify_prepared(
-    settings: &crate::api::Settings,
-    prepared: &crate::install::Prepared,
-    check: &dyn Fn() -> Result<()>,
-) -> Result<()> {
-    validate_game_settings(settings)?;
-    if let Some(instance) = store::for_game(&settings.instance_dir)?
-        && instance.mode == Mode::Managed
-    {
-        let mods = util::join(&prepared.root, "mods")?;
-        let approved: std::collections::BTreeSet<_> = prepared
-            .installation
-            .files
-            .iter()
-            .filter_map(|f| f.path.strip_prefix("mods/"))
-            .collect();
-        if mods.exists() {
-            for entry in fs::read_dir(mods).map_err(|_| io_error())? {
-                check()?;
-                let entry = entry.map_err(|_| io_error())?;
-                util::reject_links(&entry.path())?;
-                let name = entry.file_name();
-                let name = name.to_str().ok_or_else(io_error)?;
-                if !approved.contains(name) {
-                    return Err(error(
-                        ErrorCode::Integrity,
-                        "Unexpected executable content in the managed baseline; repair or convert to Custom.",
-                    ));
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn managed_conversion_refuses_missing_baseline_without_changing_the_instance() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = store::Store::open(dir.path()).unwrap();
-        let id = store
-            .create(
-                "Custom".into(),
-                Target::fabric(),
-                Preset::Minimal,
-                Mode::Custom,
-            )
-            .unwrap();
-        let before = store.instance(&id).unwrap();
-        let library = Library::open(dir.path()).unwrap();
-        let op = library
-            .submit(Command::ConvertToManaged(id.clone()))
-            .unwrap();
-        assert!(wait(&library, op).is_err());
-        let after = store.instance(&id).unwrap();
-        assert_eq!(after.mode, Mode::Custom);
-        assert_eq!(after.revision, before.revision);
-    }
-    #[test]
-    fn managed_java_is_checked_before_any_runtime_validation() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = store::Store::open(dir.path()).unwrap();
-        let id = store
-            .create(
-                "Managed".into(),
-                Target::fabric(),
-                Preset::Minimal,
-                Mode::Managed,
-            )
-            .unwrap();
-        let mut settings = crate::api::Settings {
-            instance_dir: store.game(&id).unwrap(),
-            java_path: Some(dir.path().join("unvalidated-java.exe")),
-            memory_mib: 4096,
-        };
-        assert_eq!(
-            validate_game_settings(&settings).unwrap_err().code,
-            ErrorCode::Configuration
-        );
-        settings.java_path = None;
-        validate_game_settings(&settings).unwrap();
-        let mut instance = store.instance(&id).unwrap();
-        instance.mode = Mode::Custom;
-        store.save(&mut instance).unwrap();
-        settings.java_path = Some(dir.path().join("custom-java.exe"));
-        validate_game_settings(&settings).unwrap();
-    }
     #[test]
     fn durable_commit_progress_closes_cancellation_before_finished() {
         let dir = tempfile::tempdir().unwrap();
@@ -899,7 +761,6 @@ mod tests {
                 name: "PvP".into(),
                 target: Target::fabric(),
                 preset: Preset::Pvp,
-                mode: Mode::Custom,
             })
             .unwrap();
         let Reply::Instance(instance) = wait(&library, id).unwrap() else {

@@ -181,16 +181,17 @@ $instance = $created.Instance
 
 The exact Iris version above is the integration fixture, not a permanent latest
 recommendation. Resolve a compatible version when selecting other content.
-It requires Sodium, which is resolved/verified as a dependency. These Custom
-content downloads are not bundled in the review package. See UPSTREAM_CONTENT.md
+It requires Sodium, which is resolved/verified as a dependency. These optional
+content downloads are fetched separately. See UPSTREAM_CONTENT.md
 for provenance and license metadata. Installing is distinct from enabling a pack
 in game; the launcher does not assert a shader is rendering from a saved ZIP.
 
 The dedicated `test-library.ps1` exercises the real executable and API, including
-modified-file repair and managed extra-mod detection. `test-targets.ps1` tests
-actual managed Java 21 installation/repair for the pinned Vanilla and Fabric
-1.21.11 targets, preserving a seeded options.txt. Neither starts Minecraft or
-performs Microsoft authentication.
+repeated reads of both legacy modes, live Iris and Sodium installation, and
+modified-file repair. `test-targets.ps1` tests actual Java 21
+installation/repair for the pinned Vanilla and Fabric 1.21.11 targets. It
+checks the hashes of seeded saves, screenshots, packs, a mod and options.txt.
+Both scripts run before Minecraft launch and Microsoft authentication.
 
 For local baseline timing/process working-set samples:
 

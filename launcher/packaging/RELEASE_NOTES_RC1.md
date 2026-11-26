@@ -6,8 +6,8 @@ Fabric API 0.141.6+1.21.11 and a bundled Windows Rust engine. The launcher
 installs its pinned Java 21 runtime and official Minecraft game files.
 
 The candidate includes Microsoft browser sign-in through the Ooze application,
-verified installation and repair, managed and custom instances, Modrinth
-content with dependency review, appearance settings and redacted diagnostics.
+instances with verified installation and repair, Modrinth content with
+dependency review, appearance settings and redacted diagnostics.
 The base mod reports the engine state when the title opens. It leaves vanilla
 usable if native loading fails.
 

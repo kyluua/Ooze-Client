@@ -360,9 +360,6 @@ impl LibraryBackend for CoreLibrary {
                     name: name.clone(),
                     target: to_core_target(target),
                     preset: sl::Preset::Minimal,
-                    // TRANSITION (SOL-INSTANCE-MODE-REMOVAL): today's library still requires
-                    // this field; Sol deletes this line when `Create` drops it.
-                    mode: sl::Mode::Custom,
                 },
                 plain(&c),
             ),
@@ -720,11 +717,6 @@ pub fn map_snapshot(raw: &sl::Snapshot, caps: &sl::Capabilities) -> LibrarySnaps
         .filter(|s| !s.instance.archived)
         .map(|s| {
             let i = &s.instance;
-            let actions = vec![
-                InstanceAction::Rename,
-                InstanceAction::Duplicate,
-                InstanceAction::Archive,
-            ];
             InstanceSummary {
                 id: InstanceId(i.id.0.clone()),
                 name: i.name.clone(),
@@ -732,7 +724,11 @@ pub fn map_snapshot(raw: &sl::Snapshot, caps: &sl::Capabilities) -> LibrarySnaps
                 preset: i.profile.document.base,
                 overrides: override_count(&i.profile.document),
                 install: None,
-                actions,
+                actions: vec![
+                    InstanceAction::Rename,
+                    InstanceAction::Duplicate,
+                    InstanceAction::Archive,
+                ],
                 content: kinds_for(&i.target, &offered),
                 running: false,
                 revision: i.revision,
@@ -874,11 +870,10 @@ fn installed_items(receipts: &[sl::CheckedContent], kind: ContentKind) -> Vec<In
         .collect()
 }
 
-/// The library's own sentence for an unverified installation. The interface shows
-/// [`IntegrityProblem::InstallationFiles`] instead, so this copy isn't listed twice.
-/// TRANSITION (SOL-INSTANCE-MODE-REMOVAL, request N1): drop once the library stops sending it.
-const LEGACY_BASELINE_ISSUE: &str =
-    "Managed game/runtime baseline is missing or changed. Install or repair it before launch.";
+/// The library's sentence for installed game files that fail verification (for its CLI). The
+/// interface shows the typed [`IntegrityProblem::InstallationFiles`] for `baseline_verified ==
+/// false` instead, so the same problem isn't listed twice.
+const BASELINE_ISSUE: &str = "Installed game files changed or are missing. Use game Repair.";
 
 fn map_integrity(r: &sl::IntegrityReport) -> IntegrityReport {
     let mut issues: Vec<IntegrityIssue> = Vec::new();
@@ -917,7 +912,7 @@ fn map_integrity(r: &sl::IntegrityReport) -> IntegrityReport {
     issues.extend(
         r.issues
             .iter()
-            .filter(|s| !recorded_messages.contains(s.as_str()) && *s != LEGACY_BASELINE_ISSUE)
+            .filter(|s| !recorded_messages.contains(s.as_str()) && *s != BASELINE_ISSUE)
             .map(|text| IntegrityIssue {
                 file: String::new(),
                 problem: IntegrityProblem::Reported(crate::redact::redact(text).into_owned()),
@@ -1400,6 +1395,49 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// An installation record that fails verification: the library reports `baseline_verified ==
+    /// false` with its CLI sentence, and the interface lists one typed installation issue.
+    #[test]
+    fn a_changed_game_installation_is_one_typed_issue() {
+        let dir = temp_dir("baseline");
+        let (id, game_dir, _) = legacy_managed_instance(&dir);
+        let pointer = game_dir.join(".ooze-launcher");
+        std::fs::create_dir_all(&pointer).unwrap();
+        // A record from an unknown schema never verifies.
+        let record = serde_json::json!({
+            "schema": 0,
+            "release_sha256": "",
+            "directory": "generation",
+            "files": [],
+            "classpath": [],
+            "main_class": "",
+            "jvm_args": [],
+            "game_args": [],
+            "asset_index": "",
+            "managed_java": null,
+            "version_name": "",
+        });
+        std::fs::write(
+            pointer.join("active-install").with_extension("json"),
+            serde_json::to_vec(&record).unwrap(),
+        )
+        .unwrap();
+        let mut lib = CoreLibrary::open(&dir).unwrap();
+        let op = lib.submit(LibCommand::CheckIntegrity(id)).unwrap();
+        let Ok(LibPayload::Integrity { report, .. }) = wait(&mut lib, op) else {
+            panic!("verify")
+        };
+        assert_eq!(
+            report.issues,
+            vec![IntegrityIssue {
+                file: String::new(),
+                problem: IntegrityProblem::InstallationFiles,
+                actions: Vec::new(),
+            }]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Creates a Fabric instance through the adapter, then saves its manifest as schema 1 did for
     /// a Managed Fair Play instance. Returns its ID, game folder and manifest path.
     fn legacy_managed_instance(
@@ -1432,8 +1470,8 @@ mod tests {
     }
 
     /// Live Modrinth (network): a legacy Managed instance takes compatible mods like any other
-    /// instance once Sol's read-time migration is in (`SOL-INSTANCE-MODE-REMOVAL.md`), and a
-    /// changed file is put back by Repair. Run with
+    /// instance (Sol's read-time migration, `SOL-INSTANCE-MODE-REMOVAL.md`), and a changed file
+    /// is put back by Repair. Run with
     /// `cargo test -p ooze-launcher-ui live_legacy -- --ignored`.
     #[test]
     #[ignore = "contacts api.modrinth.com and downloads files"]

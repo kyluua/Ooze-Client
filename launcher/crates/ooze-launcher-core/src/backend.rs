@@ -312,7 +312,6 @@ impl Context {
             .saved
             .settings
             .clone();
-        crate::library::validate_game_settings(&settings)?;
         let session = if matches!(command, LauncherCommand::Launch) {
             self.progress(Stage::Authorizing, 0, None);
             let session = auth::authenticate(
@@ -342,7 +341,6 @@ impl Context {
             &|stage, n, total| self.progress(stage, n, total),
         )?;
         if let Some(session) = session {
-            crate::library::verify_prepared(&settings, &prepared, &|| self.check())?;
             self.progress(Stage::StartingGame, 0, None);
             {
                 let mut state = self.inner.state.lock().map_err(|_| io_error())?;

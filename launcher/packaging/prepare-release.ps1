@@ -133,8 +133,8 @@ Choose the initial storage location, then open Instances to create a Fabric or V
 instance. Select it for Play. Sign in in your system browser with an account that owns Minecraft
 Java Edition. Install/Play downloads and verifies the required game files.
 
-Content browses Modrinth without signing in. Review dependencies before installing. Custom mode
-allows chosen extra content; Managed accepts only the pinned release baseline. Data packs require
+Content browses Modrinth without signing in. Review dependencies before installing. Instances
+accept compatible mods and packs. Data packs require
 an existing local world and a stopped game. Shader packs need a compatible installed shader loader;
 installing a pack does not turn it on in Minecraft. Appearance is saved globally across instances.
 

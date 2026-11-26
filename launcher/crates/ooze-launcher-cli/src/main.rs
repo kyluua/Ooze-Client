@@ -86,8 +86,6 @@ enum LibraryAction {
         name: String,
         #[arg(long)]
         vanilla: bool,
-        #[arg(long)]
-        managed: bool,
         #[arg(long, value_enum, default_value = "minimal")]
         preset: PresetArg,
     },
@@ -103,9 +101,6 @@ enum LibraryAction {
         name: String,
     },
     Archive {
-        id: String,
-    },
-    Custom {
         id: String,
     },
     Verify {
@@ -336,7 +331,6 @@ fn run_library(data: PathBuf, command: LibraryAction) -> Result<(), Box<dyn std:
         LibraryAction::Create {
             name,
             vanilla,
-            managed,
             preset,
         } => lib::Command::Create {
             name,
@@ -346,11 +340,6 @@ fn run_library(data: PathBuf, command: LibraryAction) -> Result<(), Box<dyn std:
                 lib::Target::fabric()
             },
             preset: preset.into(),
-            mode: if managed {
-                lib::Mode::Managed
-            } else {
-                lib::Mode::Custom
-            },
         },
         LibraryAction::Select { id } => lib::Command::Select(lib::Id(id)),
         LibraryAction::Rename { id, name } => lib::Command::Rename {
@@ -362,7 +351,6 @@ fn run_library(data: PathBuf, command: LibraryAction) -> Result<(), Box<dyn std:
             name,
         },
         LibraryAction::Archive { id } => lib::Command::Archive(lib::Id(id)),
-        LibraryAction::Custom { id } => lib::Command::ConvertToCustom(lib::Id(id)),
         LibraryAction::Verify { id } => lib::Command::Verify(lib::Id(id)),
         LibraryAction::ImportProfile { id, file } => lib::Command::ImportProfile {
             instance: lib::Id(id),

@@ -3,6 +3,11 @@
 ## Status log
 
 - CONTRACT published from base `5050e86`. Implementation and package verification are pending.
+- Claude accepted the contract in `8a46901`. N1 is covered by a neutral
+  issue when installed game files fail verification. A fresh instance returns
+  `baseline_verified = false` without a corruption issue. N2 is covered by
+  updates to packaging and the active backend instructions. N3 is tracked
+  in the Windows evidence below once the successor package is tested.
 
 Owner Sol (launcher core, Library API, CLI, packaging and Windows evidence).
 Counterpart Claude (desktop presentation, Fabric integration and product verification).
@@ -44,6 +49,18 @@ through. Install/Repair checks, recorded content hashes, target/loader and
 dependency compatibility, safe extraction and the game process guard retain
 their existing responsibilities. Ordinary compatible mods and packs are no
 longer rejected for being outside the release baseline.
+
+Fabric loads user mods from the instance game directory. The launcher supplies
+the receipt-verified distribution JARs separately and passes their file paths
+to Fabric, keeping unrelated files in the installation cache out of that list.
+
+## Desktop compatibility while the presentation changes land
+
+The mechanical edit to `core_library.rs` keeps the existing desktop build
+green across the API transition. It submits mode-free creation, advertises no
+conversion, and can repair any registered file. Old presentation types use
+their former Custom label for all instances until Claude's cleanup. Claude's
+adapter update can drop those types and mappings with the rest of the mode UI.
 
 ## Verification plan
 

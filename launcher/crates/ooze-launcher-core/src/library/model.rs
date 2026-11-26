@@ -260,11 +260,11 @@ pub(crate) fn invalid(message: &str) -> crate::api::LauncherError {
     error(ErrorCode::Configuration, message)
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum Mode {
-    Managed,
-    Custom,
+// Keep schema 1 readable by older launchers. Both values decode to one state.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub(super) enum LegacyMode {
+    #[serde(rename = "custom", alias = "managed")]
+    Normal,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -313,7 +313,8 @@ pub struct Instance {
     pub name: String,
     pub revision: u64,
     pub target: Target,
-    pub mode: Mode,
+    #[serde(rename = "mode")]
+    pub(super) legacy_mode: LegacyMode,
     pub profile: Profile,
     pub theme: Theme,
     pub archived: bool,
@@ -542,7 +543,6 @@ pub struct PlanSummary {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IntegrityReport {
-    pub managed: bool,
     pub baseline_verified: bool,
     pub verified_files: u32,
     pub issues: Vec<String>,
@@ -575,7 +575,7 @@ mod tests {
             name: "Test".into(),
             revision: 1,
             target: Target::fabric(),
-            mode: Mode::Custom,
+            legacy_mode: LegacyMode::Normal,
             profile: Profile::new(Preset::Minimal),
             theme: Theme::default(),
             archived: false,
