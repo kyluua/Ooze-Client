@@ -53,9 +53,10 @@ record verification by version and loader before any release claim.
 
 ## Status
 
-Contract published first. Implementation and acceptance evidence will follow
-below. Java 21 versus 25 was checked against Mojang's release metadata for
-each of the six IDs.
+Contract published at `4b7379c`, before source changes. Backend, packaging,
+and CI landed at `53adaa4`. The launcher API is still 1.1 and the JNI ABI
+is still 1. Library API 1 adds the release-aware constructor without changing
+the stored target schema.
 
 Fabric Meta returned loader 0.20.1 on every target. Candidate packaging
 accepts an optional `build/dist/validated-ooze-clients.json` from Claude
@@ -65,3 +66,45 @@ sha256, evidence }] }`. `file` is a JAR filename beside the manifest.
 `evidence` references the per-version production launch result. Leave rows
 without that evidence out of this file. The 1.21.11 bundle comes from the
 base package. Catalog packaging verifies each incoming hash before use.
+
+## Backend and packaging results
+
+The candidate catalogs the 12 Vanilla/Fabric pairs. The Fabric Loader pin is
+0.20.1 throughout. Java 21 versus 25 was checked against Mojang's release
+metadata for every ID. The original release manifest remains readable and the
+original installer and portable distribution remain available.
+
+| Minecraft | Java | Vanilla and plain Fabric descriptors | Ooze bundle |
+| --- | --- | --- | --- |
+| 1.21.11 | 21 | Pinned | Original 1.21.11 production path |
+| 26.1 | 25 | Pinned | Await Claude's validated JAR |
+| 26.1.1 | 25 | Pinned | Await Claude's validated JAR |
+| 26.1.2 | 25 | Pinned | Await Claude's validated JAR |
+| 26.2 | 25 | Pinned | Await Claude's validated JAR |
+| 26.3 | 25 | Pinned | Await Claude's validated JAR |
+
+- Local launcher formatting and workspace Clippy passed. The
+  packaging script fetched Fabric Meta profiles and validated the Mojang
+  metadata hashes for the added versions. All six asset indexes fit the
+  current limits. The pinned Temurin 25.0.5.1+2 Windows x64 JRE ZIP matched its
+  size and SHA-256 and contained the selected Java executable.
+- **Built** a local catalog metadata preflight and generated its 1.21.11 Prism
+  pack from the existing RC1 client JAR. The owner machine blocked a local
+  native DLL load and a Rust test dependency with Application Control error
+  4551. This preflight does not carry launcher or JNI execution evidence.
+- [Windows CI run 45785733894](https://github.com/kyluua/Ooze-Client/actions/runs/45785733894)
+  packages the candidate ZIP, Setup and eligible Prism packs. It checks JNI on
+  Java 21 and 25, opens a previously installed 1.21.11 library from the catalog,
+  and runs install/repair jobs for the game pairs. Candidate data and artifacts
+  are separate from the 1.21.11 RC1 distribution.
+
+Authenticated desktop Play and real title-screen evidence are still required
+on the exact combined package, along with Claude's desktop integration and
+matching 26.x client JARs. Use the owner for sign-in and report each target
+individually. The version catalog does not promote this candidate to a release.
+
+Claude's next desktop edit is to wire the config's manifest path at
+`ooze-launcher.rs:49` and `core_library.rs:71`. The current translation file
+still hard-codes the old game and Java in onboarding, progress and runtime
+diagnostics. Those messages and the Play title logic need to use the selected
+target and distinguish targets without the Ooze readiness event.

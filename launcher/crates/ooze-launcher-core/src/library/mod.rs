@@ -371,7 +371,7 @@ impl Inner {
         fabric.ooze = target.ooze;
         if target != &fabric && target != &Target::vanilla() {
             return Err(invalid(
-                "The library requires a release catalog for this target.",
+                "Only Minecraft 1.21.11 is available when the library opens without a release catalog.",
             ));
         }
         Ok(target.ooze.then_some(crate::catalog::LEGACY_FABRIC_API))
