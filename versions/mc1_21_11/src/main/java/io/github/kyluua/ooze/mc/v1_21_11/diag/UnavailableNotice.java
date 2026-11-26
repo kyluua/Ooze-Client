@@ -1,7 +1,8 @@
 package io.github.kyluua.ooze.mc.v1_21_11.diag;
 
-import io.github.kyluua.ooze.mc.v1_21_11.engine.EngineStatus;
-import io.github.kyluua.ooze.mc.v1_21_11.engine.PlatformInfo;
+import io.github.kyluua.ooze.client.diag.EngineDiagnostics;
+import io.github.kyluua.ooze.client.engine.EngineStatus;
+import io.github.kyluua.ooze.client.engine.PlatformInfo;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.client.gui.components.toasts.SystemToast;
@@ -21,7 +22,8 @@ public final class UnavailableNotice {
 
     private UnavailableNotice() {}
 
-    public static void register(EngineStatus status, PlatformInfo platform) {
+    public static void register(EngineStatus status) {
+        PlatformInfo platform = PlatformInfo.current();
         Component title = Component.translatable(EngineDiagnostics.KEY_TITLE);
         Component body = Component.translatable(EngineDiagnostics.bodyKey(status), EngineDiagnostics.bodyArgs(status, platform));
         ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {

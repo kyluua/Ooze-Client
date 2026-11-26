@@ -1,0 +1,70 @@
+package io.github.kyluua.ooze.mc.v26.dev;
+
+import io.github.kyluua.ooze.client.OozeRuntime;
+import io.github.kyluua.ooze.client.engine.EngineConnector;
+import io.github.kyluua.ooze.mc.v26.compat.McCompat;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.gui.components.toasts.SystemToast;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import org.slf4j.Logger;
+
+/**
+ * Developer-only action that exercises the native bridge (C0 requirement 5). Registered only when
+ * {@code EngineGate#developerProbeEnabled()} is true: development environment AND loaded engine.
+ * F9 runs one synchronous probe round trip (logged + toast) and opens {@link BridgeDiagnosticScreen}.
+ */
+public final class DeveloperProbe {
+
+    public static final String KEY_NAME = "key.oozeclient.dev.bridge_probe";
+    private static final SystemToast.SystemToastId TOAST_ID = new SystemToast.SystemToastId(6_000L);
+
+    private DeveloperProbe() {}
+
+    public static void register(Logger log) {
+        KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("oozeclient", "developer"));
+        KeyMapping key = KeyMappingHelper.registerKeyMapping(
+                new KeyMapping(KEY_NAME, McCompat.DEV_PROBE_KEY_TYPE, McCompat.DEV_PROBE_KEY, category));
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (key.consumeClick()) {
+                if (!OozeRuntime.gate().developerProbeEnabled()) {
+                    continue; // engine disabled at runtime: the key does nothing further
+                }
+                EngineConnector connector = OozeRuntime.connector();
+                if (connector == null) {
+                    continue;
+                }
+                EngineConnector.DevProbeResult result = runProbe(connector);
+                log.info("[dev] bridge probe ok={} in {} µs: {}", result.ok(), result.elapsedNanos() / 1_000, result.summary());
+                SystemToast.addOrUpdate(
+                        McCompat.toasts(client),
+                        TOAST_ID,
+                        Component.translatable(result.ok() ? "oozeclient.dev.probe.ok" : "oozeclient.dev.probe.failed"),
+                        Component.literal(result.summary()));
+                if (result.ok() && !(McCompat.screen(client) instanceof BridgeDiagnosticScreen)) {
+                    McCompat.setScreen(client, new BridgeDiagnosticScreen());
+                }
+            }
+        });
+    }
+
+    /**
+     * Runs the probe without letting a bridge failure escape into the game loop. Any failure, or
+     * a fixture that violates the expected output, disables the engine for the session.
+     */
+    public static EngineConnector.DevProbeResult runProbe(EngineConnector connector) {
+        EngineConnector.DevProbeResult result;
+        try {
+            result = connector.developerProbe();
+        } catch (RuntimeException | LinkageError e) {
+            OozeRuntime.disableEngine("the developer probe", e);
+            return new EngineConnector.DevProbeResult(false, e.toString(), 0L);
+        }
+        if (!result.ok()) {
+            OozeRuntime.disableEngine("the developer probe", new IllegalStateException(result.summary()));
+        }
+        return result;
+    }
+}

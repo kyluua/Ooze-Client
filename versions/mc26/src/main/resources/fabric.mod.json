@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "oozeclient",
+  "version": "${version}",
+  "name": "Ooze Client",
+  "description": "A glossy, customisable Minecraft Java Edition client for Fabric. It has no account system of its own: the launcher that starts it (the Ooze Launcher or another Fabric launcher) signs you in.",
+  "authors": ["kyluua"],
+  "contact": {
+    "sources": "https://github.com/kyluua/Ooze-Client",
+    "issues": "https://github.com/kyluua/Ooze-Client/issues"
+  },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["io.github.kyluua.ooze.mc.v26.OozeClient"]
+  },
+  "mixins": [
+    { "config": "oozeclient.mixins.json", "environment": "client" }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": ${minecraft_dependency},
+    "java": ">=${java_version}",
+    "fabric-api": "*"
+  }
+}

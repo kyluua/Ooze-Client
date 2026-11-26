@@ -3,15 +3,31 @@
 // docs/TARGET_PLATFORM.md for how they were chosen.
 
 plugins {
-    // Remapping Loom: 1.21.11 is obfuscated at runtime; sources use Mojang official names.
-    // 1.17.21 is the newest Loom release whose Gradle plugin runs on JDK 21 (1.18+ needs JDK 25).
-    id("net.fabricmc.fabric-loom-remap") version "1.17.21" apply false
+    // One Loom release for every Minecraft target (docs/TARGET_PLATFORM.md §1):
+    // - remapping Loom for 1.21.11, which is obfuscated at runtime (sources use Mojang names);
+    // - non-remapping Loom for 26.x, which Mojang ships unobfuscated.
+    // Loom 1.19 needs Gradle on JDK 25 (gradle/gradle-daemon-jvm.properties). Fabric's own
+    // example mods use Loom 1.19 for both 1.21.11 and 26.x.
+    id("net.fabricmc.fabric-loom-remap") version "1.19.4" apply false
+    id("net.fabricmc.fabric-loom") version "1.19.4" apply false
 }
+
+// Reproducible archives: the same commit and native resources give byte-identical JARs, so the
+// hashes recorded in handoffs can be re-derived by Sol's CI build.
+subprojects {
+    tasks.withType<AbstractArchiveTask>().configureEach {
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
+    }
+}
+
+// Every Minecraft family the mod ships for, with its distribution JAR and launcher profile.
+val adapterProjects = listOf(":versions:mc1_21_11", ":versions:mc26_1", ":versions:mc26_2", ":versions:mc26_3")
 
 tasks.register("buildAll") {
     group = "build"
-    description = "Builds every distribution JAR into build/dist/."
-    dependsOn(":versions:mc1_21_11:collectDist")
+    description = "Builds every distribution JAR and launcher profile into build/dist/."
+    dependsOn(adapterProjects.map { "$it:collectDist" })
 }
 
 // ---------------------------------------------------------------------------------------------

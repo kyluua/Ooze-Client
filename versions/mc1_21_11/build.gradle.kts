@@ -81,6 +81,8 @@ dependencies {
     // into this mod's JAR exactly once (see tasks.jar). Never `include` it: Loom would wrap it as
     // a separate nested mod with its own generated mod ID, which Sol's contract forbids.
     implementation(project(":bridge-java"))
+    // Minecraft-independent Java shared by every adapter, merged into the JAR like the bridge.
+    implementation(project(":versions:common"))
 
     testCompileOnly("org.jspecify:jspecify:1.0.0")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
@@ -101,6 +103,7 @@ tasks.processResources {
 }
 
 val bridgeJar = project(":bridge-java").tasks.named<Jar>("jar")
+val commonJar = project(":versions:common").tasks.named<Jar>("jar")
 
 tasks.jar {
     from(rootProject.file("LICENSE")) {
@@ -111,8 +114,12 @@ tasks.jar {
     }
     // Merge bridge-java (classes + META-INF/ooze/** + natives/**) once; NativeBindings is not
     // relocated, so its JNI symbol names stay valid.
-    dependsOn(bridgeJar)
+    dependsOn(bridgeJar, commonJar)
     from(bridgeJar.map { zipTree(it.archiveFile) }) {
+        exclude("META-INF/MANIFEST.MF")
+    }
+    // The shared adapter classes and the in-game translations (assets/oozeclient/lang).
+    from(commonJar.map { zipTree(it.archiveFile) }) {
         exclude("META-INF/MANIFEST.MF")
     }
     duplicatesStrategy = DuplicatesStrategy.FAIL
@@ -196,8 +203,10 @@ val launcherProfile = tasks.register("launcherProfile") {
     dependsOn(remapJar)
     inputs.files(fabricApiArtifact)
     inputs.file(remapJar.flatMap { it.archiveFile })
+    // The legacy name stays for existing packaging; the per-version name matches the 26.x profiles.
     val out = rootProject.layout.buildDirectory.file("dist/ooze-launcher-profile.json")
-    outputs.file(out)
+    val perVersion = rootProject.layout.buildDirectory.file("dist/ooze-launcher-profile-mc$minecraftVersion.json")
+    outputs.files(out, perVersion)
     doLast {
         val modJar = remapJar.get().archiveFile.get().asFile
         val apiJar = fabricApiArtifact.singleFile
@@ -230,10 +239,12 @@ val launcherProfile = tasks.register("launcherProfile") {
             ),
             "readyMarker" to "OOZE_READY v1",
         )
-        val file = out.get().asFile
-        file.parentFile.mkdirs()
-        file.writeText(JsonOutput.prettyPrint(JsonOutput.toJson(profile)) + "\n")
-        logger.lifecycle("Ooze: wrote ${file.relativeTo(rootProject.projectDir)}")
+        val text = JsonOutput.prettyPrint(JsonOutput.toJson(profile)) + "\n"
+        for (file in listOf(out.get().asFile, perVersion.get().asFile)) {
+            file.parentFile.mkdirs()
+            file.writeText(text)
+            logger.lifecycle("Ooze: wrote ${file.relativeTo(rootProject.projectDir)}")
+        }
     }
 }
 

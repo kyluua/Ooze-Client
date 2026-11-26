@@ -1,13 +1,13 @@
 package io.github.kyluua.ooze.mc.v1_21_11.gametest;
 
-import io.github.kyluua.ooze.mc.v1_21_11.OozeClient;
+import io.github.kyluua.ooze.client.OozeRuntime;
 import io.github.kyluua.ooze.mc.v1_21_11.dev.BridgeDiagnosticScreen;
 import io.github.kyluua.ooze.mc.v1_21_11.dev.DeveloperProbe;
-import io.github.kyluua.ooze.mc.v1_21_11.diag.LaunchReadiness;
+import io.github.kyluua.ooze.client.diag.ReadinessMarker;
 import io.github.kyluua.ooze.mc.v1_21_11.diag.UnavailableNotice;
-import io.github.kyluua.ooze.mc.v1_21_11.engine.EngineConnector;
-import io.github.kyluua.ooze.mc.v1_21_11.engine.EngineStatus;
-import io.github.kyluua.ooze.mc.v1_21_11.engine.PlatformInfo;
+import io.github.kyluua.ooze.client.engine.EngineConnector;
+import io.github.kyluua.ooze.client.engine.EngineStatus;
+import io.github.kyluua.ooze.client.engine.PlatformInfo;
 import io.github.kyluua.ooze.mc.v1_21_11.mixin.GuiGraphicsAccessor;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -46,14 +46,14 @@ public final class LaunchToTitleScreenTest implements FabricClientGameTest {
     public void runTest(ClientGameTestContext context) {
         context.waitForScreen(TitleScreen.class);
 
-        EngineStatus status = OozeClient.engineStatus();
+        EngineStatus status = OozeRuntime.engineStatus();
         String expected = System.getProperty("oozeclient.test.expectEngineState",
                 PlatformInfo.current().isSupportedNativePlatform() ? "LOADED" : "UNSUPPORTED_PLATFORM");
         check(status.state().name().equals(expected),
                 "engine state " + status.state() + " != expected " + expected + " (" + status.detail() + ")");
 
         // The launcher's readiness marker is logged once the title screen opens (any engine state).
-        check(LaunchReadiness.wasLogged(), "the OOZE_READY readiness marker was not logged on the title screen");
+        check(ReadinessMarker.wasLogged(), "the OOZE_READY readiness marker was not logged on the title screen");
 
         // The render-state accessor mixin must apply in dev (named) and production (intermediary) runs.
         check(GuiGraphicsAccessor.class.isAssignableFrom(GuiGraphics.class),
@@ -65,7 +65,7 @@ public final class LaunchToTitleScreenTest implements FabricClientGameTest {
                 .toList());
         if (!status.isLoaded()) {
             check(oozeKeys.isEmpty(), "Ooze key mappings registered without an engine: " + oozeKeys);
-            check(!OozeClient.gate().oozeFeaturesEnabled(), "Ooze features enabled without an engine");
+            check(!OozeRuntime.gate().oozeFeaturesEnabled(), "Ooze features enabled without an engine");
             check(UnavailableNotice.wasShown(), "the 'Ooze Client is off' notice was not queued on the title screen");
         } else {
             check(!UnavailableNotice.wasShown(), "the unavailable notice was shown although the engine is loaded");
@@ -76,7 +76,7 @@ public final class LaunchToTitleScreenTest implements FabricClientGameTest {
         Path shot = context.takeScreenshot("c0-title-" + tag);
         LOG.info("C0 screenshot: {}", shot.toAbsolutePath());
 
-        if (status.isLoaded() && OozeClient.gate().developerProbeEnabled()) {
+        if (status.isLoaded() && OozeRuntime.gate().developerProbeEnabled()) {
             exerciseBridge(context, oozeKeys);
         }
 
@@ -93,7 +93,7 @@ public final class LaunchToTitleScreenTest implements FabricClientGameTest {
 
     private static void exerciseBridge(ClientGameTestContext context, List<String> oozeKeys) {
         check(oozeKeys.contains(DeveloperProbe.KEY_NAME), "developer probe key missing: " + oozeKeys);
-        EngineConnector.DevProbeResult probe = context.computeOnClient(mc -> DeveloperProbe.runProbe(OozeClient.connector()));
+        EngineConnector.DevProbeResult probe = context.computeOnClient(mc -> DeveloperProbe.runProbe(java.util.Objects.requireNonNull(OozeRuntime.connector())));
         LOG.info("C0 bridge probe ok={} in {} µs: {}", probe.ok(), probe.elapsedNanos() / 1_000, probe.summary());
         check(probe.ok(), "bridge probe failed: " + probe.summary());
 
