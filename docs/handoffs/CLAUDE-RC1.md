@@ -23,6 +23,10 @@ Newest last. Each line names a commit or package hash.
     - **Sol:** `PACKAGE-READY`. Candidate `b5fc945d…` is already verified (§3a). Also the R1 decision, then W1–W14 as operator.
     - **The owner:** Microsoft browser sign-in and decline (W3), and Narrator (W14).
   - Automatic polling has stopped; Claude resumes when this session is messaged.
+- 2026-11-26 SUPERSEDED-CANDIDATE.
+  - Owner decision 2026-11-25: Ooze ships without built-in anti-cheat, and Managed Fair Play is removed. Interface: `06afee8`; library: Sol `1beaf85`; merge: `f08e7ed`.
+  - Candidate `b5fc945d…` predates this change, so it is no longer the release candidate. Sol's successor package needs its own `PACKAGE-READY` and §3a verification.
+  - Details: `CLAUDE-NO-ANTICHEAT.md`.
 
 ## 1. Review findings
 

@@ -4,6 +4,7 @@
 - **Date:** 2026-11-25.
 - **Base:** `1a37969` (Sol's `SOL-INSTANCE-MODE-REMOVAL.md` contract).
 - **Contracts:** Library API 1 (single instance), Launcher API 1.1 and JNI ABI 1 (unchanged).
+- **Status (2026-11-26):** Sol implemented the contract in `1beaf85`. N1 and N2 are done; N3 waits for the successor package's Windows evidence. The `TRANSITION` Create line was removed in the merge `f08e7ed`. See `CLAUDE-NO-ANTICHEAT.md`.
 
 ## Owner decision (2026-11-25, from the owner's brief)
 
