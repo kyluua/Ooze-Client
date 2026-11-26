@@ -48,6 +48,14 @@ pub enum Loader {
     NeoForge,
 }
 
+pub(crate) fn java_for_minecraft(minecraft: &str) -> Option<u32> {
+    match minecraft {
+        "1.21.11" => Some(21),
+        "26.1" | "26.1.1" | "26.1.2" | "26.2" | "26.3" => Some(25),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Target {
@@ -76,16 +84,20 @@ impl Target {
         }
     }
     pub(crate) fn validate(&self) -> Result<()> {
-        if self.minecraft != "1.21.11"
-            || self.java_major != 21
+        if java_for_minecraft(&self.minecraft) != Some(self.java_major)
             || match self.loader {
                 Loader::Vanilla => self.loader_version.is_some() || self.ooze,
-                Loader::Fabric => self.loader_version.as_deref() != Some("0.20.1"),
+                Loader::Fabric => self.loader_version.as_deref().is_none_or(|loader| {
+                    !(1..=128).contains(&loader.len())
+                        || !loader.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_')
+                        })
+                }),
                 _ => true,
             }
         {
             return Err(invalid(
-                "This build supports Minecraft 1.21.11 on Vanilla or Fabric 0.20.1 with Java 21. Other adapters are not available.",
+                "Unsupported Minecraft version, loader, or Java requirement.",
             ));
         }
         Ok(())
@@ -94,6 +106,12 @@ impl Target {
         match self.loader {
             Loader::Fabric => Some("fabric"),
             _ => None,
+        }
+    }
+    pub(crate) fn launch_version_name(&self) -> String {
+        match &self.loader_version {
+            Some(loader) => format!("fabric-loader-{loader}-{}", self.minecraft),
+            None => self.minecraft.clone(),
         }
     }
 }

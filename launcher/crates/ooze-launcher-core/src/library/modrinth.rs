@@ -338,11 +338,13 @@ pub(super) fn resolve(
     instance: &Instance,
     project: &str,
     version: &str,
+    bundled_api: Option<&str>,
     check: &dyn Fn() -> Result<()>,
 ) -> Result<Resolution> {
     struct Graph<'a> {
         source: &'a dyn Source,
         instance: &'a Instance,
+        bundled_api: Option<&'a str>,
         check: &'a dyn Fn() -> Result<()>,
         selected: BTreeMap<String, String>,
         visiting: BTreeSet<String>,
@@ -383,11 +385,11 @@ pub(super) fn resolve(
                     "Selected content is incompatible with this instance or client side.",
                 ));
             }
-            if project.project_type == ContentKind::Mod
-                && self.instance.target.ooze
+            if let Some(api_version) = self.bundled_api
+                && project.project_type == ContentKind::Mod
                 && project.slug == "fabric-api"
             {
-                if summary.version_number != "0.141.6+1.21.11" {
+                if summary.version_number != api_version {
                     return Err(invalid(
                         "This dependency requires a different Fabric API than the pinned Ooze release. Use a compatible content version or a Fabric instance without Ooze.",
                     ));
@@ -429,7 +431,13 @@ pub(super) fn resolve(
                             self.source
                                 .versions(p, &self.instance.target, self.check)?
                                 .into_iter()
-                                .find(|v| compatible(&project, v, &self.instance.target))
+                                .find(|v| {
+                                    compatible(&project, v, &self.instance.target)
+                                        && (project.slug != "fabric-api"
+                                            || self
+                                                .bundled_api
+                                                .is_none_or(|api| v.summary.version_number == api))
+                                })
                                 .ok_or_else(|| {
                                     invalid("No compatible required dependency is available.")
                                 })?
@@ -487,6 +495,7 @@ pub(super) fn resolve(
     let mut graph = Graph {
         source,
         instance,
+        bundled_api,
         check,
         selected: BTreeMap::new(),
         visiting: BTreeSet::new(),
@@ -691,7 +700,7 @@ mod tests {
             ("a".into(), version("a", "A", vec![dep("b", "required")])),
             ("b".into(), version("b", "B", vec![dep("a", "required")])),
         ]));
-        assert!(resolve(&fixture, &instance, "A", "a", &|| Ok(())).is_err());
+        assert!(resolve(&fixture, &instance, "A", "a", None, &|| Ok(())).is_err());
         let mut fixture = fixture;
         fixture.0.insert(
             "a".into(),
@@ -699,16 +708,16 @@ mod tests {
         );
         fixture.0.insert("b".into(), version("b", "B", vec![]));
         fixture.0.insert("c".into(), version("c", "B", vec![]));
-        assert!(resolve(&fixture, &instance, "A", "a", &|| Ok(())).is_err());
+        assert!(resolve(&fixture, &instance, "A", "a", None, &|| Ok(())).is_err());
         fixture.0.insert(
             "a".into(),
             version("a", "A", vec![dep("b", "required"), dep("c", "optional")]),
         );
-        let result = resolve(&fixture, &instance, "A", "a", &|| Ok(())).unwrap();
+        let result = resolve(&fixture, &instance, "A", "a", None, &|| Ok(())).unwrap();
         assert_eq!(result.files.len(), 2);
         assert_eq!(result.optional, vec!["c"]);
         fixture.0.get_mut("b").unwrap().summary.loaders = vec!["forge".into()];
-        assert!(resolve(&fixture, &instance, "A", "a", &|| Ok(())).is_err());
+        assert!(resolve(&fixture, &instance, "A", "a", None, &|| Ok(())).is_err());
     }
     #[test]
     fn search_uses_facets_user_agent_and_cache_for_all_four_types() {

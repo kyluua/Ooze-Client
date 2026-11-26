@@ -8,6 +8,11 @@ Run commands from the repository root. G0 targets **Windows x64 only**; Linux, m
 
 Replace JavaHome with your installed JDK 21 path. Both javac and the running harness enforce Java 21; `--release 21` under a newer JVM alone is not accepted as execution evidence. The root rust-toolchain.toml downloads/uses the pinned Rust 1.99.1 toolchain through rustup.
 
+Pass `-Java25Home <JDK25>` to run the same Windows x64 JNI artifact and
+contract harness under an actual Java 25 JVM as well. Bridge classes retain
+the Java 21 compilation target. The dual-runtime CI gate uses an explicit
+Java 25 assertion and native-access option, matching the 26.x launch metadata.
+
 The script fails on any formatting, Clippy, Rust test, javac warning, packaging or harness failure. It executes:
 
 - `cargo fmt --manifest-path native/Cargo.toml --all -- --check`

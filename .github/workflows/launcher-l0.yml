@@ -76,7 +76,8 @@ jobs:
       - name: Assemble real Ooze mod with production Windows engine
         shell: pwsh
         run: |
-          ./native/tools/build-g0.ps1 -JavaHome $env:JAVA_HOME_21_X64
+          if (!$env:JAVA_HOME_25_X64) { throw 'Java 25 x64 is required for the JNI matrix' }
+          ./native/tools/build-g0.ps1 -JavaHome $env:JAVA_HOME_21_X64 -Java25Home $env:JAVA_HOME_25_X64
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $env:JAVA_HOME = $env:JAVA_HOME_21_X64
           ./gradlew.bat build buildAll --no-daemon --console=plain
@@ -149,6 +150,22 @@ jobs:
             return
           }
           ./launcher/packaging/prepare-mrpack.ps1 -PackageDirectory './launcher/dist/ooze-rc1-windows-x64' -OutputDirectory './launcher/dist/ooze-rc1-mrpack'
+      - name: Build the Windows version catalog candidate
+        shell: pwsh
+        run: |
+          $base = './launcher/dist/ooze-rc1-windows-x64'
+          $candidate = './launcher/dist/ooze-version-catalog'
+          $validated = @{}
+          if (Test-Path -LiteralPath './build/dist/validated-ooze-clients.json') {
+            $validated.ValidatedClientManifest = './build/dist/validated-ooze-clients.json'
+          }
+          ./launcher/packaging/prepare-catalog.ps1 -BasePackageDirectory $base -OutputDirectory $candidate @validated
+          ./launcher/packaging/test-catalog.ps1 -BasePackageDirectory $base -PackageDirectory $candidate -DataDirectory (Join-Path $env:RUNNER_TEMP 'Ooze install with spaces')
+          ./launcher/packaging/prepare-installer.ps1 -PackageDirectory $candidate -OutputDirectory './launcher/dist/ooze-version-catalog-setup'
+          $catalog = Get-Content -LiteralPath "$candidate/release.json" -Raw | ConvertFrom-Json
+          foreach ($entry in @($catalog.targets | Where-Object {$_.fabric.bundle})) {
+            ./launcher/packaging/prepare-mrpack.ps1 -PackageDirectory $candidate -MinecraftVersion $entry.minecraft -OutputDirectory "./launcher/dist/ooze-version-catalog-prism/$($entry.minecraft)"
+          }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ooze-launcher-windows-x64
@@ -160,8 +177,43 @@ jobs:
           path: launcher/dist/ooze-rc1-mrpack/
           if-no-files-found: ignore
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ooze-launcher-version-catalog-windows-x64
+          path: launcher/dist/ooze-version-catalog/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ooze-launcher-version-catalog-setup-windows-x64
+          path: launcher/dist/ooze-version-catalog-setup/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ooze-version-catalog-prism
+          path: launcher/dist/ooze-version-catalog-prism/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: ooze-launcher-ui-evidence
           path: launcher/test-data/ui-screenshots/
           if-no-files-found: ignore
+  install-matrix:
+    needs: windows-x64
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        minecraft: ['1.21.11', '26.1', '26.1.1', '26.1.2', '26.2', '26.3']
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ooze-launcher-version-catalog-windows-x64
+          path: launcher/dist/catalog-under-test
+      - name: Verify Java, install and repair for Vanilla and Fabric
+        shell: pwsh
+        env:
+          OOZE_TEST_MINECRAFT: ${{ matrix.minecraft }}
+        run: |
+          ./launcher/packaging/test-targets.ps1 -PackageDirectory './launcher/dist/catalog-under-test' -DataDirectory (Join-Path $env:RUNNER_TEMP 'Ooze target with spaces') -MinecraftVersion $env:OOZE_TEST_MINECRAFT

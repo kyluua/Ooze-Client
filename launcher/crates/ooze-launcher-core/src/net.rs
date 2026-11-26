@@ -106,9 +106,12 @@ pub(crate) fn trusted_url(raw: &str) -> Result<url::Url> {
             | "release-assets.githubusercontent.com"
             | "objects.githubusercontent.com"
     ) || (host == "github.com"
-        && url
-            .path()
-            .starts_with("/adoptium/temurin21-binaries/releases/download/"));
+        && [
+            "/adoptium/temurin21-binaries/releases/download/",
+            "/adoptium/temurin25-binaries/releases/download/",
+        ]
+        .iter()
+        .any(|prefix| url.path().starts_with(prefix)));
     if !allowed
         || url.scheme() != "https"
         || !url.username().is_empty()

@@ -149,6 +149,7 @@ struct Active {
 type Notify = Arc<dyn Fn() + Send + Sync>;
 struct Inner {
     data: PathBuf,
+    catalog: Option<crate::catalog::Catalog>,
     state: Mutex<Snapshot>,
     active: Mutex<Option<Active>>,
     next: AtomicU64,
@@ -166,7 +167,10 @@ impl Library {
     pub fn capabilities(&self) -> Capabilities {
         Capabilities {
             api_version: LIBRARY_API_VERSION,
-            targets: vec![Target::fabric(), Target::vanilla()],
+            targets: self.inner.catalog.as_ref().map_or_else(
+                || vec![Target::fabric(), Target::vanilla()],
+                crate::catalog::Catalog::targets,
+            ),
             content_kinds: vec![
                 ContentKind::Mod,
                 ContentKind::Resourcepack,
@@ -180,7 +184,22 @@ impl Library {
         }
     }
     pub fn open(data_dir: impl AsRef<Path>) -> Result<Self> {
-        let data = data_dir.as_ref().to_owned();
+        Self::open_with_catalog(data_dir.as_ref(), None)
+    }
+
+    pub fn open_with_release(
+        data_dir: impl AsRef<Path>,
+        release_manifest: impl AsRef<Path>,
+    ) -> Result<Self> {
+        let catalog = crate::catalog::Catalog::read(release_manifest.as_ref())?;
+        Self::open_with_catalog(data_dir.as_ref(), Some(catalog))
+    }
+
+    fn open_with_catalog(
+        data_dir: &Path,
+        catalog: Option<crate::catalog::Catalog>,
+    ) -> Result<Self> {
+        let data = data_dir.to_owned();
         util::absolute(&data)?;
         let root = util::join(&data, "library")?;
         util::mkdir(&root)?;
@@ -203,6 +222,7 @@ impl Library {
         Ok(Self {
             inner: Arc::new(Inner {
                 data,
+                catalog,
                 state: Mutex::new(state),
                 active: Mutex::new(None),
                 next: AtomicU64::new(1),
@@ -338,6 +358,25 @@ impl Drop for Library {
     }
 }
 impl Inner {
+    fn bundled_fabric_api(&self, target: &Target) -> Result<Option<&str>> {
+        if let Some(catalog) = &self.catalog {
+            let release = catalog.select(target)?;
+            return Ok(release
+                .bundle()
+                .filter(|_| target.ooze)
+                .map(|bundle| bundle.api_version.as_str()));
+        }
+
+        let mut fabric = Target::fabric();
+        fabric.ooze = target.ooze;
+        if target != &fabric && target != &Target::vanilla() {
+            return Err(invalid(
+                "The library requires a release catalog for this target.",
+            ));
+        }
+        Ok(target.ooze.then_some(crate::catalog::LEGACY_FABRIC_API))
+    }
+
     fn progress(
         &self,
         id: u64,
@@ -420,6 +459,7 @@ impl Inner {
                 target,
                 preset,
             } => {
+                self.bundled_fabric_api(&target)?;
                 report(ProgressStage::Committing, 0, None, None)?;
                 Ok(Reply::Instance(store.create(name, target, preset)?))
             }
@@ -477,12 +517,19 @@ impl Inner {
                 serde_json::to_string_pretty(&store.instance(&id)?.theme)
                     .map_err(|_| io_error())?,
             )),
-            Command::Search(request) => Ok(Reply::Search(self.http.search(&request, check)?)),
-            Command::SearchFiltered { search, options } => Ok(Reply::Search(
-                self.http.search_filtered(&search, &options, check)?,
-            )),
+            Command::Search(request) => {
+                self.bundled_fabric_api(&request.target)?;
+                Ok(Reply::Search(self.http.search(&request, check)?))
+            }
+            Command::SearchFiltered { search, options } => {
+                self.bundled_fabric_api(&search.target)?;
+                Ok(Reply::Search(
+                    self.http.search_filtered(&search, &options, check)?,
+                ))
+            }
             Command::Project(project) => Ok(Reply::Project(self.http.project(&project, check)?)),
             Command::Versions { project, target } => {
+                self.bundled_fabric_api(&target)?;
                 let project = self.http.project(&project, check)?;
                 Ok(Reply::Versions(
                     self.http
@@ -500,7 +547,9 @@ impl Inner {
                 world,
             } => {
                 let (value, _lock) = store.claim(&instance)?;
-                let resolution = modrinth::resolve(&self.http, &value, &project, &version, check)?;
+                let bundled_api = self.bundled_fabric_api(&value.target)?;
+                let resolution =
+                    modrinth::resolve(&self.http, &value, &project, &version, bundled_api, check)?;
                 for file in &resolution.files {
                     content::destination(
                         &store.game(&instance)?,
@@ -672,7 +721,14 @@ fn verify_baseline(
     } else {
         "net.minecraft.client.main.Main"
     };
-    if install.main_class != expected {
+    if install.main_class != expected
+        || install.version_name != instance.target.launch_version_name()
+        || install
+            .files
+            .iter()
+            .any(|file| file.path == "mods/ooze-client.jar")
+            != instance.target.ooze
+    {
         return Ok(Some(false));
     }
     let root = util::join(&managed, &install.directory)?;

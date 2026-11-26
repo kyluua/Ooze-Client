@@ -60,6 +60,13 @@ content. Launcher API 1 handles game installation and Repair.
 
 ## Facade and ownership
 
+For a packaged launcher, `Library::open_with_release(data_dir, release_manifest)`
+loads the same local manifest passed to the Launcher API. `Capabilities.targets`
+are the supported records of that package. `Create`, version lookup, search and
+dependency planning validate the exact submitted target against the manifest.
+Existing 1.21.11 callers and fixtures can use `Library::open(data_dir)`.
+The data schema and stable target fields are unchanged.
+
 `Library::open(data_dir)` performs bounded local startup I/O. Call it off the
 paint path, beside `Launcher::open`, using the same absolute data directory.
 `snapshot`, `submit`, `cancel`, `try_event` mirror the existing asynchronous

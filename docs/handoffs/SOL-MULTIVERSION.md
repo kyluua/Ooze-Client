@@ -56,3 +56,12 @@ record verification by version and loader before any release claim.
 Contract published first. Implementation and acceptance evidence will follow
 below. Java 21 versus 25 was checked against Mojang's release metadata for
 each of the six IDs.
+
+Fabric Meta returned loader 0.20.1 on every target. Candidate packaging
+accepts an optional `build/dist/validated-ooze-clients.json` from Claude
+alongside the production JARs. Its schema is
+`{ schema: 1, targets: [{ minecraft, java_major, loader, api_version, file,
+sha256, evidence }] }`. `file` is a JAR filename beside the manifest.
+`evidence` references the per-version production launch result. Leave rows
+without that evidence out of this file. The 1.21.11 bundle comes from the
+base package. Catalog packaging verifies each incoming hash before use.

@@ -19,14 +19,14 @@ pub(crate) struct Release {
     pub ooze: Artifact,
     pub java: JavaRelease,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PinnedLibrary {
     pub name: String,
     pub path: String,
     pub artifact: Artifact,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct JavaRelease {
     pub archive: Artifact,
