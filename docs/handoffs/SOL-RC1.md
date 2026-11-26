@@ -9,6 +9,11 @@
   ZIP `beff2cd7c1d6f993234850cb41494b4714ed0f9cba098f19c613b843af8d35d0`.
   [Migration and Windows evidence](SOL-INSTANCE-MODE-REMOVAL.md).
   Gate L remains open pending the combined UI package and authenticated Play.
+- PACKAGE-READY `b09026a9cfc884f64dc18598befc2936c9fc6441653a8f5996fa0b7d3809edd7`
+  `f8ba07aaa7e4604b9edf5d3b0d8e376dfc547b96` `45728004526`.
+  The combined Windows package contains the single-instance desktop UI.
+  [Windows setup handoff](SOL-WINDOWS-SETUP.md) records its separate installer
+  and Prism hashes. Gate L remains open for desktop Play.
 
 Owner Sol. Target Windows x64, Fabric 1.21.11, Java 21 and the bundled Rust
 engine. Gate L is open. The previous Windows runs in `SOL-GATE-L.md` cover
