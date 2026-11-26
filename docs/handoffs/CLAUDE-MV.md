@@ -22,6 +22,12 @@
 
 - 2026-11-26 **MOD-READY:** every advertised Fabric target is Game-launched on Linux with its shipped JAR (22/22 cases, vanilla-only engine state).
 - 2026-11-26 **UI-READY:** the interface is Headless-tested on the merged tree with Sol's release-aware library.
+- 2026-11-26 **Windows CI green on `3cd13d8`**, [run 45792158067](https://github.com/kyluua/Ooze-Client/actions/runs/45792158067), `windows-latest`. All on the first Windows build with these Gradle changes:
+  - "Assemble real Ooze mod with production Windows engine" (`gradlew.bat build buildAll`, Gradle on JDK 25, the four adapters and the shared tests): **Built** and **Headless-tested**.
+  - The launcher workspace tests, including the interface tests, on the real Windows GUI adapter: **Headless-tested**.
+  - The live interface and Modrinth tests, the catalog candidate, and Sol's install and repair matrix for all six versions.
+
+  This is not a game launch.
 - **Open:** `engine=LOADED` on Windows x64 for every target (Sol, A1) and authenticated Play (A4). Until then the brief's Windows acceptance is not met, and Sol's packaging gets no validated 26.x bundle.
 
 ## 1. What changed
