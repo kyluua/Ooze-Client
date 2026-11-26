@@ -972,8 +972,37 @@ impl LauncherApp {
         let th = kit.theme;
         if let Some(instance) = self.selected_instance() {
             kit.text(ui, th.text.display, th.c.text_primary, &instance.name);
-            kit.caption(ui, &library_pages::target_text(kit, &instance.target));
-        } else if let Some(profile) = self.model.profile.clone() {
+            // The exact target Play launches: Minecraft version, loader and whether Ooze is in it.
+            let t = &instance.target;
+            let loader = match &t.loader_version {
+                Some(v) => kit
+                    .tr
+                    .fmt("play.target.loader", &[kit.t(t.loader.key()), v]),
+                None => kit.t(t.loader.key()).to_owned(),
+            };
+            ui.horizontal_wrapped(|ui| {
+                kit.tag(
+                    ui,
+                    &kit.tr.fmt("play.target.minecraft", &[&t.game_version]),
+                    Some(Tone::Info),
+                );
+                kit.tag(ui, &loader, Some(Tone::Info));
+                if t.ooze {
+                    kit.tag(ui, kit.t("instance.ooze_available"), Some(Tone::Success));
+                } else {
+                    kit.tag(ui, kit.t("instance.ooze_unavailable"), None);
+                }
+            });
+            kit.caption(
+                ui,
+                &kit.tr.fmt("play.target.java", &[&t.java_major.to_string()]),
+            );
+        } else if let Some(profile) = self
+            .model
+            .profile
+            .clone()
+            .filter(|p| !p.minecraft.is_empty())
+        {
             kit.text(
                 ui,
                 th.text.display,

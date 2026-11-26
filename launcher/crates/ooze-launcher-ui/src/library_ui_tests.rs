@@ -364,6 +364,27 @@ fn content_offers_only_the_kinds_supported_for_the_selected_instance() {
     );
 }
 
+fn radio_labels(h: &H) -> Vec<String> {
+    h.query_all_by_role(Role::RadioButton)
+        .filter_map(|n| n.accesskit_node().label())
+        .collect()
+}
+
+/// The fixture's target for this version and loader; Fabric means Fabric with Ooze.
+fn target(version: &str, loader: Loader) -> GameTarget {
+    fx::all_targets()
+        .into_iter()
+        .find(|t| t.game_version == version && t.loader == loader)
+        .unwrap()
+}
+
+fn plain_fabric(version: &str) -> GameTarget {
+    GameTarget {
+        ooze: false,
+        ..target(version, Loader::Fabric)
+    }
+}
+
 #[test]
 fn create_offers_only_reported_combinations_and_submits_the_exact_target() {
     let mut snap = fx::snapshot();
@@ -372,14 +393,9 @@ fn create_offers_only_reported_combinations_and_submits_the_exact_target() {
     let lh = lh.unwrap();
     go(&mut h, "Instances");
     click(&mut h, Role::Button, "New instance");
-    let options: Vec<String> = h
-        .query_all_by_role(Role::RadioButton)
-        .filter_map(|n| n.accesskit_node().label())
-        .collect();
-    assert_eq!(options.len(), 1, "{options:?}");
-    assert!(options[0].contains("Fabric 0.20.1") && options[0].contains("1.21.11"));
-    assert!(options[0].contains("Ooze Client included"));
-    shot(&mut h, "instances-create");
+    assert_eq!(radio_labels(&h), ["Fabric with Ooze", "1.21.11"]);
+    assert!(shows(&h, "Fabric 0.20.1 · Minecraft 1.21.11 · Java 21"));
+    assert!(shows(&h, "Ooze Client included"));
     click(&mut h, Role::Button, "Create instance");
     assert_eq!(
         lh.submitted().last(),
@@ -388,6 +404,213 @@ fn create_offers_only_reported_combinations_and_submits_the_exact_target() {
             target: fx::fabric_target()
         })
     );
+}
+
+const VERSIONS_NEWEST_FIRST: [&str; 6] = ["26.3", "26.2", "26.1.2", "26.1.1", "26.1", "1.21.11"];
+
+/// Every combination the library reports is selectable: the kind first (Fabric with Ooze, plain
+/// Fabric, Vanilla), then its Minecraft versions newest first; the exact choice is what Create
+/// sends, and the summary says whether it includes Ooze.
+#[test]
+fn version_and_loader_selection_covers_every_reported_combination() {
+    let (mut h, _, lh) = harness(Some(fx::snapshot()));
+    let lh = lh.unwrap();
+    go(&mut h, "Instances");
+    click(&mut h, Role::Button, "New instance");
+    let kinds = ["Fabric with Ooze", "Fabric", "Vanilla"];
+    let expected: Vec<&str> = kinds
+        .iter()
+        .chain(VERSIONS_NEWEST_FIRST.iter())
+        .copied()
+        .collect();
+    assert_eq!(radio_labels(&h), expected);
+    assert!(shows(&h, "Fabric 0.20.1 · Minecraft 26.3 · Java 25"));
+    assert!(shows(&h, "Ooze Client included"));
+    shot(&mut h, "instances-create-versions");
+
+    // Every kind offers all six versions; switching kind keeps the chosen version.
+    click(&mut h, Role::RadioButton, "1.21.11");
+    for kind in ["Fabric", "Vanilla", "Fabric with Ooze"] {
+        click(&mut h, Role::RadioButton, kind);
+        assert_eq!(radio_labels(&h), expected, "{kind}");
+    }
+    assert!(shows(&h, "Fabric 0.20.1 · Minecraft 1.21.11 · Java 21"));
+    click(&mut h, Role::RadioButton, "Fabric");
+    assert!(
+        shows(&h, "No Ooze modules"),
+        "plain Fabric is marked as without Ooze"
+    );
+    click(&mut h, Role::RadioButton, "Vanilla");
+    assert!(shows(&h, "Vanilla · Minecraft 1.21.11 · Java 21"));
+
+    click(&mut h, Role::RadioButton, "26.1.1");
+    assert!(shows(&h, "Vanilla · Minecraft 26.1.1 · Java 25"));
+    assert!(shows(&h, "No Ooze modules"));
+    click(&mut h, Role::Button, "Create instance");
+    assert_eq!(
+        lh.submitted().last(),
+        Some(&LibCommand::Create {
+            name: "New instance".into(),
+            target: target("26.1.1", Loader::Vanilla),
+        })
+    );
+}
+
+/// Plain Fabric and Fabric with Ooze are different targets for the same version.
+#[test]
+fn plain_fabric_and_fabric_with_ooze_create_different_targets() {
+    let (mut h, _, lh) = harness(Some(fx::snapshot()));
+    let lh = lh.unwrap();
+    go(&mut h, "Instances");
+    click(&mut h, Role::Button, "New instance");
+    click(&mut h, Role::RadioButton, "Fabric");
+    click(&mut h, Role::RadioButton, "26.2");
+    click(&mut h, Role::Button, "Create instance");
+    assert_eq!(
+        lh.submitted().last(),
+        Some(&LibCommand::Create {
+            name: "New instance".into(),
+            target: plain_fabric("26.2"),
+        })
+    );
+}
+
+/// The kind and version groups are reachable with Tab and change with the arrow keys
+/// (roving focus); Enter on Create sends exactly the target shown.
+#[test]
+fn version_selection_works_with_the_keyboard_alone() {
+    let (mut h, _, lh) = harness(Some(fx::snapshot()));
+    let lh = lh.unwrap();
+    go(&mut h, "Instances");
+    click(&mut h, Role::Button, "New instance");
+    let focus = |h: &mut H, role: Role, label: &str| {
+        for _ in 0..40 {
+            if h.get_by_role_and_label(role, label).is_focused() {
+                return;
+            }
+            h.key_press(Key::Tab);
+            h.run_steps(2);
+        }
+        panic!("{label} is not reachable with Tab");
+    };
+    focus(&mut h, Role::RadioButton, "Fabric with Ooze");
+    h.key_press(Key::ArrowRight);
+    steps(&mut h);
+    h.key_press(Key::ArrowRight);
+    steps(&mut h);
+    assert!(shows(&h, "Vanilla · Minecraft 26.3 · Java 25"));
+    focus(&mut h, Role::RadioButton, "26.3");
+    h.key_press(Key::ArrowRight);
+    steps(&mut h);
+    assert!(shows(&h, "Vanilla · Minecraft 26.2 · Java 25"));
+    assert!(
+        h.get_by_role_and_label(Role::RadioButton, "26.2")
+            .is_focused(),
+        "focus follows the selection"
+    );
+    focus(&mut h, Role::Button, "Create instance");
+    h.key_press(Key::Enter);
+    steps(&mut h);
+    assert_eq!(
+        lh.submitted().last(),
+        Some(&LibCommand::Create {
+            name: "New instance".into(),
+            target: target("26.2", Loader::Vanilla),
+        })
+    );
+}
+
+/// Play names the exact target it launches: Minecraft version, loader and Ooze availability.
+#[test]
+fn play_shows_the_selected_version_and_loader() {
+    let mut snap = fx::snapshot();
+    snap.instances[0].target = target("26.3", Loader::Fabric);
+    let (mut h, _, _) = harness(Some(snap));
+    assert!(shows(&h, "Minecraft 26.3"));
+    assert!(shows(&h, "Fabric 0.20.1"));
+    assert!(shows(&h, "Ooze Client included"));
+    assert!(shows(&h, "Runs on Java 25"));
+    shot(&mut h, "play-target-26.3");
+
+    let mut snap = fx::snapshot();
+    snap.instances[1].target = target("26.1", Loader::Vanilla);
+    snap.selected = Some(fx::vanilla_id());
+    let (h, _, _) = harness(Some(snap));
+    assert!(shows(&h, "Minecraft 26.1"));
+    assert!(shows(&h, "Vanilla"));
+    assert!(shows(&h, "No Ooze modules"));
+    assert!(!shows(&h, "Ooze Client included"));
+    assert!(shows(&h, "Runs on Java 25"));
+
+    // Plain Fabric: the loader is named, without Ooze.
+    let mut snap = fx::snapshot();
+    snap.instances[0].target = plain_fabric("26.2");
+    let (h, _, _) = harness(Some(snap));
+    assert!(shows(&h, "Minecraft 26.2"));
+    assert!(shows(&h, "Fabric 0.20.1"));
+    assert!(shows(&h, "No Ooze modules"));
+    assert!(!shows(&h, "Ooze Client included"));
+}
+
+/// Modrinth browsing and dependency review run for the selected instance and name its exact
+/// target (the library filters by that instance's Minecraft version and loader).
+#[test]
+fn content_browsing_and_review_use_the_selected_instance_target() {
+    let mut snap = fx::snapshot();
+    snap.instances[0].target = target("26.2", Loader::Fabric);
+    let (mut h, _, lh) = harness(Some(snap));
+    let lh = lh.unwrap();
+    open_content(&mut h, &lh);
+    assert!(shows(&h, "(Fabric 0.20.1 · Minecraft 26.2 · Java 25)"));
+    search(&mut h, "");
+    let LibCommand::Search(q) = lh.submitted().last().cloned().unwrap() else {
+        panic!()
+    };
+    assert_eq!(
+        q.instance,
+        fx::fabric_id(),
+        "search runs for the selected instance"
+    );
+    finish(
+        &mut h,
+        &lh,
+        LibPayload::Search(SearchPage {
+            query: q,
+            hits: fx::hits(ContentKind::Mod),
+            total: 3,
+            categories: Vec::new(),
+        }),
+    );
+    click(&mut h, Role::Button, "View Example Utility Mod 1 (fixture)");
+    finish(
+        &mut h,
+        &lh,
+        LibPayload::Project(fx::details(
+            fx::fabric_id(),
+            ContentKind::Mod,
+            "fixture-mod-1",
+        )),
+    );
+    click(&mut h, Role::Button, "Review install");
+    assert!(matches!(
+        lh.submitted().last(),
+        Some(LibCommand::Plan { instance, .. }) if *instance == fx::fabric_id()
+    ));
+    finish(
+        &mut h,
+        &lh,
+        LibPayload::Plan(fx::plan(
+            fx::fabric_id(),
+            ContentKind::Mod,
+            "fixture-mod-1-v2",
+            None,
+        )),
+    );
+    assert!(shows(
+        &h,
+        "Resolved for Fabric 0.20.1 · Minecraft 26.2 · Java 25"
+    ));
+    shot(&mut h, "content-review-26.2");
 }
 
 #[test]
@@ -1335,9 +1558,6 @@ fn new_instance_choices_fit_at_the_minimum_window_and_200_percent_scale() {
     let mut checked = 0;
     for node in h.query_all_by_role(Role::RadioButton) {
         let label = node.accesskit_node().label().unwrap_or_default();
-        if !label.contains("Minecraft 1.21.11") {
-            continue;
-        }
         let b = node.accesskit_node().bounding_box().expect("choice bounds");
         assert!(
             b.x0 >= card.x0 - 0.5 && b.x1 <= card.x1 + 0.5,
@@ -1345,14 +1565,8 @@ fn new_instance_choices_fit_at_the_minimum_window_and_200_percent_scale() {
         );
         checked += 1;
     }
-    assert_eq!(checked, 2, "both Fabric and Vanilla choices are present");
-    h.query_all_by_role(Role::RadioButton)
-        .find(|n| {
-            n.accesskit_node()
-                .label()
-                .is_some_and(|l| l.contains("Vanilla"))
-        })
-        .expect("vanilla choice")
+    assert_eq!(checked, 9, "three kinds and six Minecraft versions");
+    h.get_by_role_and_label(Role::RadioButton, "1.21.11")
         .scroll_to_me();
     h.run_steps(20);
     shot(&mut h, "new-instance-min-200");

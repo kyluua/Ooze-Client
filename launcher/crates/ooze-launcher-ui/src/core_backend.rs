@@ -468,7 +468,9 @@ pub fn map_error(error: &lc::LauncherError, during: Option<OperationKind>) -> La
     }
 }
 
-/// Profile versions from the release manifest the backend installs (display only).
+/// Profile versions from the release manifest the backend installs (display only). A schema 2
+/// catalog (several Minecraft versions, Sol's `SOL-MULTIVERSION.md`) has no single profile: the
+/// summary is then empty and Play shows the selected instance's own target instead.
 pub fn read_profile(release_manifest: &Path) -> ProfileSummary {
     let value: serde_json::Value = std::fs::read(release_manifest)
         .ok()
@@ -487,6 +489,15 @@ pub fn read_profile(release_manifest: &Path) -> ProfileSummary {
         .and_then(|u| u.rsplit('/').nth(1))
         .unwrap_or_default()
         .to_owned();
+    if value.get("schema").and_then(serde_json::Value::as_u64) == Some(2) {
+        return ProfileSummary {
+            minecraft: String::new(),
+            fabric_loader: String::new(),
+            fabric_api: String::new(),
+            ooze: String::new(),
+            java_major: 0,
+        };
+    }
     ProfileSummary {
         minecraft: Some(text("minecraft"))
             .filter(|s| !s.is_empty())
@@ -899,7 +910,7 @@ mod tests {
     #[test]
     fn engine_states_match_the_mods_enum() {
         let java = include_str!(
-            "../../../../versions/mc1_21_11/src/main/java/io/github/kyluua/ooze/mc/v1_21_11/engine/EngineStatus.java"
+            "../../../../versions/common/src/main/java/io/github/kyluua/ooze/client/engine/EngineStatus.java"
         );
         let body = &java[java.find("public enum State {").unwrap()..];
         let body = &body[..body.find(';').unwrap()];
@@ -1399,6 +1410,19 @@ mod tests {
             ),
             ("1.21.11", "0.20.1", "0.141.6+1.21.11")
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A multi-version catalog names no single profile: nothing version-specific is shown for it
+    /// (Play shows the selected instance's target instead).
+    #[test]
+    fn a_multi_version_catalog_has_no_single_profile() {
+        let dir = std::env::temp_dir().join(format!("ooze-ui-catalog-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("release.json");
+        std::fs::write(&path, br#"{"schema":2,"id":"ooze-rc","targets":[]}"#).unwrap();
+        let p = read_profile(&path);
+        assert!(p.minecraft.is_empty() && p.fabric_loader.is_empty() && p.java_major == 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

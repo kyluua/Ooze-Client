@@ -31,6 +31,28 @@ pub fn vanilla_target() -> GameTarget {
     }
 }
 
+/// Every combination the multi-version release offers, in the order Sol's library reports them
+/// (Ooze targets first, then the catalog's Vanilla and plain Fabric records per version): Fabric
+/// 0.20.1 with and without Ooze, and Vanilla, on 1.21.11 (Java 21) and 26.1 to 26.3 (Java 25).
+pub fn all_targets() -> Vec<GameTarget> {
+    const VERSIONS: [&str; 6] = ["1.21.11", "26.1", "26.1.1", "26.1.2", "26.2", "26.3"];
+    let java = |v: &str| if v == "1.21.11" { 21 } else { 25 };
+    let with = |base: GameTarget, v: &str| GameTarget {
+        game_version: v.into(),
+        java_major: java(v),
+        ..base
+    };
+    let mut out: Vec<GameTarget> = VERSIONS.iter().map(|v| with(fabric_target(), v)).collect();
+    for v in VERSIONS {
+        out.push(with(vanilla_target(), v));
+        out.push(GameTarget {
+            ooze: false,
+            ..with(fabric_target(), v)
+        });
+    }
+    out
+}
+
 pub fn fabric_id() -> InstanceId {
     InstanceId("0f1e2d3c4b5a69788796a5b4c3d2e1f0".into())
 }
@@ -85,7 +107,7 @@ pub fn snapshot() -> LibrarySnapshot {
     );
     LibrarySnapshot {
         capabilities: LibraryCapabilities {
-            create: vec![fabric_target(), vanilla_target()],
+            create: all_targets(),
             instances: true,
             profiles: true,
             themes: true,

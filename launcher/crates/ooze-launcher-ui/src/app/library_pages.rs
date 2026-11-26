@@ -32,7 +32,11 @@ pub(super) enum Confirm {
 pub(super) struct LibUi {
     create_open: bool,
     create_name: String,
-    create_target: usize,
+    /// The kind (loader, with or without Ooze) and Minecraft version chosen in the create card,
+    /// resolved against the library's reported combinations every frame, so a capability change
+    /// never leaves a stale choice.
+    create_kind: Option<TargetKind>,
+    create_version: Option<String>,
     rename: Option<(InstanceId, String)>,
     confirm: Option<Confirm>,
     integrity_for: Option<InstanceId>,
@@ -70,6 +74,63 @@ pub(super) fn target_text(kit: &Kit<'_>, t: &GameTarget) -> String {
             &[loader, &t.game_version, &t.java_major.to_string()],
         ),
     }
+}
+
+/// The first choice when creating an instance: a loader, with or without the Ooze client. The
+/// library can report Fabric both with Ooze and without it for the same Minecraft version.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct TargetKind {
+    pub loader: Loader,
+    pub ooze: bool,
+}
+
+impl TargetKind {
+    fn of(t: &GameTarget) -> Self {
+        Self {
+            loader: t.loader,
+            ooze: t.ooze,
+        }
+    }
+
+    fn label(self, kit: &Kit<'_>) -> String {
+        let loader = kit.t(self.loader.key());
+        if self.ooze {
+            kit.tr.fmt("instances.kind.ooze", &[loader])
+        } else {
+            loader.to_owned()
+        }
+    }
+}
+
+/// The kinds the library reports, each once: with Ooze first, then mod loaders, then Vanilla.
+pub(super) fn target_kinds(targets: &[GameTarget]) -> Vec<TargetKind> {
+    let mut out: Vec<TargetKind> = Vec::new();
+    for t in targets {
+        let kind = TargetKind::of(t);
+        if !out.contains(&kind) {
+            out.push(kind);
+        }
+    }
+    out.sort_by_key(|k| (!k.ooze, k.loader == Loader::Vanilla));
+    out
+}
+
+/// The library's combinations of one kind, newest Minecraft version first.
+pub(super) fn targets_for_kind(targets: &[GameTarget], kind: TargetKind) -> Vec<&GameTarget> {
+    let mut out: Vec<&GameTarget> = targets
+        .iter()
+        .filter(|t| TargetKind::of(t) == kind)
+        .collect();
+    out.sort_by_key(|t| std::cmp::Reverse(version_key(&t.game_version)));
+    out
+}
+
+/// Release versions compare by their numeric parts: 26.3 > 26.1.2 > 26.1 > 1.21.11.
+fn version_key(version: &str) -> Vec<u64> {
+    version
+        .split(['.', '-'])
+        .map(|part| part.parse().unwrap_or(0))
+        .collect()
 }
 
 fn mb(bytes: u64) -> String {
@@ -393,7 +454,8 @@ impl LauncherApp {
             {
                 self.lib_ui.create_open = true;
                 self.lib_ui.create_name = kit.t("instances.new.default_name").to_owned();
-                self.lib_ui.create_target = 0;
+                self.lib_ui.create_kind = None;
+                self.lib_ui.create_version = None;
             }
             ui.add_space(th.space.md);
         }
@@ -431,29 +493,7 @@ impl LauncherApp {
                 hint,
             );
             ui.add_space(th.space.sm);
-            let labels: Vec<String> = targets
-                .iter()
-                .map(|t| {
-                    let ooze = kit.t(if t.ooze {
-                        "instance.ooze_available"
-                    } else {
-                        "instance.ooze_unavailable"
-                    });
-                    format!("{} · {ooze}", target_text(kit, t))
-                })
-                .collect();
-            let options: Vec<(usize, &str)> = labels
-                .iter()
-                .enumerate()
-                .map(|(i, l)| (i, l.as_str()))
-                .collect();
-            kit.segmented(
-                ui,
-                "create-target",
-                kit.t("instances.version_loader"),
-                &options,
-                &mut self.lib_ui.create_target,
-            );
+            let target = self.create_target_choice(ui, kit, targets);
             kit.caption(ui, kit.t("instances.only_supported"));
             ui.add_space(th.space.sm);
             let name = self.lib_ui.create_name.trim().to_owned();
@@ -467,7 +507,7 @@ impl LauncherApp {
                         valid && !busy,
                     )
                     .clicked()
-                    && let Some(target) = targets.get(self.lib_ui.create_target).cloned()
+                    && let Some(target) = target.clone()
                 {
                     self.lib_ui.create_open = false;
                     self.lib_submit(LibCommand::Create { name, target });
@@ -483,6 +523,70 @@ impl LauncherApp {
                 kit.caption(ui, kit.t("instances.name.invalid"));
             }
         });
+    }
+
+    /// Kind (loader, with or without Ooze), then Minecraft version, exactly as the library reports
+    /// them (capabilities), newest version first. Returns the chosen target.
+    fn create_target_choice(
+        &mut self,
+        ui: &mut Ui,
+        kit: &Kit<'_>,
+        targets: &[GameTarget],
+    ) -> Option<GameTarget> {
+        let th = kit.theme;
+        let kinds = target_kinds(targets);
+        let mut ki = self
+            .lib_ui
+            .create_kind
+            .and_then(|k| kinds.iter().position(|x| *x == k))
+            .unwrap_or(0);
+        let kind_text: Vec<String> = kinds.iter().map(|k| k.label(kit)).collect();
+        let kind_labels: Vec<(usize, &str)> = kind_text
+            .iter()
+            .enumerate()
+            .map(|(i, l)| (i, l.as_str()))
+            .collect();
+        kit.segmented(
+            ui,
+            "create-kind",
+            kit.t("instances.loader"),
+            &kind_labels,
+            &mut ki,
+        );
+        let kind = *kinds.get(ki)?;
+        self.lib_ui.create_kind = Some(kind);
+        ui.add_space(th.space.sm);
+        let versions = targets_for_kind(targets, kind);
+        let mut vi = self
+            .lib_ui
+            .create_version
+            .as_deref()
+            .and_then(|v| versions.iter().position(|t| t.game_version == v))
+            .unwrap_or(0);
+        let version_labels: Vec<(usize, &str)> = versions
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (i, t.game_version.as_str()))
+            .collect();
+        kit.segmented(
+            ui,
+            "create-version",
+            kit.t("instances.version"),
+            &version_labels,
+            &mut vi,
+        );
+        let target = (*versions.get(vi)?).clone();
+        self.lib_ui.create_version = Some(target.game_version.clone());
+        ui.add_space(th.space.xs);
+        ui.horizontal_wrapped(|ui| {
+            kit.body(ui, &target_text(kit, &target));
+            if target.ooze {
+                kit.tag(ui, kit.t("instance.ooze_available"), Some(Tone::Success));
+            } else {
+                kit.tag(ui, kit.t("instance.ooze_unavailable"), None);
+            }
+        });
+        Some(target)
     }
 
     fn instance_row(
@@ -1942,6 +2046,12 @@ impl LauncherApp {
         };
         kit.card(ui, crate::paint::Surface::Card, |ui| {
             kit.section(ui, kit.t("content.plan.title"));
+            // Dependencies were resolved for exactly this instance's target.
+            kit.secondary(
+                ui,
+                &kit.tr
+                    .fmt("content.plan.target", &[&target_text(kit, &inst.target)]),
+            );
             if let Some(w) = &plan.world {
                 kit.body(ui, &kit.tr.fmt("content.plan.world", &[w]));
             }
